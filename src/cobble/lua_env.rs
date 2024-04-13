@@ -1,9 +1,8 @@
 extern crate mlua;
 
-use mlua::Lua;
 use std::process::Command;
 
-fn exec_shell_command(_: &Lua, cmd_with_args: Vec<String>) -> Result<(i32, String), mlua::Error> {
+fn exec_shell_command(_: &mlua::Lua, cmd_with_args: Vec<String>) -> Result<(i32, String), mlua::Error> {
     if cmd_with_args.len() < 1 {
         return Err(mlua::Error::RuntimeError(String::from("No command given")));
     }
@@ -19,23 +18,27 @@ fn exec_shell_command(_: &Lua, cmd_with_args: Vec<String>) -> Result<(i32, Strin
         Ok(output) => {
             let stdout_res = String::from_utf8(output.stdout);
             match stdout_res {
-                Err(e) => Err(mlua::Error::RuntimeError(String::from("Unable to convert command output to utf-8"))),
+                Err(e) => Err(mlua::Error::RuntimeError(format!("Unable to convert command output to utf-8: {:?}", e))),
                 Ok(stdout) => Ok((output.status.code().unwrap_or(-1), stdout))
             }
         }
     }
 }
 
+pub fn create_lua_env() -> Result<mlua::Lua, mlua::Error> {
+    let lua = unsafe { mlua::Lua::unsafe_new() };
 
-pub fn create_lua_env() -> Result<Lua, mlua::Error> {
-    let lua_env = Lua::new();
+    let cmd_func = lua.create_function(exec_shell_command)?;
+    lua.globals().set("cmd", cmd_func)?;
 
-    let func = lua_env.create_function(exec_shell_command)?;
-    lua_env.globals().set("cmd", func)?;
+    let cobble_table = lua.create_table()?;
 
-    // TODO: Load plugins
+    let build_envs = lua.create_table()?;
+    cobble_table.set("build_envs", build_envs)?;
+    
+    lua.globals().set("cobble", cobble_table)?;
 
-    Ok(lua_env)
+    Ok(lua)
 }
 
 #[cfg(test)]
