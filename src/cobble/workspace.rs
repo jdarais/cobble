@@ -51,21 +51,20 @@ impl Workspace {
             project_stack = {}
 
             function start_project (name, dir)
-                if (not name or #name == 0) and PROJECT then
-                    error("Empty name is only allowed for the root project")
+                name = name or ""
+                if name == "" and PROJECT then
+                    error("Empty name is only allowed for the root project!")
                 end
 
-                local full_name = "/" .. (name or "")
-
                 if PROJECT then
-                    full_name = PROJECT.name .. full_name
+                    name = PROJECT.name .. "/" .. name
                     dir = dir or PROJECT.dir
                 end
 
                 dir = dir or WORKSPACE.dir
 
-                if cobble.projects[full_name] then
-                    error("Project " .. full_name .. " already exists!")
+                if cobble.projects[name] then
+                    error("Project " .. name .. " already exists!")
                 end
 
                 local project = {
@@ -78,7 +77,7 @@ impl Workspace {
                 
                 if PROJECT then table.insert(PROJECT.child_projects, project) end
 
-                cobble.projects[full_name] = project
+                cobble.projects[name] = project
                 table.insert(cobble.project_stack, project)
                 PROJECT = project
             end
