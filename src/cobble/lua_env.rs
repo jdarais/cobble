@@ -2,7 +2,7 @@ extern crate mlua;
 
 use std::process::Command;
 
-fn exec_shell_command(_: &mlua::Lua, cmd_with_args: Vec<String>) -> Result<(i32, String), mlua::Error> {
+fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Result<mlua::Table> {
     if cmd_with_args.len() < 1 {
         return Err(mlua::Error::RuntimeError(String::from("No command given")));
     }
@@ -16,27 +16,23 @@ fn exec_shell_command(_: &mlua::Lua, cmd_with_args: Vec<String>) -> Result<(i32,
     match output_res {
         Err(e) => Err(mlua::Error::RuntimeError(format!("Error executing command: {}", e))),
         Ok(output) => {
-            let stdout_res = String::from_utf8(output.stdout);
-            match stdout_res {
-                Err(e) => Err(mlua::Error::RuntimeError(format!("Unable to convert command output to utf-8: {:?}", e))),
-                Ok(stdout) => Ok((output.status.code().unwrap_or(-1), stdout))
-            }
+            let stdout = lua.create_string(output.stdout)?;
+            let stderr = lua.create_string(output.stderr)?;
+
+            let result = lua.create_table()?;
+            result.set("stdout", stdout)?;
+            result.set("stderr", stderr)?;
+            result.set("status", output.status.code())?;
+            Ok(result)
         }
     }
 }
 
-pub fn create_lua_env() -> Result<mlua::Lua, mlua::Error> {
+pub fn create_lua_env() -> mlua::Result<mlua::Lua> {
     let lua = unsafe { mlua::Lua::unsafe_new() };
 
     let cmd_func = lua.create_function(exec_shell_command)?;
     lua.globals().set("cmd", cmd_func)?;
-
-    let cobble_table = lua.create_table()?;
-
-    let build_envs = lua.create_table()?;
-    cobble_table.set("build_envs", build_envs)?;
-    
-    lua.globals().set("cobble", cobble_table)?;
 
     Ok(lua)
 }
@@ -50,8 +46,8 @@ mod tests {
         let lua_env = create_lua_env().unwrap();
         let chunk = lua_env.load(String::from("cmd({\"echo\", \"hi!\"})"));
 
-        let (status, stdout): (i32, String) = chunk.eval().unwrap();
-        assert_eq!(status, 0);
-        assert_eq!(stdout, "hi!\n");
+        let result: mlua::Table = chunk.eval().unwrap();
+        assert_eq!(result.get::<_, i32>("status").unwrap(), 0);
+        assert_eq!(result.get::<_, String>("stdout").unwrap(), "hi!\n");
     }
 }
