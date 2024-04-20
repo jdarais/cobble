@@ -1,3 +1,4 @@
-mod datamodel;
-mod lua_env;
-mod workspace;
+pub mod datamodel;
+pub mod lua;
+pub mod lua_env;
+pub mod workspace;

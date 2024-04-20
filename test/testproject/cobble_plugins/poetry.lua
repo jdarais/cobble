@@ -13,9 +13,9 @@ function exports.poetry_project ()
             files = { "pyproject.toml", "poetry.lock" }
         },
         action = {
-            tool = "/poetry",
-            exec = function(self, cxt, args)
-                return cxt:tool { cwd = args.cwd, "run", table.unpack(args) }
+            tool = "poetry",
+            function(cxt)
+                return cxt.tool.poetry { cwd = cxt.cwd, "run", table.unpack(cxt.args) }
             end
         }
     })

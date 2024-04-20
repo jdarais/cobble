@@ -9,8 +9,11 @@ external_tool {
         -- TODO: Implement this
     end,
     action = {
-        exec = function(self, env, args)
-            return env:exec { "poetry", table.unpack(args) }
+        tool = "bla",
+        function(cxt)
+            return cxt.cmd { "poetry", table.unpack(cxt.args) }
         end
     }
 }
+
+project_dir("subproject")

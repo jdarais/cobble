@@ -1,6 +1,6 @@
 extern crate mlua;
 
-use std::process::Command;
+use std::{ffi::OsString, path::Path, process::Command};
 
 fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Result<mlua::Table> {
     if cmd_with_args.len() < 1 {
@@ -28,22 +28,35 @@ fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Resu
     }
 }
 
-pub fn create_lua_env() -> mlua::Result<mlua::Lua> {
+pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<mlua::Lua> {
     let lua = unsafe { mlua::Lua::unsafe_new() };
 
     let cmd_func = lua.create_function(exec_shell_command)?;
     lua.globals().set("cmd", cmd_func)?;
+
+    {
+        let mut module_search_path = OsString::new();
+        module_search_path.push(module_root_path.as_os_str());
+        module_search_path.push("/?.lua;");
+        module_search_path.push(module_root_path.as_os_str());
+        module_search_path.push("/?/init.lua");
+    
+        let package_global: mlua::Table = lua.globals().get("package")?;
+        package_global.set("path", module_search_path.to_str())?;
+    }
 
     Ok(lua)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
     fn test_shell_command() {
-        let lua_env = create_lua_env().unwrap();
+        let lua_env = create_lua_env(Path::new(".")).unwrap();
         let chunk = lua_env.load(String::from("cmd({\"echo\", \"hi!\"})"));
 
         let result: mlua::Table = chunk.eval().unwrap();
