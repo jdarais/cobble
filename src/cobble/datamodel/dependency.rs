@@ -15,7 +15,7 @@ impl <'lua> mlua::FromLua<'lua> for DependencyList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Dependency {
     File(String),
     Task(String)

@@ -4,7 +4,7 @@ use std::fmt;
 
 use crate::cobble::datamodel::Action;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExternalTool {
     name: String,
     install_action: Option<Action>,
@@ -30,7 +30,7 @@ impl fmt::Display for ExternalTool {
 }
 
 impl <'lua> mlua::FromLua<'lua> for ExternalTool {
-    fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
+    fn from_lua(value: mlua::prelude::LuaValue<'lua>, _lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
                 let name: String = tbl.get("name")?;
@@ -40,6 +40,7 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
 
                 Ok(ExternalTool { name, install_action, check_action, action })
             },
+            mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
             _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to action: {:?}", &value)))
         }
     }

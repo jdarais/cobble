@@ -4,7 +4,7 @@ use std::fmt;
 use crate::cobble::datamodel::BuildEnv;
 use crate::cobble::lua::detached_value::{FunctionDump, dump_function};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<String>),
     Func(FunctionDump)
@@ -34,7 +34,7 @@ impl <'lua> mlua::FromLua<'lua> for ActionCmd {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Action {
     build_env: Option<String>,
     cmd: ActionCmd

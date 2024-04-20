@@ -33,7 +33,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Task {
     pub name: String,
     pub build_env: Option<String>,
@@ -75,20 +75,21 @@ impl fmt::Display for Task {
 }
 
 impl <'lua> mlua::FromLua<'lua> for Task {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let task_table = lua.unpack::<mlua::Table>(value)?;
-        let name: String = task_table.get("name")?;
-        let build_env: Option<String> = task_table.get("build_env")?;
-        let actions: Vec<ActionCmd> = task_table.get("actions")?;
-        let deps: Vec<Dependency> = task_table.get::<_, DependencyList>("deps")?.0;
-        let artifacts: Vec<Artifact> = task_table.get("artifacts")?;
-
-        Ok(Task {
-            name,
-            build_env,
-            actions,
-            deps,
-            artifacts
-        })
+    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        match value {
+            mlua::Value::Table(task_table) => {
+                let name: String = task_table.get("name")?;
+                let build_env: Option<String> = task_table.get("build_env")?;
+                let actions: Vec<ActionCmd> = task_table.get("actions")?;
+                let deps_opt: Option<DependencyList> = task_table.get("deps")?;
+                let deps = deps_opt.map(|d| d.0).unwrap_or_default();
+                let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
+                let artifacts = artifacts_opt.unwrap_or_default();
+        
+                Ok(Task { name, build_env, actions, deps, artifacts })
+            },
+            mlua::Value::UserData(val) => Ok(val.borrow::<Task>()?.clone()),
+            _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to Task: {:?}", value)))
+        }
     }
 }

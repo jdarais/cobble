@@ -1,4 +1,5 @@
 use std::fmt;
+use std::borrow::Borrow;
 use std::collections::HashSet;
 
 use crate::cobble::datamodel::{
@@ -9,11 +10,11 @@ use crate::cobble::datamodel::{
 };
 use crate::cobble::lua::detached_value::dump_function;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BuildEnv {
     pub name: String,
-    pub install_actions: Vec<ActionCmd>,
-    pub install_deps: Vec<Dependency>,
+    pub install: Vec<ActionCmd>,
+    pub deps: Vec<Dependency>,
     pub action: Action,
 }
 
@@ -21,36 +22,64 @@ impl fmt::Display for BuildEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "BuildEnv(")?;
         write!(f, "name={}, ", &self.name)?;
-        write!(f, "install_actions=[")?;
-        for (i, action) in self.install_actions.iter().enumerate() {
+
+        f.write_str("install=[")?;
+        for (i, action) in self.install.iter().enumerate() {
             if i > 0 { f.write_str(",")?; }
             write!(f, "{}", action)?;
+        }
+        f.write_str("], ")?;
+
+
+        f.write_str("deps=[")?;
+        for (i, dep) in self.deps.iter().enumerate() {
+            if i > 0 { f.write_str(",")?; }
+            write!(f, "{}", dep)?;
         }
         f.write_str("])")
     }
 }
 
 impl <'lua> mlua::FromLua<'lua> for BuildEnv {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let build_env_def_table = match value {
-            mlua::Value::Table(tbl) => tbl,
+    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        match value {
+            mlua::Value::Table(tbl) => {
+                let name: String = tbl.get("name")?;
+
+                let actions: Vec<ActionCmd> = tbl.get("install")?;
+                let deps_opt: Option<DependencyList> = tbl.get("deps")?;
+                let deps = deps_opt.map(|d| d.0).unwrap_or_default();
+                let action: Action = tbl.get("action")?;
+        
+                Ok(BuildEnv { name, install: actions, deps, action })
+            },
+            mlua::Value::UserData(val) => Ok(val.borrow::<BuildEnv>()?.clone()),
             val => { return Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
-        };
-
-        let name: String = build_env_def_table.get("name")?;
-
-        let install_actions: Vec<ActionCmd> = build_env_def_table.get("install_actions")?;
-        let install_deps: Vec<Dependency> = build_env_def_table.get::<_, DependencyList>("install_deps")?.0;
-        let action: Action = build_env_def_table.get("action")?;
-
-        Ok(BuildEnv {
-            name,
-            install_actions,
-            install_deps,
-            action
-        })
+        }
     }
 }
+
+// pub struct BuildEnvWrapper(pub BuildEnv);
+
+// impl mlua::UserData for BuildEnvWrapper {}
+
+// impl <'lua> mlua::FromLua<'lua> for &'lua BuildEnvWrapper {
+//     fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
+//         match value {
+//             mlua::Value::UserData(val) => Ok(val.borrow::<Self>()?.borrow()),
+//             _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvWrapper: {:?}", &value)))
+//         }
+//     }
+// }
+
+// impl <'lua> mlua::FromLua<'lua> for BuildEnvWrapper {
+//     fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
+//         match value {
+//             mlua::Value::UserData(val) => val.take::<Self>(),
+//             _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvWrapper: {:?}", &value)))
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -67,11 +96,11 @@ mod tests {
         let build_env_table: mlua::Table = lua.load(r#"
             {
                 name = "poetry",
-                install_actions = {
+                actions = {
                     {"poetry", "lock"},
                     {"poetry", "install"}
                 },
-                install_deps = {
+                deps = {
                     files = {"pyproject.toml", "poetry.lock"}
                 },
                 exec = function (args) cmd("poetry", table.unpack(args)) end

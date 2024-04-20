@@ -15,7 +15,11 @@ use std::str::FromStr;
 
 use serde::{Serialize, Deserialize};
 
-use crate::cobble::datamodel::{BuildEnv, Task, ExternalTool};
+use crate::cobble::datamodel::{
+    BuildEnv,
+    Task,
+    ExternalTool
+};
 
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
 
@@ -220,17 +224,36 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
 }
 
 pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlua::Result<()> {
+    let cxt = lua.create_table()?;
+    cxt.set("ws_dir", workspace_dir.to_str().unwrap_or("."))?;
+    
     let workspace_dir_owned = PathBuf::from(workspace_dir);
     let project_dir_func = lua.create_function(move |lua, dir: String| {
         process_project_file(lua, dir.as_str(), workspace_dir_owned.as_path())
     })?;
+    cxt.set("process_project_dir", project_dir_func)?;
+
+    let create_build_env = lua.create_function(|_, build_env: BuildEnv| {
+        Ok(mlua::AnyUserData::wrap(build_env))
+    })?;
+    cxt.set("create_build_env", create_build_env)?;
+
+    let create_task_func = lua.create_function(|_, task: Task| {
+        Ok(mlua::AnyUserData::wrap(task))
+    })?;
+    cxt.set("create_task", create_task_func)?;
+
+    let create_tool_func = lua.create_function(|_, tool: ExternalTool| {
+        Ok(mlua::AnyUserData::wrap(tool))
+    })?;
+    cxt.set("create_external_tool", create_tool_func)?;
 
     lua.load(r#"
-        local ws_dir, process_project_dir = ...
+        local cxt = ...
 
         cobble = {
             workspace = {
-                dir = ws_dir
+                dir = cxt.ws_dir
             },
             projects = {},
         }
@@ -246,7 +269,11 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
                     error("Empty name is only allowed for the root project!")
                 end
 
-                name = PROJECT.name .. "/" .. name
+                if PROJECT.name == "/" then
+                    name = "/" .. name
+                else
+                    name = PROJECT.name .. "/" .. name
+                end
                 dir = dir or PROJECT.dir
             else
                 name = "/" .. (name or "")
@@ -286,21 +313,24 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         end
 
         function project_dir (dir)
-            process_project_dir(dir)
+            cxt.process_project_dir(dir)
         end
 
         function build_env (env)
-            table.insert(PROJECT.build_envs, env)
+            local created = cxt.create_build_env(env)
+            table.insert(PROJECT.build_envs, created)
         end
 
         function external_tool (tool)
-            table.insert(PROJECT.tools, tool)
+            local created = cxt.create_external_tool(tool)
+            table.insert(PROJECT.tools, created)
         end
 
         function task (tsk)
-            table.insert(PROJECT.tasks, tsk)
+            local created = cxt.create_task(tsk)
+            table.insert(PROJECT.tasks, created)
         end
-    "#).call((workspace_dir.as_os_str().to_str(), project_dir_func))
+    "#).call(cxt)
 }
 
 pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Project>> {
