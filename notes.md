@@ -72,3 +72,8 @@ action_context = {
     vars = <(TODO) the variables defined either by config, env var, or CLI arg>
 }
 ```
+
+__Docker Build Environment:__
+I'd like to be able to support using a docker container as a build environment.  That is, installing the environment would amount to creating a docker container and installing any build dependencies into it, and actions run in that build environment would be executed with `docker exec`.  Ideally, you'd also be able to run cobble while already inside the docker environment, (e.g in CI or using devcontainers,) in which case running the action in the build environment would just drop the `docker exec` and run the command directly.
+
+I guess a challenge arises when you account for dependencies on other tasks using other environments.  How do those get executed?  Maybe it's best not to support the "I'm already in a container" scenario.  In CI, you could just run the build as usual with a dind container.  With devcontainers, you can [attach to a running container](https://code.visualstudio.com/docs/devcontainers/attach-container) to do development within the container itself.
