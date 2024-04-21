@@ -1,27 +1,55 @@
-mod cobble;
+extern crate clap;
+
+mod commands;
+mod datamodel;
+mod lua;
+mod workspace;
 
 use std::path::Path;
 
-use cobble::workspace::{
-    extract_project_defs, find_nearest_workspace_dir_from, init_lua_for_project_config, parse_workspace_config_file, process_project_file, WORKSPACE_CONFIG_FILE_NAME
+use clap::{Parser, Subcommand};
+
+use workspace::load::{
+    extract_project_defs,
+    init_lua_for_project_config,
+    process_project_file,
 };
 
-use cobble::lua_env::create_lua_env;
+use workspace::config::get_workspace_config;
 
-use crate::cobble::resolve::resolve_names_in_build_units;
+use lua::lua_env::create_lua_env;
+
+use crate::datamodel::Project;
+use crate::workspace::resolve::{resolve_names_in_project, NameResolutionError};
+
+#[derive(Parser)]
+struct Cli {
+
+    #[command(subcommand)]
+    command: Command
+}
+
+#[derive(Subcommand)]
+enum Command {
+    List {
+        /// If provided, display only the matched tasks
+        tasks: Vec<String>
+    },
+    Run {
+
+    }
+}
 
 
 fn run_from_dir(path: &Path) {
-    let workspace_dir = find_nearest_workspace_dir_from(path).unwrap();
+    let workspace_config = get_workspace_config(path).unwrap();
 
-    let workspace_config = parse_workspace_config_file(workspace_dir.join(WORKSPACE_CONFIG_FILE_NAME).as_path()).unwrap();
+    let project_def_lua = create_lua_env(workspace_config.workspace_dir.as_path()).unwrap();
 
-    let project_def_lua = create_lua_env(workspace_dir.as_path()).unwrap();
-
-    init_lua_for_project_config(&project_def_lua, workspace_dir.as_path()).unwrap();
+    init_lua_for_project_config(&project_def_lua, workspace_config.workspace_dir.as_path()).unwrap();
 
     for project_dir in &workspace_config.root_projects {
-        process_project_file(&project_def_lua, project_dir.as_str(), workspace_dir.as_path()).unwrap();
+        process_project_file(&project_def_lua, project_dir.as_str(), workspace_config.workspace_dir.as_path()).unwrap();
     }
 
     let projects = extract_project_defs(&project_def_lua).unwrap();
@@ -33,13 +61,11 @@ fn run_from_dir(path: &Path) {
 
     let package_path: String = project_def_lua.load("package.path").eval().unwrap();
     println!("package.path={}", package_path.as_str());
-
-    let resolved = resolve_names_in_build_units(projects.values()).unwrap();
-    println!("RESOLVED:");
-    println!("{:x?}", resolved);
 }
 
 fn main() {
+    let args = Cli::parse();
+    
     let cwd = std::env::current_dir().expect("was run from a directory");
 
     run_from_dir(cwd.as_path())

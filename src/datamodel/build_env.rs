@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::cobble::datamodel::{
+use crate::datamodel::{
     Action,
     Dependency,
     DependencyList,
@@ -63,7 +63,7 @@ mod tests {
 
     use super::*;
 
-    use crate::cobble::lua_env::create_lua_env;
+    use crate::lua::lua_env::create_lua_env;
 
     #[test]
     fn test_build_env_def_from_lua_table() {

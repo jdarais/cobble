@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::cobble::datamodel::{
+use crate::datamodel::{
     Action,
     Dependency,
     DependencyList,

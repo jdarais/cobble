@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use crate::cobble::lua::detached_value::{FunctionDump, dump_function};
+use crate::lua::detached_value::{FunctionDump, dump_function};
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {

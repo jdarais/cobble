@@ -302,7 +302,7 @@ mod tests {
 
     use super::*;
 
-    use crate::cobble::lua_env::create_lua_env;
+    use crate::lua::lua_env::create_lua_env;
 
     #[test]
     fn test_extract_function_with_upvalues() {

@@ -3,152 +3,18 @@ extern crate toml;
 extern crate serde;
 
 use std::collections::HashMap;
-use std::io;
-use std::fmt::Display;
-use std::fs::File;
 use std::io::Read;
+use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
-use crate::cobble::datamodel::{
+use crate::datamodel::{
     BuildEnv,
     Task,
-    ExternalTool
+    ExternalTool,
+    Project
 };
+use crate::workspace::resolve::resolve_names_in_project;
 
-pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
-
-#[derive(Debug)]
-pub struct Project {
-    pub name: String,
-    pub path: PathBuf,
-    pub build_envs: Vec<BuildEnv>,
-    pub tasks: Vec<Task>,
-    pub tools: Vec<ExternalTool>
-}
-
-impl Display for Project {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Project(")?;
-        write!(f, "name=\"{}\",", &self.name)?;
-        write!(f, "path={},", self.path.display())?;
-        
-        f.write_str("build_envs=[")?;
-        for (i, build_env) in self.build_envs.iter().enumerate() {
-            if i > 0 { f.write_str(", ")? }
-            write!(f, "{}", build_env)?;
-        }
-        f.write_str("], ")?;
-
-        f.write_str("tasks=[")?;
-        for (i, task) in self.tasks.iter().enumerate() {
-            if i > 0 { f.write_str(", ")?; }
-            write!(f, "{}", task)?;
-        }
-        f.write_str("], ")?;
-
-        f.write_str("tools=[")?;
-        for (i, tool) in self.tools.iter().enumerate() {
-            if i > 0 { f.write_str(", ")?; }
-            write!(f, "{}", tool)?;
-        }
-        f.write_str("]")?;
-
-        f.write_str(")")
-    }
-}
-
-impl <'lua> mlua::FromLua<'lua> for Project {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let project_table = match value {
-            mlua::Value::Table(tbl) => tbl,
-            _ => { return Err(mlua::Error::runtime(format!("Project must be a lua table value"))); }
-        };
-
-        let name: String = project_table.get("name")?;
-        let path_str: String = project_table.get("dir")?;
-        let path = PathBuf::from_str(path_str.as_str()).expect("Conversion from str to PathBuf is infalliable");
-        let build_envs: Vec<BuildEnv> = project_table.get("build_envs")?;
-        let tasks: Vec<Task> = project_table.get("tasks")?;
-        let tools: Vec<ExternalTool> = project_table.get("tools")?;
-
-        Ok(Project{ name, path, build_envs, tasks, tools })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct BuildUnitCollection {
-    pub build_envs: Vec<BuildEnv>,
-    pub tools: Vec<ExternalTool>,
-    pub tasks: Vec<Task>
-}
-
-pub struct WorkspaceConfig {
-    pub root_projects: Vec<String>
-}
-
-#[derive(Debug)]
-pub enum WorkspaceConfigError {
-    FileError{path: PathBuf, error: io::Error},
-    ParseError(String),
-    ValueError(String)
-}
-
-impl Display for WorkspaceConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use WorkspaceConfigError::*;
-        match self {
-            FileError{path, error} => write!(f, "Error reading file at {}: {}", path.display(), error),
-            ParseError(msg) => write!(f, "Error parsing config file: {}", msg),
-            ValueError(msg) => write!(f, "Error reading config values: {}", msg)
-        }
-    }
-}
-
-pub fn parse_workspace_config(config_str: &str) -> Result<WorkspaceConfig, WorkspaceConfigError> {
-    let mut config: toml::Table = config_str.parse().map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
-
-    let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
-    let root_projects: Vec<String> = match root_projects_opt {
-        None => vec![String::from(".")],
-        Some(val) => val.try_into()
-            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'root_projects': {}", e)))?
-    };
-
-    // Raise an error if there are unrecognized keys in the config table
-    if let Some((key, _)) = config.iter().next() {
-        return Err(WorkspaceConfigError::ValueError(format!("Unrecognized field '{}'", key)));
-    }
-
-    Ok(WorkspaceConfig{
-        root_projects
-    })
-}
-
-pub fn parse_workspace_config_file(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
-    let mut config_file = File::open(path).map_err(|e| WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e})?;
-
-    let mut config_toml_str = String::new();
-    let file_read_res = config_file.read_to_string(&mut config_toml_str);
-    if let Err(e) = file_read_res {
-        return Err(WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e});
-    }
-
-    parse_workspace_config(config_toml_str.as_str())
-}
-
-pub fn find_nearest_workspace_dir_from(path: &Path) -> Result<PathBuf, io::Error> {
-    for ancestor in path.canonicalize()?.ancestors() {
-       if ancestor.join(WORKSPACE_CONFIG_FILE_NAME).exists() {
-        return Ok(PathBuf::from(ancestor));
-       } 
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::NotFound,
-        format!("Did not find '{}' file in any ancestor directory from {}", WORKSPACE_CONFIG_FILE_NAME, path.display()))
-    )
-}
 
 fn process_project(lua: &mlua::Lua, project_source: &str, project_name: &str, project_dir: &str) -> mlua::Result<()> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
@@ -323,7 +189,11 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
 
     for pair in projects_table.pairs() {
         let (key, value): (String, Project) = pair?;
-        projects.insert(key, value);
+        let resolved_project_res = resolve_names_in_project(&value);
+        match resolved_project_res {
+            Ok(resolved_project) => { projects.insert(key, resolved_project); },
+            Err(e) => { return Err(mlua::Error::runtime(format!("{}", e))); }
+        }
     }
 
     Ok(projects)
@@ -332,17 +202,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cobble::lua_env::create_lua_env;
+    use crate::lua::lua_env::create_lua_env;
 
-    #[test]
-    fn test_parse_workspace_config() {
-        let config_toml = r#"
-            root_projects = ["proj1", "proj2", "proj3"]
-        "#;
-
-        let config = parse_workspace_config(config_toml).unwrap();
-        assert_eq!(config.root_projects, vec!["proj1", "proj2", "proj3"]);
-    }
 
     #[test]
     fn test_load_subproject_def() {

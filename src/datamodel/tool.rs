@@ -2,7 +2,7 @@ extern crate mlua;
 
 use std::fmt;
 
-use crate::cobble::datamodel::Action;
+use crate::datamodel::Action;
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {

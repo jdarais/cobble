@@ -4,10 +4,7 @@ use std::{
     path::{Path, PathBuf}
 };
 
-use crate::cobble::{
-    datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Task},
-    workspace::{BuildUnitCollection, Project}
-};
+use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, Task};
 
 #[derive(Debug)]
 pub enum NameResolutionError {
@@ -173,30 +170,29 @@ fn resolve_names_in_task(project: &Project, task: &Task) -> Result<Task, NameRes
     Ok(Task{ name, build_env, actions, deps, artifacts })
 }
 
-pub fn resolve_names_in_build_units<'a, P>(projects: P) -> Result<BuildUnitCollection, NameResolutionError>
-    where P: Iterator<Item = &'a Project>
-{
-    let mut build_units = BuildUnitCollection {
-        build_envs: Vec::new(),
-        tools: Vec::new(),
-        tasks: Vec::new()
-    };
+pub fn resolve_names_in_project(project: &Project) -> Result<Project, NameResolutionError> {
+    // Project name is already fully-qualified
+    let name = project.name.clone();
+    
+    // Path is already relative to the workspace dir
+    let path = project.path.clone();
 
-    for project in projects {
-        for build_env in project.build_envs.iter() {
-            build_units.build_envs.push(resolve_names_in_build_env(project, build_env)?);
-        }
+    let mut build_envs: Vec<BuildEnv> = Vec::new();
+    for build_env in project.build_envs.iter() {
+        build_envs.push(resolve_names_in_build_env(project, build_env)?);
+    }
 
-        for tool in project.tools.iter() {
-            build_units.tools.push(resolve_names_in_tool(project, tool)?);
-        }
+    let mut tools: Vec<ExternalTool> = Vec::new();
+    for tool in project.tools.iter() {
+        tools.push(resolve_names_in_tool(project, tool)?);
+    }
 
-        for task in project.tasks.iter() {
-            build_units.tasks.push(resolve_names_in_task(project, task)?);
-        }
-    }    
+    let mut tasks: Vec<Task> = Vec::new();
+    for task in project.tasks.iter() {
+        tasks.push(resolve_names_in_task(project, task)?);
+    }
 
-    Ok(build_units)
+    Ok(Project{ name, path, build_envs, tools, tasks })
 }
 
 #[cfg(test)]

@@ -1,0 +1,101 @@
+use std::fmt::Display;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+
+pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
+
+
+pub struct WorkspaceConfig {
+    pub workspace_dir: PathBuf,
+    pub root_projects: Vec<String>
+}
+
+#[derive(Debug)]
+pub enum WorkspaceConfigError {
+    IOError(io::Error),
+    FileError{path: PathBuf, error: io::Error},
+    ParseError(String),
+    ValueError(String)
+}
+
+impl Display for WorkspaceConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use WorkspaceConfigError::*;
+        match self {
+            IOError(e) => write!(f, "{}", e),
+            FileError{path, error} => write!(f, "Error reading file at {}: {}", path.display(), error),
+            ParseError(msg) => write!(f, "Error parsing config file: {}", msg),
+            ValueError(msg) => write!(f, "Error reading config values: {}", msg)
+        }
+    }
+}
+
+pub fn parse_workspace_config(config_str: &str, config_path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+    let mut config: toml::Table = config_str.parse().map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
+
+    let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
+    let root_projects: Vec<String> = match root_projects_opt {
+        None => vec![String::from(".")],
+        Some(val) => val.try_into()
+            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'root_projects': {}", e)))?
+    };
+
+    // Raise an error if there are unrecognized keys in the config table
+    if let Some((key, _)) = config.iter().next() {
+        return Err(WorkspaceConfigError::ValueError(format!("Unrecognized field '{}'", key)));
+    }
+
+    Ok(WorkspaceConfig{
+        workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
+        root_projects
+    })
+}
+
+pub fn parse_workspace_config_file(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+    let mut config_file = File::open(path).map_err(|e| WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e})?;
+
+    let mut config_toml_str = String::new();
+    let file_read_res = config_file.read_to_string(&mut config_toml_str);
+    if let Err(e) = file_read_res {
+        return Err(WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e});
+    }
+
+    parse_workspace_config(config_toml_str.as_str(), path)
+}
+
+pub fn find_nearest_workspace_config_file_from(path: &Path) -> Result<PathBuf, io::Error> {
+    for ancestor in path.canonicalize()?.ancestors() {
+        let config_path = ancestor.join(WORKSPACE_CONFIG_FILE_NAME);
+        if config_path.exists() {
+            return Ok(config_path);
+        }
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("Did not find '{}' file in any ancestor directory from {}", WORKSPACE_CONFIG_FILE_NAME, path.display()))
+    )
+}
+
+pub fn get_workspace_config(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+    let config_path = find_nearest_workspace_config_file_from(path).map_err(|e| WorkspaceConfigError::IOError(e))?;
+    parse_workspace_config_file(config_path.as_path())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+
+    #[test]
+    fn test_parse_workspace_config() {
+        let config_toml = r#"
+            root_projects = ["proj1", "proj2", "proj3"]
+        "#;
+
+        let config = parse_workspace_config(config_toml, Path::new("/home/test/proj/cobble.toml")).unwrap();
+        assert_eq!(config.workspace_dir, PathBuf::from("/home/test/proj"));
+        assert_eq!(config.root_projects, vec!["proj1", "proj2", "proj3"]);
+    }
+}
