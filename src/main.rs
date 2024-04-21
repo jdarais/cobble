@@ -9,25 +9,15 @@ use std::path::Path;
 
 use clap::{Parser, Subcommand};
 
-use workspace::load::{
-    extract_project_defs,
-    init_lua_for_project_config,
-    process_project_file,
-};
-
 use workspace::config::get_workspace_config;
 
-use lua::lua_env::create_lua_env;
-
-use crate::datamodel::Project;
-use crate::workspace::load::load_projects;
-use crate::workspace::resolve::{resolve_names_in_project, NameResolutionError};
+use crate::{commands::list::{list_command, ListCommandInput}, workspace::load::load_projects};
 
 #[derive(Parser)]
 struct Cli {
 
     #[command(subcommand)]
-    command: Command
+    command: Option<Command>
 }
 
 #[derive(Subcommand)]
@@ -58,5 +48,21 @@ fn main() {
     
     let cwd = std::env::current_dir().expect("was run from a directory");
 
-    run_from_dir(cwd.as_path())
+    match &args.command {
+        Some(cmd) =>     match cmd {
+            Command::List{tasks} => {
+                let input = ListCommandInput {
+                    cwd: cwd.as_path(),
+                    tasks: tasks.iter().map(|s| s.as_str()).collect()
+                };
+                list_command(input);
+            },
+            Command::Run{} => {
+                run_from_dir(cwd.as_path());
+            }
+        },
+        None => {
+            run_from_dir(cwd.as_path());
+        }
+    }
 }

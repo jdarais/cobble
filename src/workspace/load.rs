@@ -14,7 +14,8 @@ use crate::datamodel::{
     Project
 };
 use crate::lua::lua_env::create_lua_env;
-use crate::workspace::resolve::resolve_names_in_project;
+use crate::workspace::_resolve::resolve_names_in_project;
+use crate::workspace::config::PROJECT_FILE_NAME;
 
 
 fn process_project(lua: &mlua::Lua, project_source: &str, project_name: &str, project_dir: &str) -> mlua::Result<()> {
@@ -47,8 +48,8 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         String::from(dir)
     };
 
-    let project_file_path = project_dir.join("project.lua");
-    if !workspace_dir.join(&project_file_path).exists() {
+    let project_file_path = workspace_dir.join(project_dir.as_path()).join(PROJECT_FILE_NAME);
+    if !project_file_path.exists() {
         return Err(mlua::Error::runtime(format!("Project file {} doesn't exist", project_file_path.display())));
     }
 
@@ -126,9 +127,8 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
                 dir = dir or PROJECT.dir
             else
                 name = "/" .. (name or "")
+                dir = dir or WORKSPACE.dir
             end
-
-            dir = dir or WORKSPACE.dir
 
             if cobble.projects[name] then
                 error("Project " .. name .. " already exists!")

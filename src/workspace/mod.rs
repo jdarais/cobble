@@ -1,3 +1,5 @@
+mod _resolve;
+
 pub mod config;
-pub mod resolve;
 pub mod load;
+pub mod query;

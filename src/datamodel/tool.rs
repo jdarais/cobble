@@ -34,11 +34,27 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
         match value {
             mlua::Value::Table(tbl) => {
                 let name: String = tbl.get("name")?;
-                let install_action: Option<Action> = tbl.get("install")?;
-                let check_action: Option<Action> = tbl.get("install")?;
-                let action: Action = tbl.get("action")?;
 
-                Ok(ExternalTool { name, install: install_action, check: check_action, action })
+                let install: Option<Action> = tbl.get("install")?;
+                if let Some(ins) = &install {
+                    if ins.build_envs.len() > 0 {
+                        return Err(mlua::Error::runtime("External tools cannot depend on build environments"));
+                    }
+                }
+
+                let check: Option<Action> = tbl.get("install")?;
+                if let Some(chk) = &check {
+                    if chk.build_envs.len() > 0 {
+                        return Err(mlua::Error::runtime("External tools cannot depend on build environments"));
+                    }
+                }
+
+                let action: Action = tbl.get("action")?;
+                if action.build_envs.len() > 0 {
+                    return Err(mlua::Error::runtime("External tools cannot depend on build environments"));
+                }
+
+                Ok(ExternalTool { name, install, check, action })
             },
             mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to action: {:?}", &value)))

@@ -4,8 +4,9 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
+pub const PROJECT_FILE_NAME: &str = "project.lua";
 
-
+#[derive(Debug)]
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
     pub root_projects: Vec<String>
@@ -76,6 +77,21 @@ pub fn find_nearest_workspace_config_file_from(path: &Path) -> Result<PathBuf, i
         io::ErrorKind::NotFound,
         format!("Did not find '{}' file in any ancestor directory from {}", WORKSPACE_CONFIG_FILE_NAME, path.display()))
     )
+}
+
+pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<PathBuf, io::Error> {
+    for ancestor in path.canonicalize()?.ancestors() {
+        if !ancestor.starts_with(workspace_dir) {
+            break;
+        }
+
+        let project_file_path = ancestor.join(PROJECT_FILE_NAME);
+        if project_file_path.exists() {
+            return Ok(PathBuf::from(ancestor))
+        }
+    }
+
+    Ok(PathBuf::from(workspace_dir))
 }
 
 pub fn get_workspace_config(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
