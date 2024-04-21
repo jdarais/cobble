@@ -146,11 +146,11 @@ impl Hash for DetachedLuaValue {
 
 pub fn dump_function<'lua>(func: mlua::Function<'lua>, lua: &'lua mlua::Lua, history: &HashSet<*const c_void>) -> Result<FunctionDump, mlua::Error> {
     if history.contains(&func.to_pointer()) {
-        return Err(mlua::Error::RuntimeError(format!("Cycle encountered when extracting Function: {:?}", &func)));
+        return Err(mlua::Error::runtime(format!("Cycle encountered when extracting Function: {:?}", &func)));
     }
 
     if func.info().what != "Lua" {
-        return Err(mlua::Error::RuntimeError(format!("Cannot serialize a function that is not a pure Lua function: {:?}", &func)));
+        return Err(mlua::Error::runtime(format!("Cannot serialize a function that is not a pure Lua function: {:?}", &func)));
     }
 
     let string_dump: mlua::Function = lua.load("function(fn) return string.dump(fn) end").eval()?;
@@ -213,7 +213,7 @@ pub fn detach_value<'lua>(value: mlua::Value<'lua>, lua: &'lua mlua::Lua, histor
         mlua::Value::String(v) => Ok(DetachedLuaValue::String(String::from(v.to_str()?))),
         mlua::Value::Table(t) => {
             if history.contains(&t.to_pointer()) {
-                Err(mlua::Error::RuntimeError(format!("Cycle encountered when extracting Table: {:?}", t)))
+                Err(mlua::Error::runtime(format!("Cycle encountered when extracting Table: {:?}", t)))
             } else {
                 let mut history_with_t = history.clone();
                 history_with_t.insert(t.to_pointer());
@@ -237,7 +237,7 @@ pub fn detach_value<'lua>(value: mlua::Value<'lua>, lua: &'lua mlua::Lua, histor
         mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(d.to_pointer())),
         mlua::Value::LightUserData(d) => Ok(DetachedLuaValue::LightUserData(d)),
         mlua::Value::Error(e) => Ok(DetachedLuaValue::Error(e)),
-        mlua::Value::Thread(t) => Err(mlua::Error::RuntimeError(format!("Cannot serialize a thread object: {:?}", t)))
+        mlua::Value::Thread(t) => Err(mlua::Error::runtime(format!("Cannot serialize a thread object: {:?}", t)))
     }
 }
 
@@ -291,7 +291,7 @@ impl <'lua> mlua::FromLua<'lua> for FunctionDump {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Function(f) => dump_function(f, lua, &HashSet::new()),
-            _ => Err(mlua::Error::RuntimeError(format!("Cannot convert non-function value to a FunctionDump: {:?}", value)))
+            _ => Err(mlua::Error::runtime(format!("Cannot convert non-function value to a FunctionDump: {:?}", value)))
         }
     }
 }

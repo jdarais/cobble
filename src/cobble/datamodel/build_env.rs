@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::cobble::datamodel::{
     Action,
-    ActionCmd,
     Dependency,
     DependencyList,
 };
@@ -10,7 +9,7 @@ use crate::cobble::datamodel::{
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
     pub name: String,
-    pub install: Vec<ActionCmd>,
+    pub install: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub action: Action,
 }
@@ -45,40 +44,18 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
             mlua::Value::Table(tbl) => {
                 let name: String = tbl.get("name")?;
 
-                let actions: Vec<ActionCmd> = tbl.get("install")?;
+                let install: Vec<Action> = tbl.get("install")?;
                 let deps_opt: Option<DependencyList> = tbl.get("deps")?;
                 let deps = deps_opt.map(|d| d.0).unwrap_or_default();
                 let action: Action = tbl.get("action")?;
         
-                Ok(BuildEnv { name, install: actions, deps, action })
+                Ok(BuildEnv { name, install, deps, action })
             },
             mlua::Value::UserData(val) => Ok(val.borrow::<BuildEnv>()?.clone()),
-            val => { return Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
+            val => { return Err(mlua::Error::runtime(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
         }
     }
 }
-
-// pub struct BuildEnvWrapper(pub BuildEnv);
-
-// impl mlua::UserData for BuildEnvWrapper {}
-
-// impl <'lua> mlua::FromLua<'lua> for &'lua BuildEnvWrapper {
-//     fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
-//         match value {
-//             mlua::Value::UserData(val) => Ok(val.borrow::<Self>()?.borrow()),
-//             _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvWrapper: {:?}", &value)))
-//         }
-//     }
-// }
-
-// impl <'lua> mlua::FromLua<'lua> for BuildEnvWrapper {
-//     fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
-//         match value {
-//             mlua::Value::UserData(val) => val.take::<Self>(),
-//             _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to a BuildEnvWrapper: {:?}", &value)))
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -95,14 +72,14 @@ mod tests {
         let build_env_table: mlua::Table = lua.load(r#"
             {
                 name = "poetry",
-                actions = {
+                install = {
                     {"poetry", "lock"},
                     {"poetry", "install"}
                 },
                 deps = {
                     files = {"pyproject.toml", "poetry.lock"}
                 },
-                exec = function (args) cmd("poetry", table.unpack(args)) end
+                action = function (args) cmd("poetry", table.unpack(args)) end
             }
         "#).eval().unwrap();
 

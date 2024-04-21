@@ -28,16 +28,16 @@ impl <'lua> mlua::FromLua<'lua> for ActionCmd {
                 let cmd_args = cmd_args_res?;
                 Ok(ActionCmd::Cmd(cmd_args))
             },
-            val => Err(mlua::Error::RuntimeError(format!("Unable to convert value to Action: {:?}", val)))
+            val => Err(mlua::Error::runtime(format!("Unable to convert value to Action: {:?}", val)))
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Action {
-    tools: HashMap<String, String>,
-    build_envs: HashMap<String, String>,
-    cmd: ActionCmd
+    pub tools: HashMap<String, String>,
+    pub build_envs: HashMap<String, String>,
+    pub cmd: ActionCmd
 }
 
 impl fmt::Display for Action {
@@ -87,7 +87,7 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                         }
                     },
                     mlua::Value::Nil => { /* no build envs to add */},
-                    _ => { return Err(mlua::Error::RuntimeError(format!("Invalid value for 'build_env' property: {:?}", build_env_val))); }
+                    _ => { return Err(mlua::Error::runtime(format!("Invalid value for 'build_env' property: {:?}", build_env_val))); }
                 }
 
                 let tool_val: mlua::Value = tbl.get("tool")?;
@@ -107,7 +107,7 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                         }
                     },
                     mlua::Value::Nil => { /* no tools to add */},
-                    _ => { return Err(mlua::Error::RuntimeError(format!("Invalid value for 'tool' property: {:?}", tool_val)))}
+                    _ => { return Err(mlua::Error::runtime(format!("Invalid value for 'tool' property: {:?}", tool_val)))}
                 }
                 
 
@@ -127,7 +127,7 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 // Otherwise, interpret the contents of the table as an args list, in which case only one
                 // build env or tool is allowed
                 if build_envs.len() + tools.len() > 1 {
-                    return Err(mlua::Error::RuntimeError(String::from("Can only use one build_env or tool with argument list action")));
+                    return Err(mlua::Error::runtime("Can only use one build_env or tool with argument list action"));
                 }
 
                 let args_res: mlua::Result<Vec<String>> = tbl.clone().sequence_values().collect();
@@ -147,7 +147,7 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                     cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
                 })
             },
-            _ => Err(mlua::Error::RuntimeError(String::from("Expected a lua table to convert to Action")))
+            _ => Err(mlua::Error::runtime("Expected a lua table to convert to Action"))
         }
     }
 }

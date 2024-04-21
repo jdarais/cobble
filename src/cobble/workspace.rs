@@ -62,7 +62,7 @@ impl <'lua> mlua::FromLua<'lua> for Project {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         let project_table = match value {
             mlua::Value::Table(tbl) => tbl,
-            _ => { return Err(mlua::Error::RuntimeError(format!("Project must be a lua table value"))); }
+            _ => { return Err(mlua::Error::runtime(format!("Project must be a lua table value"))); }
         };
 
         let name: String = project_table.get("name")?;
@@ -74,6 +74,13 @@ impl <'lua> mlua::FromLua<'lua> for Project {
 
         Ok(Project{ name, path, build_envs, tasks, tools })
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct BuildUnitCollection {
+    pub build_envs: Vec<BuildEnv>,
+    pub tools: Vec<ExternalTool>,
+    pub tasks: Vec<Task>
 }
 
 pub struct WorkspaceConfig {
@@ -175,24 +182,24 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
 
     let project_file_path = project_dir.join("project.lua");
     if !workspace_dir.join(&project_file_path).exists() {
-        return Err(mlua::Error::RuntimeError(format!("Project file {} doesn't exist", project_file_path.display())));
+        return Err(mlua::Error::runtime(format!("Project file {} doesn't exist", project_file_path.display())));
     }
 
     let mut project_file = match File::open(&project_file_path) {
         Ok(f) => f,
         Err(e) => {
-            return Err(mlua::Error::RuntimeError(format!("Unable to open file {}: {}", project_file_path.display(), e)));
+            return Err(mlua::Error::runtime(format!("Unable to open file {}: {}", project_file_path.display(), e)));
         }
     };
 
     let mut project_source = String::new();
     let project_file_read_res = project_file.read_to_string(&mut project_source);
     if let Err(e) = project_file_read_res {
-        return Err(mlua::Error::RuntimeError(format!("Error reading fiel {}: {}", project_file_path.display(), e)));
+        return Err(mlua::Error::runtime(format!("Error reading fiel {}: {}", project_file_path.display(), e)));
     }
 
     let project_dir_str = project_dir.as_os_str().to_str()
-        .ok_or_else(|| mlua::Error::RuntimeError(String::from("Unable to convert project path to string")))?;
+        .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
     process_project(lua, project_source.as_str(), project_name.as_str(), project_dir_str)?;
 
     Ok(())
@@ -348,11 +355,11 @@ mod tests {
             r#"
             build_env({
                 name = "test",
-                install_actions = {
+                install = {
                     function () print("hi!") end
                 },
-                install_deps = {},
-                exec = function (a) print(a) end
+                deps = {},
+                action = function (a) print(a) end
             })
         "#,
     "testproject", 

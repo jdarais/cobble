@@ -4,7 +4,7 @@ use std::{ffi::OsString, path::Path, process::Command};
 
 fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Result<mlua::Table> {
     if cmd_with_args.len() < 1 {
-        return Err(mlua::Error::RuntimeError(String::from("No command given")));
+        return Err(mlua::Error::runtime("No command given"));
     }
     let cmd = &cmd_with_args[0];
     let args = &cmd_with_args[1..];
@@ -14,7 +14,7 @@ fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Resu
         .output();
 
     match output_res {
-        Err(e) => Err(mlua::Error::RuntimeError(format!("Error executing command: {}", e))),
+        Err(e) => Err(mlua::Error::runtime(format!("Error executing command: {}", e))),
         Ok(output) => {
             let stdout = lua.create_string(output.stdout)?;
             let stderr = lua.create_string(output.stderr)?;

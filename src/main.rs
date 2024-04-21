@@ -8,6 +8,8 @@ use cobble::workspace::{
 
 use cobble::lua_env::create_lua_env;
 
+use crate::cobble::resolve::resolve_names_in_build_units;
+
 
 fn run_from_dir(path: &Path) {
     let workspace_dir = find_nearest_workspace_dir_from(path).unwrap();
@@ -25,12 +27,16 @@ fn run_from_dir(path: &Path) {
     let projects = extract_project_defs(&project_def_lua).unwrap();
 
     println!("Projects:");
-    for (name, proj) in projects {
+    for (name, proj) in projects.iter() {
         println!("\"{}\" = {}", name, proj);
     }
 
     let package_path: String = project_def_lua.load("package.path").eval().unwrap();
     println!("package.path={}", package_path.as_str());
+
+    let resolved = resolve_names_in_build_units(projects.values()).unwrap();
+    println!("RESOLVED:");
+    println!("{:x?}", resolved);
 }
 
 fn main() {

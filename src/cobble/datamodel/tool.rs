@@ -6,10 +6,10 @@ use crate::cobble::datamodel::Action;
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {
-    name: String,
-    install_action: Option<Action>,
-    check_action: Option<Action>,
-    action: Action
+    pub name: String,
+    pub install: Option<Action>,
+    pub check: Option<Action>,
+    pub action: Action
 }
 
 impl fmt::Display for ExternalTool {
@@ -17,11 +17,11 @@ impl fmt::Display for ExternalTool {
         f.write_str("ExternalTool(")?;
         write!(f, "name=\"{}\", ", self.name)?;
 
-        if let Some(install_action) = self.install_action.as_ref() {
+        if let Some(install_action) = self.install.as_ref() {
             write!(f, "install={}, ", install_action)?;
         }
 
-        if let Some(check_action) = self.check_action.as_ref() {
+        if let Some(check_action) = self.check.as_ref() {
             write!(f, "check={}, ", check_action)?;
         }
 
@@ -38,10 +38,10 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
                 let check_action: Option<Action> = tbl.get("install")?;
                 let action: Action = tbl.get("action")?;
 
-                Ok(ExternalTool { name, install_action, check_action, action })
+                Ok(ExternalTool { name, install: install_action, check: check_action, action })
             },
             mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
-            _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to action: {:?}", &value)))
+            _ => Err(mlua::Error::runtime(format!("Unable to convert value to action: {:?}", &value)))
         }
     }
 }

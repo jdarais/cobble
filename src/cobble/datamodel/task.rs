@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use crate::cobble::datamodel::{
     Action,
@@ -35,7 +35,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
 #[derive(Clone, Debug)]
 pub struct Task {
     pub name: String,
-    pub build_env: Option<String>,
+    pub build_env: Option<(String, String)>,
     pub actions: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub artifacts: Vec<Artifact>
@@ -46,8 +46,8 @@ impl fmt::Display for Task {
         write!(f, "Task(")?;
         write!(f, "name=\"{}\", ", self.name)?;
         
-        if let Some(build_env) = &self.build_env {
-            write!(f, "build_env=\"{}\", ", build_env)?;
+        if let Some((env_alias, env_name)) = &self.build_env {
+            write!(f, "build_env={{\"{}\": \"{}\"}}, ", env_alias, env_name)?;
         }
 
         f.write_str("actions=[")?;
@@ -78,7 +78,27 @@ impl <'lua> mlua::FromLua<'lua> for Task {
         match value {
             mlua::Value::Table(task_table) => {
                 let name: String = task_table.get("name")?;
-                let build_env: Option<String> = task_table.get("build_env")?;
+
+                let build_env_val: mlua::Value = task_table.get("build_env")?;
+                let build_env = match build_env_val {
+                    mlua::Value::String(s) => Some((String::from(s.to_str()?), String::from(s.to_str()?))),
+                    mlua::Value::Table(t) => {
+                        let mut envs: HashMap<String, String> = HashMap::new();
+                        for pair in t.pairs() {
+                            let (k, v): (String, String) = pair?;
+                            envs.insert(k, v);
+                        }
+
+                        if envs.len() > 1 {
+                            return Err(mlua::Error::runtime("Only one build env can be assigned at the task level"));
+                        }
+
+                        envs.into_iter().next()
+                    },
+                    mlua::Value::Nil => None,
+                    _ => { return Err(mlua::Error::runtime(format!("Invalid type for build_env. Expected table, string, or nil: {:?}", build_env_val))); }
+                };
+
                 let actions: Vec<Action> = task_table.get("actions")?;
                 let deps_opt: Option<DependencyList> = task_table.get("deps")?;
                 let deps = deps_opt.map(|d| d.0).unwrap_or_default();
@@ -88,7 +108,7 @@ impl <'lua> mlua::FromLua<'lua> for Task {
                 Ok(Task { name, build_env, actions, deps, artifacts })
             },
             mlua::Value::UserData(val) => Ok(val.borrow::<Task>()?.clone()),
-            _ => Err(mlua::Error::RuntimeError(format!("Unable to convert value to Task: {:?}", value)))
+            _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }
     }
 }
