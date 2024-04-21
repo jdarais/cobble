@@ -2,7 +2,6 @@ use std::fmt;
 
 use crate::cobble::datamodel::{
     Action,
-    ActionCmd,
     Dependency,
     DependencyList,
     Artifact,
@@ -37,7 +36,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
 pub struct Task {
     pub name: String,
     pub build_env: Option<String>,
-    pub actions: Vec<ActionCmd>,
+    pub actions: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub artifacts: Vec<Artifact>
 }
@@ -80,7 +79,7 @@ impl <'lua> mlua::FromLua<'lua> for Task {
             mlua::Value::Table(task_table) => {
                 let name: String = task_table.get("name")?;
                 let build_env: Option<String> = task_table.get("build_env")?;
-                let actions: Vec<ActionCmd> = task_table.get("actions")?;
+                let actions: Vec<Action> = task_table.get("actions")?;
                 let deps_opt: Option<DependencyList> = task_table.get("deps")?;
                 let deps = deps_opt.map(|d| d.0).unwrap_or_default();
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;

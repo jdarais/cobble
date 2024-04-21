@@ -6,8 +6,8 @@ function exports.poetry_project ()
     build_env({
         name = "poetry",
         install = {
-            { tool = "/poetry", "lock" },
-            { tool = "/poetry", "install" }
+            { tool = "poetry", "lock" },
+            { tool = "poetry", "install" }
         },
         deps = {
             files = { "pyproject.toml", "poetry.lock" }
@@ -26,9 +26,9 @@ function exports.poetry_project ()
         actions = {
             {
                 build_env = "poetry",
-                exec = function (self, cxt, args)
+                function (cxt)
                     local deps = {}
-                    local res = cxt:exec { "python", WORKSPACE.dir .. "/cobble_plugins/poetry_build_deps.py" } ;
+                    local res = cxt.env.poetry { "python", WORKSPACE.dir .. "/cobble_plugins/poetry_build_deps.py" } ;
                     for dep in res.stdout.gmatch("([^\r\n]*)") do
                         table.insert(deps, dep)
                     end
@@ -43,9 +43,8 @@ function exports.poetry_project ()
 
     task({
         name = "build",
-        build_env = "poetry",
         actions = {
-            { "build" }
+            { tool = "poetry", "build" }
         },
         deps = {
             calc = { "calc_poetry_build_deps" }

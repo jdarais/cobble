@@ -1,6 +1,4 @@
 use std::fmt;
-use std::borrow::Borrow;
-use std::collections::HashSet;
 
 use crate::cobble::datamodel::{
     Action,
@@ -8,7 +6,6 @@ use crate::cobble::datamodel::{
     Dependency,
     DependencyList,
 };
-use crate::cobble::lua::detached_value::dump_function;
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
@@ -36,7 +33,9 @@ impl fmt::Display for BuildEnv {
             if i > 0 { f.write_str(",")?; }
             write!(f, "{}", dep)?;
         }
-        f.write_str("])")
+        f.write_str("], ")?;
+
+        write!(f, "action={})", self.action)
     }
 }
 

@@ -4,16 +4,11 @@ extern crate serde;
 
 use std::collections::HashMap;
 use std::io;
-use std::env;
 use std::fmt::Display;
 use std::fs::File;
-use std::cell::RefCell;
 use std::io::Read;
-use std::rc::Rc;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-
-use serde::{Serialize, Deserialize};
 
 use crate::cobble::datamodel::{
     BuildEnv,
@@ -64,7 +59,7 @@ impl Display for Project {
 }
 
 impl <'lua> mlua::FromLua<'lua> for Project {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         let project_table = match value {
             mlua::Value::Table(tbl) => tbl,
             _ => { return Err(mlua::Error::RuntimeError(format!("Project must be a lua table value"))); }
@@ -85,13 +80,8 @@ pub struct WorkspaceConfig {
     pub root_projects: Vec<String>
 }
 
-pub struct WorkspaceDef {
-    pub projects: HashMap<String, Project>
-}
-
 #[derive(Debug)]
 pub enum WorkspaceConfigError {
-    Unknown,
     FileError{path: PathBuf, error: io::Error},
     ParseError(String),
     ValueError(String)
@@ -101,7 +91,6 @@ impl Display for WorkspaceConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use WorkspaceConfigError::*;
         match self {
-            Unknown => write!(f, "Unknown Error"),
             FileError{path, error} => write!(f, "Error reading file at {}: {}", path.display(), error),
             ParseError(msg) => write!(f, "Error parsing config file: {}", msg),
             ValueError(msg) => write!(f, "Error reading config values: {}", msg)
@@ -109,7 +98,7 @@ impl Display for WorkspaceConfigError {
     }
 }
 
-pub fn parse_workspace_config(mut config_str: &str) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+pub fn parse_workspace_config(config_str: &str) -> Result<WorkspaceConfig, WorkspaceConfigError> {
     let mut config: toml::Table = config_str.parse().map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
 
     let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
@@ -139,20 +128,6 @@ pub fn parse_workspace_config_file(path: &Path) -> Result<WorkspaceConfig, Works
     }
 
     parse_workspace_config(config_toml_str.as_str())
-}
-
-pub struct Workspace {
-    workspace_dir: PathBuf,
-    config: WorkspaceConfig
-}
-
-impl Workspace {
-    pub fn new(dir: &Path, config: WorkspaceConfig) -> Workspace {
-        Workspace {
-            workspace_dir: PathBuf::from(dir),
-            config: config
-        }
-    }
 }
 
 pub fn find_nearest_workspace_dir_from(path: &Path) -> Result<PathBuf, io::Error> {
@@ -360,22 +335,6 @@ mod tests {
 
         let config = parse_workspace_config(config_toml).unwrap();
         assert_eq!(config.root_projects, vec!["proj1", "proj2", "proj3"]);
-    }
-
-    #[test]
-    fn test_init_lua() {
-        let workspace = Workspace::new(
-            Path::new("test"),
-            WorkspaceConfig {
-                root_projects: vec![String::from(".")]
-            }
-        );
-        let lua = create_lua_env(Path::new(".")).unwrap();
-
-        init_lua_for_project_config(&lua, &workspace.workspace_dir.as_path()).unwrap();
-
-        let ws_dir: String = lua.load(r#"WORKSPACE.dir"#).eval().unwrap();
-        assert_eq!(ws_dir, "test");
     }
 
     #[test]

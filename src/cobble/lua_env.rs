@@ -50,8 +50,6 @@ pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<mlua::Lua> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     #[test]
