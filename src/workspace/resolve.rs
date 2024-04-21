@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fmt,
     path::{Path, PathBuf}
 };
@@ -72,127 +71,104 @@ fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolution
     Ok(full_name_segments.join("/"))
 }
 
-fn resolve_names_in_dependency(project: &Project, dep: &Dependency) -> Result<Dependency, NameResolutionError> {
+fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {
     match dep {
         Dependency::File(f) => {
-            let full_path = resolve_path(project.path.as_path(), f.as_str())?;
-            Ok(Dependency::File(full_path))
+            *dep = Dependency::File(resolve_path(project_path, f.as_str())?);
+            Ok(())
         },
         Dependency::Task(t) => {
-            let full_task_name = resolve_name(project.name.as_str(), t.as_str())?;
-            Ok(Dependency::Task(full_task_name))
+            *dep = Dependency::Task(resolve_name(project_name, t.as_str())?);
+            Ok(())
         }
     }
 }
 
-fn resolve_names_in_action(project: &Project, action: &Action) -> Result<Action, NameResolutionError> {
-    // Tool names are global, no need to resolve
-    let tools = action.tools.clone();
+fn resolve_names_in_action(project_name: &str, action: &mut Action) -> Result<(), NameResolutionError> {
+    // Tool names are global, no need to resolve tool names
     
-    let mut build_envs: HashMap<String, String> = HashMap::new();
-    for (env_alias, env_name) in action.build_envs.iter() {
-        let full_build_env_name = resolve_name(project.name.as_str(), env_name.as_str())?;
-        build_envs.insert(env_alias.clone(), full_build_env_name);
+    for (_, env_name) in action.build_envs.iter_mut() {
+        *env_name = resolve_name(project_name, env_name.as_str())?;
     }
 
-    let cmd = action.cmd.clone();
-
-    Ok(Action{ tools, build_envs, cmd })
+    Ok(())
 }
 
-fn resolve_names_in_build_env(project: &Project, build_env: &BuildEnv) -> Result<BuildEnv, NameResolutionError> {
-    let name = resolve_name(project.name.as_str(), build_env.name.as_str())?;
+fn resolve_names_in_build_env(project_name: &str, project_path: &Path, build_env: &mut BuildEnv) -> Result<(), NameResolutionError> {
+    build_env.name = resolve_name(project_name, build_env.name.as_str())?;
 
-    let mut install: Vec<Action> = Vec::new();
-    for action in build_env.install.iter() {
-        install.push(resolve_names_in_action(project, action)?);
+    for action in build_env.install.iter_mut() {
+        resolve_names_in_action(project_name, action)?;
     }
 
-    let mut deps: Vec<Dependency> = Vec::new();
-    for dep in build_env.deps.iter() {
-        deps.push(resolve_names_in_dependency(project, dep)?);
+    for dep in build_env.deps.iter_mut() {
+        resolve_names_in_dependency(project_name, project_path, dep)?;
     }
 
-    let action = resolve_names_in_action(project, &build_env.action)?;
+    resolve_names_in_action(project_name, &mut build_env.action)?;
 
-    Ok(BuildEnv{ name, install, deps, action })
+    Ok(())
 }
 
-fn resolve_names_in_tool(project: &Project, tool: &ExternalTool) -> Result<ExternalTool, NameResolutionError> {
-    // External tool names are global, no need to resolve
-    let name = tool.name.clone();
+fn resolve_names_in_tool(project_name: &str, tool: &mut ExternalTool) -> Result<(), NameResolutionError> {
+    // External tool names are global, no need to resolve the name field
+    if let Some(install) = &mut tool.install {
+        resolve_names_in_action(project_name, install)?;
+    }
 
-    let install = tool.install.as_ref()
-        .map(|a| resolve_names_in_action(project, a))
-        .transpose()?;
+    if let Some(check) = &mut tool.check {
+        resolve_names_in_action(project_name, check)?;
+    }
 
-    let check = tool.check.as_ref()
-        .map(|a| resolve_names_in_action(project, a))
-        .transpose()?;
+    resolve_names_in_action(project_name, &mut tool.action)?;
 
-    let action = resolve_names_in_action(project, &tool.action)?;
-
-    Ok(ExternalTool{ name, install, check, action })
+    Ok(())
 }
 
-fn resolve_names_in_artifact(project: &Project, artifact: &Artifact) -> Result<Artifact, NameResolutionError> {
-    let filename = resolve_path(project.path.as_path(), artifact.filename.as_str())?;
+fn resolve_names_in_artifact(project_path: &Path, artifact: &mut Artifact) -> Result<(), NameResolutionError> {
+    artifact.filename = resolve_path(project_path, artifact.filename.as_str())?;
 
-    Ok(Artifact{ filename })
+    Ok(())
 }
 
-fn resolve_names_in_task(project: &Project, task: &Task) -> Result<Task, NameResolutionError> {
-    let name = resolve_name(project.name.as_str(), task.name.as_str())?;
+fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut Task) -> Result<(), NameResolutionError> {
+    task.name = resolve_name(project_name, task.name.as_str())?;
 
-    let build_env = match task.build_env.as_ref() {
-        Some((env_alias, env_name)) => {
-            let resolved_env_name = resolve_name(project.name.as_str(), env_name.as_str())?;
-            Some((env_alias.clone(), resolved_env_name))
-        },
-        None => None
-    };
-
-    let mut actions: Vec<Action> = Vec::new();
-    for action in task.actions.iter() {
-        actions.push(resolve_names_in_action(project, action)?);
+    if let Some((_, env_name)) = &mut task.build_env {
+        *env_name = resolve_name(project_name, env_name.as_str())?;
     }
 
-    let mut deps: Vec<Dependency> = Vec::new();
-    for dep in task.deps.iter() {
-        deps.push(resolve_names_in_dependency(project, dep)?);
+    for action in task.actions.iter_mut() {
+        resolve_names_in_action(project_name, action)?;
     }
 
-    let mut artifacts: Vec<Artifact> = Vec::new();
-    for artifact in task.artifacts.iter() {
-        artifacts.push(resolve_names_in_artifact(project, artifact)?);
+    for dep in task.deps.iter_mut() {
+        resolve_names_in_dependency(project_name, project_path, dep)?;
     }
 
-    Ok(Task{ name, build_env, actions, deps, artifacts })
+    for artifact in task.artifacts.iter_mut() {
+        resolve_names_in_artifact(project_path, artifact)?;
+    }
+
+    Ok(())
 }
 
-pub fn resolve_names_in_project(project: &Project) -> Result<Project, NameResolutionError> {
-    // Project name is already fully-qualified
-    let name = project.name.clone();
-    
-    // Path is already relative to the workspace dir
-    let path = project.path.clone();
+pub fn resolve_names_in_project(project: &mut Project) -> Result<(), NameResolutionError> {
+    // Project name and path already fully-qualified relative to the workspace root
 
-    let mut build_envs: Vec<BuildEnv> = Vec::new();
-    for build_env in project.build_envs.iter() {
-        build_envs.push(resolve_names_in_build_env(project, build_env)?);
+    for build_env in project.build_envs.iter_mut() {
+        resolve_names_in_build_env(&project.name, &project.path, build_env)?;
     }
 
-    let mut tools: Vec<ExternalTool> = Vec::new();
-    for tool in project.tools.iter() {
-        tools.push(resolve_names_in_tool(project, tool)?);
+    for tool in project.tools.iter_mut() {
+        resolve_names_in_tool(&project.name, tool)?;
     }
 
-    let mut tasks: Vec<Task> = Vec::new();
-    for task in project.tasks.iter() {
-        tasks.push(resolve_names_in_task(project, task)?);
+    for task in project.tasks.iter_mut() {
+        resolve_names_in_task(&project.name, &project.path, task)?;
     }
 
-    Ok(Project{ name, path, build_envs, tools, tasks })
+    Ok(())
 }
 
 #[cfg(test)]
@@ -209,6 +185,17 @@ mod tests {
     fn test_resolve_name_from_root() {
         let full_name = resolve_name("/", "myname").unwrap();
         assert_eq!(full_name, "/myname");
+    }
+
+    #[test]
+    fn test_mutability() { 
+        let mut val = String::from("hello");
+
+        let vool = &mut val;
+
+        *vool = (|v: &String| format!("{} there", v))(vool);
+
+        assert_eq!(val, "hello there");
     }
 
 }

@@ -13,6 +13,7 @@ use crate::datamodel::{
     ExternalTool,
     Project
 };
+use crate::lua::lua_env::create_lua_env;
 use crate::workspace::resolve::resolve_names_in_project;
 
 
@@ -188,15 +189,29 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     let mut projects: HashMap<String, Project> = HashMap::new();
 
     for pair in projects_table.pairs() {
-        let (key, value): (String, Project) = pair?;
-        let resolved_project_res = resolve_names_in_project(&value);
+        let (key, mut value): (String, Project) = pair?;
+        let resolved_project_res = resolve_names_in_project(&mut value);
         match resolved_project_res {
-            Ok(resolved_project) => { projects.insert(key, resolved_project); },
+            Ok(_) => { projects.insert(key, value); },
             Err(e) => { return Err(mlua::Error::runtime(format!("{}", e))); }
         }
     }
 
     Ok(projects)
+}
+
+pub fn load_projects<'a, P>(workspace_dir: &Path, root_projects: P) -> mlua::Result<HashMap<String, Project>>
+    where P: Iterator<Item = &'a str>
+{
+    let project_def_lua = create_lua_env(workspace_dir)?;
+
+    init_lua_for_project_config(&project_def_lua, workspace_dir)?;
+
+    for project_dir in root_projects {
+        process_project_file(&project_def_lua, project_dir, workspace_dir)?;
+    }
+
+    extract_project_defs(&project_def_lua) 
 }
 
 #[cfg(test)]
