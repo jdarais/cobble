@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{find_project_with_dir, get_all_project_targets}};
+use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{find_project_for_dir, get_all_project_targets}};
 
 
 pub struct ListCommandInput<'a> {
@@ -15,7 +15,7 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) {
     let project_dir = find_nearest_project_dir(input.cwd, config.workspace_dir.as_path()).unwrap();
     let targets = get_all_project_targets(projects.values(), config.workspace_dir.as_path(), project_dir.as_path());
 
-    let project_with_dir = find_project_with_dir(projects.values(), config.workspace_dir.as_path(), project_dir.as_path()).unwrap();
+    let project_with_dir = find_project_for_dir(projects.values(), config.workspace_dir.as_path(), project_dir.as_path()).unwrap();
 
     let mut target_names: Vec<&str> = targets.keys().map(|s| *s).collect();
     target_names.sort();
