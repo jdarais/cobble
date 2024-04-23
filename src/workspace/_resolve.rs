@@ -80,6 +80,10 @@ fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mu
         Dependency::Task(t) => {
             *dep = Dependency::Task(resolve_name(project_name, t.as_str())?);
             Ok(())
+        },
+        Dependency::Calc(c) => {
+            *dep = Dependency::Calc(resolve_name(project_name, c.as_str())?);
+            Ok(())
         }
     }
 }
