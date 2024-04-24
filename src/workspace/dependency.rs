@@ -29,7 +29,7 @@ pub enum TargetDependency<'a> {
 }
 
 pub fn create_file_providers_map<'a, T>(targets: T) -> Result<HashMap<&'a str, &'a str>, CalculateDependenciesError>
-    where T: Iterator<Item = WorkspaceTargetRef<'a>>
+    where T: Iterator<Item = &'a WorkspaceTargetRef<'a>>
 {
     let mut file_providers: HashMap<&'a str, &'a str> = HashMap::new();
 
