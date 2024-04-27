@@ -11,7 +11,8 @@ pub struct Project {
     pub path: PathBuf,
     pub build_envs: Vec<BuildEnv>,
     pub tasks: Vec<Task>,
-    pub tools: Vec<ExternalTool>
+    pub tools: Vec<ExternalTool>,
+    pub child_project_names: Vec<String>
 }
 
 impl fmt::Display for Project {
@@ -59,6 +60,12 @@ impl <'lua> mlua::FromLua<'lua> for Project {
         let tasks: Vec<Task> = project_table.get("tasks")?;
         let tools: Vec<ExternalTool> = project_table.get("tools")?;
 
-        Ok(Project{ name, path, build_envs, tasks, tools })
+        let child_projects: Vec<mlua::Table> = project_table.get("child_projects")?;
+        let mut child_project_names: Vec<String> = Vec::with_capacity(child_projects.len());
+        for child_project in child_projects {
+            child_project_names.push(child_project.get("name")?);
+        }
+
+        Ok(Project{ name, path, build_envs, tasks, tools, child_project_names })
     }
 }
