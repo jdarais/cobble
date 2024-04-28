@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::AsRef, fmt, hash::Hash, path::Path, sync::Arc};
 
-use crate::{datamodel::{Dependency, Project}, workspace::query::{Workspace, WorkspaceTarget, WorkspaceTargetRef}};
+use crate::{datamodel::{Dependency, Project}, workspace::query::{Workspace, WorkspaceTarget}};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {
@@ -59,7 +59,6 @@ fn materialize_dependencies_in_subtree(workspace: &mut Workspace, target_name: &
     for dep in target.target_deps.iter() {
         materialize_dependencies_in_subtree(workspace, dep.as_str(), file_providers)?;
     }
-
 
     Ok(false)
 }

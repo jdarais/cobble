@@ -29,13 +29,6 @@ pub struct Workspace {
     pub tools: HashMap<String, Arc<ExternalTool>>
 }
 
-
-pub enum WorkspaceTargetRef<'a> {
-    Project(&'a Project),
-    Task(&'a Task),
-    BuildEnv(&'a BuildEnv)
-}
-
 pub fn find_project_for_dir<'a, P>(all_projects: P, workspace_dir: &Path, project_dir: &Path) -> Option<&'a Project>
     where P: Iterator<Item = &'a Project>
 {
@@ -52,7 +45,7 @@ pub fn find_project_for_dir<'a, P>(all_projects: P, workspace_dir: &Path, projec
 pub fn find_targets_for_dir<'a>(workspace: &'a Workspace, workspace_dir: &Path, project_dir: &Path) -> Vec<&'a str> {
     let full_project_dir = workspace_dir.join(project_dir);
     workspace.targets.iter()
-        .filter(|(k, v)| workspace_dir.join(v.dir.as_path()).starts_with(&full_project_dir))
+        .filter(|(_k, v)| workspace_dir.join(v.dir.as_path()).starts_with(&full_project_dir))
         .map(|(k, _v)| k.as_str())
         .collect()
 }

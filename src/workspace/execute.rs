@@ -5,10 +5,9 @@ extern crate serde_json;
 
 use std::{collections::{HashMap, VecDeque}, fmt, fs::File, io::{self, Read}, path::{Path, PathBuf}, sync::{mpsc::Sender, Arc, Condvar, Mutex, RwLock}, thread::Thread};
 
-use lmdb::Transaction;
 use sha2::{Digest, Sha256};
 
-use crate::{datamodel::{Action, BuildEnv, ExternalTool, Task}, lua::{detached_value::DetachedLuaValue, lua_env::create_lua_env}, workspace::{db::{get_target_record, GetError}, query::{Workspace, WorkspaceTarget}}};
+use crate::{datamodel::{BuildEnv, ExternalTool}, lua::lua_env::create_lua_env, workspace::{db::{get_target_record, GetError}, query::{Workspace, WorkspaceTarget}}};
 
 pub struct TargetJob {
     pub target_name: String,
@@ -18,15 +17,9 @@ pub struct TargetJob {
 }
 
 #[derive(Debug)]
-pub struct TargetJobMessage {
-    pub target: String,
-    pub message: TargetMessage
-}
-
-#[derive(Debug)]
-pub enum TargetMessage {
-    Output(String),
-    Complete(TargetResult),
+pub enum TargetJobMessage {
+    Output{target: String, output: String},
+    Complete{target: String, result: TargetResult},
 }
 
 #[derive(Debug)]
@@ -120,15 +113,7 @@ impl <'db> TaskExecutor<'db> {
             db
         }
     }
-
-
 }
-
-// struct TaskExecutorWorker {
-//     lua: mlua::Lua,
-//     task_queue: Arc<(Mutex<Option<VecDeque<TargetJob>>>, Condvar)>,
-//     task_result_sender: Sender<TargetJobMessage>,
-// }
 
 fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
     lua.load(r#"
@@ -392,18 +377,18 @@ fn execute_target_task(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Env
     }
 
     if up_to_date {
-        task_result_sender.send(TargetJobMessage {
+        task_result_sender.send(TargetJobMessage::Complete {
             target: task.target_name.clone(),
-            message: TargetMessage::Complete(TargetResult::UpToDate)
+            result: TargetResult::UpToDate
         }).unwrap();
         return;
     }
 
     execute_target(lua, task).unwrap();
-    task_result_sender.send(TargetJobMessage {
+    task_result_sender.send(TargetJobMessage::Complete {
         target: task.target_name.clone(),
-        message: TargetMessage::Complete(TargetResult::Success)
-    }).unwrap();
+        result: TargetResult::Success
+}).unwrap();
 
 }
 
@@ -413,7 +398,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration};
 
-    use crate::{datamodel::ActionCmd, lua::detached_value::dump_function, workspace::query::WorkspaceTargetType};
+    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::query::WorkspaceTargetType};
 
     use super::*;
 
@@ -471,12 +456,14 @@ mod tests {
 
         execute_target_task(workspace_dir.as_path(), &lua, &db_env, &task_job, tx.clone(), cache.clone());
 
-        let result = rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert_eq!(result.target, "test");
-        match result.message {
-            TargetMessage::Complete(res) => match res {
-                TargetResult::Success => { /* pass */ },
-                _ => panic!("Did not get a success message")
+        let job_result = rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        match job_result {
+            TargetJobMessage::Complete{target: tgt, result} => {
+                assert_eq!(tgt, "test");
+                match result {
+                    TargetResult::Success => { /* pass */ },
+                    _ => panic!("Did not get a success message")
+                }
             },
             _ => panic!("Did not get a completion message")
         };
