@@ -2,7 +2,12 @@ extern crate mlua;
 
 use std::{ffi::OsString, path::Path, process::Command};
 
-fn exec_shell_command(lua: &mlua::Lua, cmd_with_args: Vec<String>) -> mlua::Result<mlua::Table> {
+fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::MultiValue<'lua>) -> mlua::Result<mlua::Table<'lua>> {
+    let mut cmd_with_args: Vec<String> = Vec::with_capacity(args.len());
+    for arg in args.into_iter() {
+        cmd_with_args.push(lua.unpack(arg)?);
+    }
+
     if cmd_with_args.len() < 1 {
         return Err(mlua::Error::runtime("No command given"));
     }
@@ -55,7 +60,7 @@ mod tests {
     #[test]
     fn test_shell_command() {
         let lua_env = create_lua_env(Path::new(".")).unwrap();
-        let chunk = lua_env.load(String::from("cmd({\"echo\", \"hi!\"})"));
+        let chunk = lua_env.load(String::from("cmd(\"echo\", \"hi!\")"));
 
         let result: mlua::Table = chunk.eval().unwrap();
         assert_eq!(result.get::<_, i32>("status").unwrap(), 0);

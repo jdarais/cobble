@@ -177,12 +177,14 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
             if type(action[1]) == "function" then
                 return action[1](action_context)
             else
-                if #action.tool > 0 then
-                    tool_alias, tool_name = next(action.tool)
+                local tool_alias = next(action.tool)
+                local env_alias = next(action.build_env)
+                if tool_alias then
                     return action_context.tool[tool_alias](table.unpack(action))
-                elseif #action.build_env > 0 then
-                    env_alias, env_name = next(action.build_env)
+                elseif env_alias then
                     return action_context.env[env_alias](table.unpack(action))
+                else
+                    cmd(table.unpack(action))
                 end
             end   
         end
@@ -432,7 +434,7 @@ mod tests {
             target_outputs: RwLock::new(HashMap::new())
         });
 
-        let print_func: mlua::Function = lua.load(r#"function (c) print("Hi!", c) end"#).eval().unwrap();
+        let print_func: mlua::Function = lua.load(r#"function (c) print("Hi!", table.unpack(c.args)) end"#).eval().unwrap();
         let print_tool = Arc::new(ExternalTool {
             name: String::from("print"),
             install: None,
