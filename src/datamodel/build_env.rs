@@ -57,6 +57,23 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
     }
 }
 
+// TODO: This will work once Dependency implements the IntoLua trait
+//
+// impl <'lua> mlua::IntoLua<'lua> for BuildEnv {
+//     fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+//         let BuildEnv { name, install, deps, action } = self;
+
+//         let build_env_table = lua.create_table()?;
+
+//         build_env_table.set("name", name)?;
+//         build_env_table.set("install", install)?;
+//         build_env_table.set("deps", deps)?;
+//         build_env_table.set("action", action)?;
+
+//         Ok(mlua::Value::Table(build_env_table))
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

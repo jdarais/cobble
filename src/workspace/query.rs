@@ -1,15 +1,15 @@
-use std::{collections::{HashMap, HashSet}, path::{Path, PathBuf}};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc};
 
 use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Project, Task};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum WorkspaceTargetType {
     Project,
     Task,
     BuildEnv
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WorkspaceTarget {
     pub target_type: WorkspaceTargetType,
     pub dir: PathBuf,
@@ -22,11 +22,11 @@ pub struct WorkspaceTarget {
     pub artifacts: Vec<Artifact>
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Workspace {
-    pub targets: HashMap<String, WorkspaceTarget>,
-    pub build_envs: HashMap<String, BuildEnv>,
-    pub tools: HashMap<String, ExternalTool>
+    pub targets: HashMap<String, Arc<WorkspaceTarget>>,
+    pub build_envs: HashMap<String, Arc<BuildEnv>>,
+    pub tools: HashMap<String, Arc<ExternalTool>>
 }
 
 
@@ -53,7 +53,7 @@ pub fn find_targets_for_dir<'a>(workspace: &'a Workspace, workspace_dir: &Path, 
     let full_project_dir = workspace_dir.join(project_dir);
     workspace.targets.iter()
         .filter(|(k, v)| workspace_dir.join(v.dir.as_path()).starts_with(&full_project_dir))
-        .map(|(k, v)| k.as_str())
+        .map(|(k, _v)| k.as_str())
         .collect()
 }
 
@@ -110,8 +110,8 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut 
         add_action_to_target(install_action, &mut install_target);
     }
 
-    workspace.targets.insert(build_env.name.clone(), install_target);
-    workspace.build_envs.insert(build_env.name.clone(), build_env.clone());
+    workspace.targets.insert(build_env.name.clone(), Arc::new(install_target));
+    workspace.build_envs.insert(build_env.name.clone(), Arc::new(build_env.clone()));
 }
 
 fn add_task_to_workspace(task: &Task, dir: &Path, workspace: &mut Workspace) {
@@ -135,23 +135,25 @@ fn add_task_to_workspace(task: &Task, dir: &Path, workspace: &mut Workspace) {
         add_action_to_target(action, &mut task_target);
     }
 
-    workspace.targets.insert(task.name.clone(), task_target);
+    workspace.targets.insert(task.name.clone(), Arc::new(task_target));
 }
 
 fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
-    workspace.targets.insert(project.name.clone(), WorkspaceTarget {
-        target_type: WorkspaceTargetType::Project,
-        dir: project.path.clone(),
-        tools: HashMap::new(),
-        build_envs: HashMap::new(),
-        file_deps: Vec::new(),
-        target_deps: project.tasks.iter().map(|t| t.name.clone())
-            .chain(project.child_project_names.iter().map(|name| name.clone()))
-            .collect(),
-        calc_deps: Vec::new(),
-        actions: Vec::new(),
-        artifacts: Vec::new()
-    });
+    workspace.targets.insert(project.name.clone(), Arc::new(
+    WorkspaceTarget {
+            target_type: WorkspaceTargetType::Project,
+            dir: project.path.clone(),
+            tools: HashMap::new(),
+            build_envs: HashMap::new(),
+            file_deps: Vec::new(),
+            target_deps: project.tasks.iter().map(|t| t.name.clone())
+                .chain(project.child_project_names.iter().map(|name| name.clone()))
+                .collect(),
+            calc_deps: Vec::new(),
+            actions: Vec::new(),
+            artifacts: Vec::new()
+        }
+    ));
 
     for env in project.build_envs.iter() {
         add_build_env_to_workspace(env, project.path.as_path(), workspace);
@@ -162,7 +164,7 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 
     for tool in project.tools.iter() {
-        workspace.tools.insert(tool.name.clone(), tool.clone());
+        workspace.tools.insert(tool.name.clone(), Arc::new(tool.clone()));
     }
 }
 

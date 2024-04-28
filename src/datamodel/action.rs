@@ -151,3 +151,31 @@ impl <'lua> mlua::FromLua<'lua> for Action {
         }
     }
 }
+
+impl <'lua> mlua::IntoLua<'lua> for Action {
+    fn into_lua(self, lua: &'lua mlua::prelude::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        let Action {build_envs, tools, cmd} = self;
+
+        let action_table = lua.create_table()?;
+
+        match cmd {
+            ActionCmd::Cmd(args) => {
+                if build_envs.len() + tools.len() > 1 {
+                    return Err(mlua::Error::runtime("Can only use one build_env or tool with an argument list action"));
+                }
+
+                for arg in args {
+                    action_table.push(arg)?;
+                }
+            },
+            ActionCmd::Func(f) => {
+                action_table.push(f)?;
+            }
+        }
+
+        action_table.set("tool", tools)?;
+        action_table.set("build_env", build_envs)?;
+
+        Ok(mlua::Value::Table(action_table))
+    }
+}

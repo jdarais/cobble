@@ -296,6 +296,12 @@ impl <'lua> mlua::FromLua<'lua> for FunctionDump {
     }
 }
 
+impl <'lua> mlua::IntoLua<'lua> for FunctionDump {
+    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        hydrate_function(self, lua).map(|f| mlua::Value::Function(f))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;

@@ -26,7 +26,7 @@ fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutio
     let full_path_str_opt = full_path.to_str();
     match full_path_str_opt {
         Some(full_path_str) => {
-            Ok(String::from(full_path_str))
+            Ok(full_path_str.to_owned())
         },
         None => Err(NameResolutionError::PathToStringError(full_path))
     }
@@ -34,11 +34,11 @@ fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutio
 
 fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolutionError> {
     if name.starts_with("/") {
-        return Ok(String::from(name));
+        return Ok(name.to_owned());
     }
 
     if !project_name.starts_with("/") {
-        return Err(NameResolutionError::InvalidProjectName(String::from(project_name)));
+        return Err(NameResolutionError::InvalidProjectName(project_name.to_owned()));
     }
 
     let project_name_segments = project_name.split("/").filter(|s| s.len() > 0);

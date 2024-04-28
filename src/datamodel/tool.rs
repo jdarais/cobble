@@ -56,8 +56,28 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
 
                 Ok(ExternalTool { name, install, check, action })
             },
-            mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to action: {:?}", &value)))
         }
+    }
+}
+
+impl <'lua> mlua::IntoLua<'lua> for ExternalTool {
+    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        let ExternalTool { name, install, check, action } = self;
+        let tool_table = lua.create_table()?;
+
+        tool_table.set("name", name)?;
+        
+        if let Some(inst) = install {
+            tool_table.set("install", inst)?;
+        }
+
+        if let Some(chk) = check {
+            tool_table.set("check", chk)?;
+        }
+
+        tool_table.set("action", action)?;
+
+        Ok(mlua::Value::Table(tool_table))
     }
 }

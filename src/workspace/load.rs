@@ -45,7 +45,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_name = if dir == "" || dir == "." {
         String::new()
     } else {
-        String::from(dir)
+        dir.to_owned()
     };
 
     let project_file_path = workspace_dir.join(project_dir.as_path()).join(PROJECT_FILE_NAME);
