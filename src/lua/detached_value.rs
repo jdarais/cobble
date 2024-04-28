@@ -7,13 +7,11 @@ use std::os::raw::c_void;
 pub enum DetachedLuaValue {
     Nil,
     Boolean(bool),
-    LightUserData(mlua::LightUserData),
     Integer(mlua::Integer),
     Number(mlua::Number),
     String(String),
     Table(HashMap<DetachedLuaValue, DetachedLuaValue>),
     Function(FunctionDump),
-    UserData(*const c_void),
     Error(mlua::Error)
 }
 
@@ -23,7 +21,6 @@ impl fmt::Display for DetachedLuaValue {
         match self {
             Nil => f.write_str("nil"),
             Boolean(val) => f.write_str(if *val { "true" } else { "false" }),
-            LightUserData(val) => write!(f, "LUD({:?})", val.0),
             Integer(val) => write!(f, "{}", val),
             Number(val) => write!(f, "{}", val),
             String(val) => write!(f, "\"{}\"", val.as_str()),
@@ -36,7 +33,6 @@ impl fmt::Display for DetachedLuaValue {
                 f.write_str("}")
             }
             Function(val) => write!(f, "{}", val),
-            UserData(val) => write!(f, "UD({:?})", val),
             Error(val) => write!(f, "Error({})", val)
         }
     }
@@ -53,10 +49,6 @@ impl PartialEq for DetachedLuaValue {
             },
             Boolean(self_val) => match other {
                 Boolean(other_val) => self_val == other_val,
-                _ => false
-            },
-            LightUserData(this_val) => match other {
-                LightUserData(other_val) => this_val.0 == other_val.0,
                 _ => false
             },
             Integer(this_val) => match other {
@@ -79,10 +71,6 @@ impl PartialEq for DetachedLuaValue {
                 Function(other_val) => this_val == other_val,
                 _ => false
             },
-            UserData(this_val) => match other {
-                UserData(other_val) => this_val == other_val,
-                _ => false
-            },
             Error(this_val) => match other {
                 Error(other_val) => this_val.to_string() == other_val.to_string(),
                 _ => false
@@ -99,10 +87,6 @@ impl Hash for DetachedLuaValue {
             Boolean(val) => {
                 state.write(b"bln");
                 val.hash(state);
-            },
-            LightUserData(val) => {
-                state.write(b"lud");
-                val.0.hash(state);
             },
             Integer(val) => {
                 state.write(b"int");
@@ -130,10 +114,6 @@ impl Hash for DetachedLuaValue {
                 for upval in f.upvalues.iter() {
                     upval.hash(state);
                 }
-            },
-            UserData(val) => {
-                state.write(b"usd");
-                val.hash(state);
             },
             Error(val) => {
                 state.write(b"err");
@@ -234,8 +214,8 @@ pub fn detach_value<'lua>(value: mlua::Value<'lua>, lua: &'lua mlua::Lua, histor
             }
         },
         mlua::Value::Function(f) => Ok(DetachedLuaValue::Function(dump_function(f, lua, &history)?)),
-        mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(d.to_pointer())),
-        mlua::Value::LightUserData(d) => Ok(DetachedLuaValue::LightUserData(d)),
+        mlua::Value::UserData(d) => Err(mlua::Error::runtime(format!("Cannot serialize a user data object: {:?}", d))),
+        mlua::Value::LightUserData(d) => Err(mlua::Error::runtime(format!("Cannot serialize a light user data object: {:?}", d))),
         mlua::Value::Error(e) => Ok(DetachedLuaValue::Error(e)),
         mlua::Value::Thread(t) => Err(mlua::Error::runtime(format!("Cannot serialize a thread object: {:?}", t)))
     }
@@ -253,13 +233,11 @@ impl <'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
         match self {
             Nil => Ok(mlua::Value::Nil),
             Boolean(val) => Ok(mlua::Value::Boolean(val)),
-            LightUserData(val) => Ok(mlua::Value::LightUserData(val)),
             Integer(val) => Ok(mlua::Value::Integer(val)),
             Number(val) => Ok(mlua::Value::Number(val)),
             String(val) => Ok(mlua::Value::String(lua.create_string(val.as_str())?)),
             Table(val) => val.into_lua(lua),
             Function(val) => Ok(mlua::Value::Function(hydrate_function(val, lua)?)),
-            UserData(_) => Ok(mlua::Value::Nil),
             Error(val) => Ok(mlua::Value::Error(val))
         }
     }

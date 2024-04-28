@@ -64,7 +64,7 @@ fn materialize_dependencies_in_subtree(workspace: &mut Workspace, target_name: &
 }
 
 
-fn compute_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<&'a str, Vec<&'a str>> {
+pub fn compute_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<&'a str, Vec<&'a str>> {
     let mut forward_edges_sets: HashMap<&'a str, HashSet<&'a str>> = HashMap::new();
 
     for (target_name, target) in workspace.targets.iter() {

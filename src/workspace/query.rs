@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc};
 use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Project, Task};
 
 #[derive(Clone, Debug)]
-pub enum WorkspaceTargetType {
+pub enum TargetType {
     Project,
     Task,
     BuildEnv
@@ -11,7 +11,7 @@ pub enum WorkspaceTargetType {
 
 #[derive(Clone, Debug)]
 pub struct WorkspaceTarget {
-    pub target_type: WorkspaceTargetType,
+    pub target_type: TargetType,
     pub dir: PathBuf,
     pub build_envs: HashMap<String, String>,
     pub tools: HashMap<String, String>,
@@ -84,7 +84,7 @@ fn add_action_to_target(action: &Action, target: &mut WorkspaceTarget) {
 
 fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut Workspace) {
     let mut install_target = WorkspaceTarget {
-        target_type: WorkspaceTargetType::BuildEnv,
+        target_type: TargetType::BuildEnv,
         dir: PathBuf::from(dir),
         tools: HashMap::new(),
         build_envs: HashMap::new(),
@@ -109,7 +109,7 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut 
 
 fn add_task_to_workspace(task: &Task, dir: &Path, workspace: &mut Workspace) {
     let mut task_target = WorkspaceTarget {
-        target_type: WorkspaceTargetType::Task,
+        target_type: TargetType::Task,
         dir: PathBuf::from(dir),
         tools: HashMap::new(),
         build_envs: task.build_env.iter().cloned().collect(),
@@ -134,7 +134,7 @@ fn add_task_to_workspace(task: &Task, dir: &Path, workspace: &mut Workspace) {
 fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     workspace.targets.insert(project.name.clone(), Arc::new(
     WorkspaceTarget {
-            target_type: WorkspaceTargetType::Project,
+            target_type: TargetType::Project,
             dir: project.path.clone(),
             tools: HashMap::new(),
             build_envs: HashMap::new(),
