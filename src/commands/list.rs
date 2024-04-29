@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{find_project_for_dir, find_tasks_for_dir, get_all_tasks}};
+use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{find_project_for_dir, find_tasks_for_dir, create_workspace}};
 
 
 pub struct ListCommandInput<'a> {
@@ -12,7 +12,7 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) {
     let config = get_workspace_config(input.cwd).unwrap();
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
-    let workspace = get_all_tasks(projects.values());
+    let workspace = create_workspace(projects.values());
 
     println!("{:?}",  &workspace);
 

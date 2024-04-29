@@ -1,22 +1,55 @@
 extern crate mlua;
 
-use std::{ffi::OsString, path::Path, process::Command};
+use std::{ffi::OsString, path::{Path, PathBuf}, process::Command};
 
-fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::MultiValue<'lua>) -> mlua::Result<mlua::Table<'lua>> {
-    let mut cmd_with_args: Vec<String> = Vec::with_capacity(args.len());
-    for arg in args.into_iter() {
-        cmd_with_args.push(lua.unpack(arg)?);
+fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::Table<'lua>) -> mlua::Result<mlua::Table<'lua>> {
+    let args_len_int = args.len()?;
+    let args_len: usize = args_len_int.try_into()
+        .map_err(|e| mlua::Error::runtime(format!("Invalid indices used for command args: {}", e)))?;
+
+    let mut cmd_with_args: Vec<String> = Vec::with_capacity(args_len);
+    cmd_with_args.resize(args_len, String::new());
+
+    let mut cwd: Option<PathBuf> = None;
+
+    for pair in args.pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+        match k {
+            mlua::Value::Integer(i) => {
+                let idx: usize = i.try_into()
+                    .map_err(|e| mlua::Error::runtime(format!("Invalid index used for command args: {}", e)))?;
+                if idx > cmd_with_args.len() {
+                    return Err(mlua::Error::runtime(format!("Invalid index used for command args: {}", idx)));
+                }
+                cmd_with_args[idx-1] = lua.unpack(v)?;
+            },
+            mlua::Value::String(s) => {
+                let s_str = s.to_str().map_err(|e| mlua::Error::runtime(format!("Error reading lua string value: {}", e)))?;
+                match s_str {
+                    "cwd" => {
+                        cwd = Some(PathBuf::from(s_str));
+                    },
+                    _ => { return Err(mlua::Error::runtime(format!("Unknown key in cmd input: {}", s.to_str().unwrap_or("<error reading value>")))); }
+                };
+            }
+            _ => { return Err(mlua::Error::runtime(format!("Key type not allowed in cmd input: {}", k.type_name()))); }
+        };
     }
 
     if cmd_with_args.len() < 1 {
         return Err(mlua::Error::runtime("No command given"));
     }
-    let cmd = &cmd_with_args[0];
-    let args = &cmd_with_args[1..];
+    let cmd_cmd = &cmd_with_args[0];
+    let cmd_args = &cmd_with_args[1..];
 
-    let output_res = Command::new(cmd)
-        .args(args)
-        .output();
+    let mut cmd = Command::new(cmd_cmd);
+    cmd.args(cmd_args);
+
+    if let Some(d) = cwd {
+        cmd.current_dir(d);
+    }
+
+    let output_res = cmd.output();
 
     match output_res {
         Err(e) => Err(mlua::Error::runtime(format!("Error executing command: {}", e))),
@@ -60,7 +93,7 @@ mod tests {
     #[test]
     fn test_shell_command() {
         let lua_env = create_lua_env(Path::new(".")).unwrap();
-        let chunk = lua_env.load(String::from("cmd(\"echo\", \"hi!\")"));
+        let chunk = lua_env.load(String::from("cmd({\"echo\", \"hi!\"})"));
 
         let result: mlua::Table = chunk.eval().unwrap();
         assert_eq!(result.get::<_, i32>("status").unwrap(), 0);

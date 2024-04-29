@@ -163,7 +163,7 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 }
 
-pub fn get_all_tasks<'a, P>(all_projects: P) -> Workspace
+pub fn create_workspace<'a, P>(all_projects: P) -> Workspace
     where P: Iterator<Item = &'a Project>
 {
     let mut workspace = Workspace {
@@ -174,6 +174,7 @@ pub fn get_all_tasks<'a, P>(all_projects: P) -> Workspace
     for project in all_projects {
         add_project_to_workspace(project, &mut workspace);
     }
+
     workspace
 }
 

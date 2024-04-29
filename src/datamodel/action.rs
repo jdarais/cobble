@@ -125,10 +125,12 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 }
 
                 // Otherwise, interpret the contents of the table as an args list, in which case only one
-                // build env or tool is allowed
-                if build_envs.len() + tools.len() > 1 {
-                    return Err(mlua::Error::runtime("Can only use one build_env or tool with argument list action"));
-                }
+                // build env or tool is allowed.  If no build env or tool is specified, use the "cmd" tool
+                match build_envs.len() + tools.len() {
+                    0 => { tools.insert(String::from("cmd"), String::from("cmd")); },
+                    1 => { /* no action needed */},
+                    _ => { return Err(mlua::Error::runtime("Can only use one build_env or tool with argument list action")); }
+                };
 
                 let args_res: mlua::Result<Vec<String>> = tbl.clone().sequence_values().collect();
                 let args = args_res?;

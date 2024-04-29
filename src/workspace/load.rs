@@ -2,17 +2,15 @@ extern crate mlua;
 extern crate toml;
 extern crate serde;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use crate::datamodel::{
-    BuildEnv,
-    TaskDef,
-    ExternalTool,
-    Project
+    Action, ActionCmd, BuildEnv, ExternalTool, Project, TaskDef
 };
+use crate::lua::detached_value::dump_function;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::_resolve::resolve_names_in_project;
 use crate::workspace::config::PROJECT_FILE_NAME;
@@ -197,6 +195,34 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         }
     }
 
+    //
+    // Inject an __INTERNAL__ project with the "cmd" tool
+    //
+    let cmd_tool_action_func: mlua::Function = lua.load(r#"
+        function (c) cmd { cwd = c.project.dir, table.unpack(c.args) } end
+    "#).eval()?;
+
+    let cmd_tool = ExternalTool {
+        name: String::from("cmd"),
+        install: None,
+        check: None,
+        action: Action {
+            tools: HashMap::new(),
+            build_envs: HashMap::new(),
+            cmd: ActionCmd::Func(dump_function(cmd_tool_action_func, lua, &HashSet::new())?)
+        }
+    };
+
+    projects.insert(String::from("/__INTERNAL__"), Project {
+        name: String::from("/__INTERNAL__"),
+        path: PathBuf::from("."),
+        build_envs: Vec::new(),
+        tasks: Vec::new(),
+        tools: vec![cmd_tool],
+        child_project_names: Vec::new()
+    });
+    // End __INTERNAL__ project
+
     Ok(projects)
 }
 
@@ -243,9 +269,9 @@ mod tests {
         ).unwrap();
 
         let projects = extract_project_defs(&lua).unwrap();
-        assert_eq!(projects.len(), 1);
+        assert_eq!(projects.len(), 2);
 
-        let project = projects.values().next().unwrap();
+        let project = projects.get("/testproject").unwrap();
         assert_eq!(project.build_envs.len(), 1);
         assert_eq!(project.tasks.len(), 0);
         assert_eq!(project.path, Path::new("testproject"))

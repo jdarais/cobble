@@ -265,7 +265,7 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
                 elseif env_alias then
                     action_context.env[env_alias](table.unpack(action))
                 else
-                    cmd(table.unpack(action))
+                    error("No tool or build env provided for arg list style action: " .. table.concat(action, ","))
                 end
             end   
         end
