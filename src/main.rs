@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 
 use workspace::config::get_workspace_config;
 
-use crate::{commands::list::{list_command, ListCommandInput}, workspace::load::load_projects};
+use crate::{commands::{list::{list_command, ListCommandInput}, run::{run_command, RunCommandInput}}, workspace::load::load_projects};
 
 #[derive(Parser)]
 struct Cli {
@@ -30,7 +30,8 @@ enum Command {
         tasks: Vec<String>
     },
     Run {
-
+        /// If not provided, run all tasks in the project
+        tasks: Vec<String>
     }
 }
 
@@ -60,8 +61,11 @@ fn main() {
                 };
                 list_command(input);
             },
-            Command::Run{} => {
-                run_from_dir(cwd.as_path());
+            Command::Run{tasks} => {
+                run_command(RunCommandInput {
+                    cwd: cwd.as_path(),
+                    tasks: tasks.iter().map(|s| s.as_str()).collect()
+                });
             }
         },
         None => {

@@ -1,27 +1,51 @@
 use std::{
     fmt,
-    path::{Path, PathBuf}
+    path::{Component, Path, PathBuf}
 };
 
 use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, TaskDef};
 
 #[derive(Debug)]
 pub enum NameResolutionError {
+    InvalidName(String),
     InvalidProjectName(String),
-    PathToStringError(PathBuf)
+    PathToStringError(PathBuf),
+    PathToNameError(PathBuf)
 }
 
 impl fmt::Display for NameResolutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use NameResolutionError::*;
         match self {
+            InvalidName(s) => write!(f, "Invalid name: {}", s),
             InvalidProjectName(s) => write!(f, "Invalid project name: {}", s),
-            PathToStringError(p) => write!(f, "Error converting path to a UTF-8 string: {}", p.display())
+            PathToStringError(p) => write!(f, "Error converting path to a UTF-8 string: {}", p.display()),
+            PathToNameError(p) => write!(f, "Error converting path to a resource name: {}", p.display())
         }
     }
 }
 
-fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutionError> {
+pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameResolutionError> {
+    let mut project_name_components: Vec<String> = vec![String::from("")];
+    for c in project_path.components() {
+        match c {
+            Component::CurDir => { /* do nothing */ },
+            Component::Normal(s) => {
+                let name_segment = s.to_str()
+                    .ok_or_else(|| NameResolutionError::PathToStringError(project_path.to_owned()))?;
+                project_name_components.push(name_segment.to_owned()); },
+            _ => { return Err(NameResolutionError::PathToNameError(project_path.to_owned())); }
+        }
+    }
+
+    let project_name = match project_name_components.len() {
+        0 | 1 => String::from("/"),
+        _ => project_name_components.join("/")
+    };
+    Ok(project_name)
+}
+
+pub fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutionError> {
     let full_path = project_path.join(path);
     let full_path_str_opt = full_path.to_str();
     match full_path_str_opt {
@@ -32,7 +56,7 @@ fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutio
     }
 }
 
-fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolutionError> {
+pub fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolutionError> {
     if name.starts_with("/") {
         return Ok(name.to_owned());
     }
@@ -68,7 +92,11 @@ fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolution
         }
     }
 
-    Ok(full_name_segments.join("/"))
+    let resolved_name = match full_name_segments.len() {
+        0 | 1 => String::from("/"),
+        _ => full_name_segments.join("/")
+    };
+    Ok(resolved_name)
 }
 
 fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {

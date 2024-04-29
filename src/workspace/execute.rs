@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::datamodel::{BuildEnv, ExternalTool};
 use crate::lua::lua_env::create_lua_env;
-use crate::workspace::db::{get_task_record, GetError};
+use crate::workspace::db::{get_task_record, new_db_env, GetError};
 use crate::workspace::dependency::compute_forward_edges;
 use crate::workspace::query::{Workspace, Task};
 
@@ -139,6 +139,7 @@ impl TaskExecutor {
             for _ in 0..5 {
                 let worker_args = TaskExecutorWorkerArgs {
                     workspace_dir: self.workspace_dir.clone(),
+                    db_path: self.db_path.clone(),
                     task_queue: self.task_queue.clone(),
                     task_result_sender: self.message_channel.0.clone(),
                     cache: self.cache.clone()
@@ -207,6 +208,22 @@ impl TaskExecutor {
         if let Some(task_queue) = task_queue_opt.as_mut() {
             task_queue.push_back(task_job);
             task_queue_cvar.notify_one();
+        }
+    }
+}
+
+impl Drop for TaskExecutor {
+    fn drop(&mut self) {
+        {
+            let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
+            let mut task_queue = task_queue_mutex.lock().unwrap();
+            *task_queue = None;
+
+            task_queue_cvar.notify_all();
+        }
+
+        for worker in self.worker_threads.drain(..) {
+            let _ = worker.join();
         }
     }
 }
@@ -291,6 +308,7 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
 
 struct TaskExecutorWorkerArgs {
     pub workspace_dir: PathBuf,
+    pub db_path: PathBuf,
     pub task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
     pub task_result_sender: Sender<TaskJobMessage>,
     pub cache: Arc<TaskExecutorCache>
@@ -300,7 +318,7 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
     let lua = create_lua_env(args.workspace_dir.as_path()).unwrap();
     init_lua_for_task_executor(&lua).unwrap();
 
-    let db_env = lmdb::Environment::new().open(args.workspace_dir.join(".cobble.db").as_path()).unwrap();
+    let db_env = new_db_env(args.db_path.as_path()).unwrap();
 
     loop {
         let (task_queue_mutex, task_queue_cvar) = &*args.task_queue;
@@ -505,9 +523,7 @@ mod tests {
         let lua = create_lua_env(workspace_dir.as_path()).unwrap();
         init_lua_for_task_executor(&lua).unwrap();
     
-        let db_env = lmdb::Environment::new()
-            .set_flags(lmdb::EnvironmentFlags::NO_SUB_DIR)
-            .open(tmpdir.as_path().join(".cobble.db").as_path()).unwrap();
+        let db_env = new_db_env(tmpdir.as_path().join(".cobble.db").as_path()).unwrap();
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
         let cache = Arc::new(TaskExecutorCache {

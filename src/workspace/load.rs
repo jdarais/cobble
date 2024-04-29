@@ -12,7 +12,7 @@ use crate::datamodel::{
 };
 use crate::lua::detached_value::dump_function;
 use crate::lua::lua_env::create_lua_env;
-use crate::workspace::_resolve::resolve_names_in_project;
+use crate::workspace::resolve::resolve_names_in_project;
 use crate::workspace::config::PROJECT_FILE_NAME;
 
 
@@ -196,7 +196,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     }
 
     //
-    // Inject an __INTERNAL__ project with the "cmd" tool
+    // Inject an __COBBLE_INTERNAL__ project with the "cmd" tool
     //
     let cmd_tool_action_func: mlua::Function = lua.load(r#"
         function (c) cmd { cwd = c.project.dir, table.unpack(c.args) } end
@@ -213,15 +213,15 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         }
     };
 
-    projects.insert(String::from("/__INTERNAL__"), Project {
-        name: String::from("/__INTERNAL__"),
-        path: PathBuf::from("."),
+    projects.insert(String::from("/__COBBLE_INTERNAL__"), Project {
+        name: String::from("/__COBBLE_INTERNAL__"),
+        path: PathBuf::from("./__COBBLE_INTERNAL__"),
         build_envs: Vec::new(),
         tasks: Vec::new(),
         tools: vec![cmd_tool],
         child_project_names: Vec::new()
     });
-    // End __INTERNAL__ project
+    // End __COBBLE_INTERNAL__ project
 
     Ok(projects)
 }

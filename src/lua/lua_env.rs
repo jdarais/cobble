@@ -27,7 +27,8 @@ fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::Table<'lua>) -> ml
                 let s_str = s.to_str().map_err(|e| mlua::Error::runtime(format!("Error reading lua string value: {}", e)))?;
                 match s_str {
                     "cwd" => {
-                        cwd = Some(PathBuf::from(s_str));
+                        let path_str: String = lua.unpack(v)?;
+                        cwd = Some(PathBuf::from(path_str));
                     },
                     _ => { return Err(mlua::Error::runtime(format!("Unknown key in cmd input: {}", s.to_str().unwrap_or("<error reading value>")))); }
                 };
@@ -35,6 +36,9 @@ fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::Table<'lua>) -> ml
             _ => { return Err(mlua::Error::runtime(format!("Key type not allowed in cmd input: {}", k.type_name()))); }
         };
     }
+
+    println!("{:?}", &cmd_with_args);
+    println!("{:?}", cwd.as_ref().map(|p| p.display().to_string()));
 
     if cmd_with_args.len() < 1 {
         return Err(mlua::Error::runtime("No command given"));

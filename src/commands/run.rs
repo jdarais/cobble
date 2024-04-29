@@ -1,14 +1,17 @@
-use std::path::{Component, Path};
+use std::path::Path;
 
-use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{create_workspace, find_project_for_dir, find_tasks_for_dir, find_tasks_for_query}, resolve::project_path_to_project_name};
+use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
+use crate::workspace::execute::TaskExecutor;
+use crate::workspace::load::load_projects;
+use crate::workspace::query::{create_workspace, find_project_for_dir, find_tasks_for_dir, find_tasks_for_query};
+use crate::workspace::resolve::project_path_to_project_name;
 
-
-pub struct ListCommandInput<'a> {
+pub struct RunCommandInput<'a> {
     pub cwd: &'a Path,
     pub tasks: Vec<&'a str>
 }
 
-pub fn list_command<'a>(input: ListCommandInput<'a>) {
+pub fn run_command<'a>(input: RunCommandInput<'a>) {
     let config = get_workspace_config(input.cwd).unwrap();
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
@@ -24,11 +27,6 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) {
     tasks.sort();
     let tasks = tasks;
 
-    for name in tasks {
-        let rel_name = name.strip_prefix(project_name.as_str())
-            .map(|n| n.strip_prefix("/").unwrap_or(n))
-            .map(|n| if n.len() > 0 { n } else { "(default)" });
-
-        println!("{}", rel_name.unwrap_or(name));
-    }
+    let mut executor = TaskExecutor::new(config.workspace_dir.as_path(), config.workspace_dir.join(".cobble.db").as_path());
+    executor.execute_tasks(&workspace, tasks.iter().copied()).unwrap();
 }

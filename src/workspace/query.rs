@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Project, TaskDef};
+use crate::workspace::resolve::{resolve_name, NameResolutionError};
 
 #[derive(Clone, Debug)]
 pub enum TaskType {
@@ -50,6 +51,22 @@ pub fn find_tasks_for_dir<'a>(workspace: &'a Workspace, workspace_dir: &Path, pr
         .filter(|(_k, v)| workspace_dir.join(v.dir.as_path()).starts_with(&full_project_dir))
         .map(|(k, _v)| k.as_str())
         .collect()
+}
+
+pub fn find_tasks_for_query<'w, 'i, I>(workspace: &'w Workspace, project_name: &str, task_queries: I) -> Result<Vec<&'w str>, NameResolutionError>
+    where I: Iterator<Item = &'i str>
+{
+    let mut result: Vec<&'w str> = Vec::new();
+
+    for q in task_queries {
+        let resolved_q = resolve_name(project_name, q)?;
+        match workspace.tasks.get_key_value(&resolved_q) {
+            Some((k, v)) => { result.push(k.as_str()); },
+            None => { return Err(NameResolutionError::InvalidName(resolved_q)); }
+        }
+    }
+
+    Ok(result)
 }
 
 fn add_dependency_to_task(dep: &Dependency, task: &mut Task) {
@@ -134,21 +151,23 @@ fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, workspace: &mut Workspa
 }
 
 fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
-    workspace.tasks.insert(project.name.clone(), Arc::new(
-    Task {
-            task_type: TaskType::Project,
-            dir: project.path.clone(),
-            tools: HashMap::new(),
-            build_envs: HashMap::new(),
-            file_deps: Vec::new(),
-            task_deps: project.tasks.iter().map(|t| t.name.clone())
-                .chain(project.child_project_names.iter().map(|name| name.clone()))
-                .collect(),
-            calc_deps: Vec::new(),
-            actions: Vec::new(),
-            artifacts: Vec::new()
-        }
-    ));
+    if project.name != "/__COBBLE_INTERNAL__" {
+        workspace.tasks.insert(project.name.clone(), Arc::new(
+        Task {
+                task_type: TaskType::Project,
+                dir: project.path.clone(),
+                tools: HashMap::new(),
+                build_envs: HashMap::new(),
+                file_deps: Vec::new(),
+                task_deps: project.tasks.iter().map(|t| t.name.clone())
+                    .chain(project.child_project_names.iter().map(|name| name.clone()))
+                    .collect(),
+                calc_deps: Vec::new(),
+                actions: Vec::new(),
+                artifacts: Vec::new()
+            }
+        ));
+    }
 
     for env in project.build_envs.iter() {
         add_build_env_to_workspace(env, project.path.as_path(), workspace);

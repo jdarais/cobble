@@ -1,7 +1,7 @@
 extern crate serde_json;
 extern crate serde;
 
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, path::Path};
 
 use lmdb::Transaction;
 use serde::{Serialize, Deserialize};
@@ -60,4 +60,10 @@ pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<Ta
         })?;
 
     serde_json::from_slice(task_record_data).map_err(|e| GetError::ParseError(e))
+}
+
+pub fn new_db_env(path: &Path) -> lmdb::Result<lmdb::Environment> {
+    lmdb::Environment::new()
+            .set_flags(lmdb::EnvironmentFlags::NO_SUB_DIR)
+            .open(path)
 }
