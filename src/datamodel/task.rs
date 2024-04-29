@@ -7,33 +7,8 @@ use crate::datamodel::{
     Artifact,
 };
 
-#[derive(Debug)]
-pub struct TaskDef {
-    pub build_env: String,
-    pub actions: Vec<Action>,
-    pub deps: Vec<Dependency>,
-    pub artifacts: Vec<Artifact>
-}
-
-impl <'lua> mlua::FromLua<'lua> for TaskDef {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let task_def_table: mlua::Table = lua.unpack(value)?;
-        let build_env: String = task_def_table.get("build_env")?;
-        let actions: Vec<Action> = task_def_table.get("actions")?;
-        let deps: Vec<Dependency> = task_def_table.get::<_, DependencyList>("deps")?.0;
-        let artifacts: Vec<Artifact> = task_def_table.get("artifacts")?;
-
-        Ok(TaskDef {
-            build_env,
-            actions,
-            deps,
-            artifacts
-        })
-    }
-}
-
 #[derive(Clone, Debug)]
-pub struct Task {
+pub struct TaskDef {
     pub name: String,
     pub build_env: Option<(String, String)>,
     pub actions: Vec<Action>,
@@ -41,7 +16,7 @@ pub struct Task {
     pub artifacts: Vec<Artifact>
 }
 
-impl fmt::Display for Task {
+impl fmt::Display for TaskDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Task(")?;
         write!(f, "name=\"{}\", ", self.name)?;
@@ -73,7 +48,7 @@ impl fmt::Display for Task {
     }
 }
 
-impl <'lua> mlua::FromLua<'lua> for Task {
+impl <'lua> mlua::FromLua<'lua> for TaskDef {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(task_table) => {
@@ -105,9 +80,9 @@ impl <'lua> mlua::FromLua<'lua> for Task {
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
                 let artifacts = artifacts_opt.unwrap_or_default();
         
-                Ok(Task { name, build_env, actions, deps, artifacts })
+                Ok(TaskDef { name, build_env, actions, deps, artifacts })
             },
-            mlua::Value::UserData(val) => Ok(val.borrow::<Task>()?.clone()),
+            mlua::Value::UserData(val) => Ok(val.borrow::<TaskDef>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }
     }

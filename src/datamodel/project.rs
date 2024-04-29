@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::datamodel::{BuildEnv, ExternalTool, Task};
+use crate::datamodel::{BuildEnv, ExternalTool, TaskDef};
 
 
 #[derive(Debug)]
@@ -10,7 +10,7 @@ pub struct Project {
     pub name: String,
     pub path: PathBuf,
     pub build_envs: Vec<BuildEnv>,
-    pub tasks: Vec<Task>,
+    pub tasks: Vec<TaskDef>,
     pub tools: Vec<ExternalTool>,
     pub child_project_names: Vec<String>
 }
@@ -57,7 +57,7 @@ impl <'lua> mlua::FromLua<'lua> for Project {
         let path_str: String = project_table.get("dir")?;
         let path = PathBuf::from_str(path_str.as_str()).expect("Conversion from str to PathBuf is infalliable");
         let build_envs: Vec<BuildEnv> = project_table.get("build_envs")?;
-        let tasks: Vec<Task> = project_table.get("tasks")?;
+        let tasks: Vec<TaskDef> = project_table.get("tasks")?;
         let tools: Vec<ExternalTool> = project_table.get("tools")?;
 
         let child_projects: Vec<mlua::Table> = project_table.get("child_projects")?;

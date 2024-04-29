@@ -3,96 +3,103 @@ extern crate sha2;
 extern crate serde_json;
 
 
-use std::{collections::{HashMap, HashSet, VecDeque}, fmt, fs::File, io::{self, Read}, path::{Path, PathBuf}, sync::{mpsc::{self, Receiver, Sender}, Arc, Condvar, Mutex, RwLock}, thread::{self, JoinHandle, Thread}};
+use std::collections::{HashMap, VecDeque};
+use std::fmt;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
+use std::thread::{self, JoinHandle};
 
 use sha2::{Digest, Sha256};
 
-use crate::{datamodel::{BuildEnv, ExternalTool}, lua::lua_env::create_lua_env, workspace::{db::{get_target_record, GetError}, dependency::{compute_forward_edges, ExecutionGraphError}, query::{Workspace, WorkspaceTarget}}};
+use crate::datamodel::{BuildEnv, ExternalTool};
+use crate::lua::lua_env::create_lua_env;
+use crate::workspace::db::{get_task_record, GetError};
+use crate::workspace::dependency::compute_forward_edges;
+use crate::workspace::query::{Workspace, Task};
 
-pub struct TargetJob {
-    pub target_name: String,
+pub struct TaskJob {
+    pub task_name: String,
     pub tools: HashMap<String, Arc<ExternalTool>>,
     pub envs: HashMap<String, Arc<BuildEnv>>,
-    pub target: Arc<WorkspaceTarget>
+    pub task: Arc<Task>
 }
 
 #[derive(Debug)]
-pub enum TargetJobMessage {
-    Output{target: String, output: String},
-    Complete{target: String, result: TargetResult},
+pub enum TaskJobMessage {
+    Output{task: String, output: String},
+    Complete{task: String, result: TaskResult},
 }
 
 #[derive(Debug)]
-pub enum TargetResult {
+pub enum TaskResult {
     Success,
     UpToDate,
     Error(String)
 }
 
-pub struct TargetStatus {
-    pub up_to_date: bool
-}
-
 #[derive(Debug)]
-pub enum TargetExecutionError {
-    TargetLookupError(String),
+pub enum TaskExecutionError {
+    TaskLookupError(String),
     ToolLookupError(String),
     EnvLookupError(String),
-    TargetResultError{target: String, message: String}
+    TaskResultError{task: String, message: String}
 }
 
-impl fmt::Display for TargetExecutionError {
+impl fmt::Display for TaskExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use TargetExecutionError::*;
+        use TaskExecutionError::*;
         match self {
-            TargetLookupError(t) => write!(f, "Target not found while creating jobs: {}", t),
+            TaskLookupError(t) => write!(f, "Task not found while creating jobs: {}", t),
             ToolLookupError(t) => write!(f, "Tool not found while creating jobs: {}", t),
             EnvLookupError(env) => write!(f, "Build env not found while creating jbos: {}", env),
-            TargetResultError{target, message} => write!(f, "Execution of target {} failed with error: {}", target, message)
+            TaskResultError{task, message} => write!(f, "Execution of task {} failed with error: {}", task, message)
         }
     }
 }
 
-pub fn create_jobs_for_targets<'a, T>(workspace: &Workspace, targets: T) -> Result<HashMap<String, TargetJob>, TargetExecutionError>
+pub fn create_jobs_for_tasks<'a, T>(workspace: &Workspace, tasks: T) -> Result<HashMap<String, TaskJob>, TaskExecutionError>
     where T: Iterator<Item = &'a str>
 {
-    let mut jobs: HashMap<String, TargetJob> = HashMap::new();
+    let mut jobs: HashMap<String, TaskJob> = HashMap::new();
 
-    for target in targets {
-        add_jobs_for_target(workspace, target, &mut jobs)?;
+    for task in tasks {
+        add_jobs_for_task(workspace, task, &mut jobs)?;
     }
     
     Ok(jobs)
 }
 
-fn add_jobs_for_target(workspace: &Workspace, target_name: &str, jobs: &mut HashMap<String, TargetJob>) -> Result<(), TargetExecutionError> {
-    if jobs.contains_key(target_name) {
+fn add_jobs_for_task(workspace: &Workspace, task_name: &str, jobs: &mut HashMap<String, TaskJob>) -> Result<(), TaskExecutionError> {
+    if jobs.contains_key(task_name) {
         return Ok(())
     }
 
-    let target = workspace.targets.get(target_name).ok_or_else(|| TargetExecutionError::TargetLookupError(target_name.to_owned()))?;
+    let task = workspace.tasks.get(task_name).ok_or_else(|| TaskExecutionError::TaskLookupError(task_name.to_owned()))?;
 
-    let mut job = TargetJob {
-        target_name: target_name.to_owned(),
+    let mut job = TaskJob {
+        task_name: task_name.to_owned(),
         tools: HashMap::new(),
         envs: HashMap::new(),
-        target: target.clone()
+        task: task.clone()
     };
 
-    for (t_alias, t_name) in target.tools.iter() {
-        let tool = workspace.tools.get(t_name).ok_or_else(|| TargetExecutionError::ToolLookupError(t_name.to_owned()))?;
+    for (t_alias, t_name) in task.tools.iter() {
+        let tool = workspace.tools.get(t_name).ok_or_else(|| TaskExecutionError::ToolLookupError(t_name.to_owned()))?;
         job.tools.insert(t_alias.clone(), tool.clone());
     }
 
-    for (env_alias, env_name) in target.build_envs.iter() {
-        let env = workspace.build_envs.get(env_name).ok_or_else(|| TargetExecutionError::EnvLookupError(env_name.to_owned()))?;
+    for (env_alias, env_name) in task.build_envs.iter() {
+        let env = workspace.build_envs.get(env_name).ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.to_owned()))?;
         job.envs.insert(env_alias.clone(), env.clone());
     }
 
-    jobs.insert(target_name.to_owned(), job);
+    jobs.insert(task_name.to_owned(), job);
 
-    for dep in target.target_deps.iter() {
-        add_jobs_for_target(workspace, dep.as_str(), jobs)?;
+    for dep in task.task_deps.iter() {
+        add_jobs_for_task(workspace, dep.as_str(), jobs)?;
     }
 
     Ok(())
@@ -100,15 +107,15 @@ fn add_jobs_for_target(workspace: &Workspace, target_name: &str, jobs: &mut Hash
 
 struct TaskExecutorCache {
     file_hashes: RwLock<HashMap<String, Vec<u8>>>,
-    target_outputs: RwLock<HashMap<String, serde_json::Value>>
+    task_outputs: RwLock<HashMap<String, serde_json::Value>>
 }
 
 pub struct TaskExecutor {
     worker_threads: Vec<JoinHandle<()>>,
     workspace_dir: PathBuf,
     db_path: PathBuf,
-    task_queue: Arc<(Mutex<Option<VecDeque<TargetJob>>>, Condvar)>,
-    message_channel: (Sender<TargetJobMessage>, Receiver<TargetJobMessage>),
+    task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
+    message_channel: (Sender<TaskJobMessage>, Receiver<TaskJobMessage>),
     cache: Arc<TaskExecutorCache>
 }
 
@@ -122,7 +129,7 @@ impl TaskExecutor {
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
                 file_hashes: RwLock::new(HashMap::new()),
-                target_outputs: RwLock::new(HashMap::new())
+                task_outputs: RwLock::new(HashMap::new())
             })
         }
     }
@@ -146,45 +153,44 @@ impl TaskExecutor {
         }
     }
 
-    pub fn execute_targets<'a, T>(&mut self, workspace: &Workspace, targets: T) -> Result<(), TargetExecutionError>
+    pub fn execute_tasks<'a, T>(&mut self, workspace: &Workspace, tasks: T) -> Result<(), TaskExecutionError>
         where T: Iterator<Item = &'a str>
     {
         self.ensure_worker_threads();
 
-        let mut completed_targets: HashSet<String> = HashSet::new();
         let forward_edges = compute_forward_edges(workspace);
-        let mut remaining_jobs = create_jobs_for_targets(workspace, targets)?;
+        let mut remaining_jobs = create_jobs_for_tasks(workspace, tasks)?;
 
         let mut jobs_without_dependencies: Vec<String> = Vec::new();
-        for (target_name, target_job) in remaining_jobs.iter() {
-            if target_job.target.target_deps.len() == 0 {
-                jobs_without_dependencies.push(target_name.to_owned());
+        for (task_name, task_job) in remaining_jobs.iter() {
+            if task_job.task.task_deps.len() == 0 {
+                jobs_without_dependencies.push(task_name.to_owned());
             }
         }
 
-        for target_name in jobs_without_dependencies.iter() {
-            let job = remaining_jobs.remove(target_name).unwrap();
-            self.push_target_job(job);
+        for task_name in jobs_without_dependencies.iter() {
+            let job = remaining_jobs.remove(task_name).unwrap();
+            self.push_task_job(job);
         }
 
         while remaining_jobs.len() > 0 {
             let message = self.message_channel.1.recv().unwrap();
 
             match message {
-                TargetJobMessage::Output{target, output} => { println!("{}: {}", target, output); },
-                TargetJobMessage::Complete{target, result} => {
+                TaskJobMessage::Output{task, output} => { println!("{}: {}", task, output); },
+                TaskJobMessage::Complete{task, result} => {
                     match result {
-                        TargetResult::UpToDate => { println!("{} is up to date", target); },
-                        TargetResult::Success => { println!("{} succeeded", target); },
-                        TargetResult::Error(e) => { return Err(TargetExecutionError::TargetResultError { target: target.clone(), message: e }); }
+                        TaskResult::UpToDate => { println!("{} is up to date", task); },
+                        TaskResult::Success => { println!("{} succeeded", task); },
+                        TaskResult::Error(e) => { return Err(TaskExecutionError::TaskResultError { task: task.clone(), message: e }); }
                     }
 
-                    let forward_edges_from_task = forward_edges.get(target.as_str());
+                    let forward_edges_from_task = forward_edges.get(task.as_str());
                     if let Some(fwd_edges) = forward_edges_from_task {
                         for &fwd_edge in fwd_edges {
-                            let fwd_target_job_opt = remaining_jobs.remove(fwd_edge);
-                            if let Some(fwd_target_job) = fwd_target_job_opt {
-                                self.push_target_job(fwd_target_job)
+                            let fwd_task_job_opt = remaining_jobs.remove(fwd_edge);
+                            if let Some(fwd_task_job) = fwd_task_job_opt {
+                                self.push_task_job(fwd_task_job)
                             }
                         }
                     }
@@ -195,11 +201,11 @@ impl TaskExecutor {
         Ok(())
     }
 
-    fn push_target_job(&mut self, target_job: TargetJob) {
+    fn push_task_job(&mut self, task_job: TaskJob) {
         let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
         let mut task_queue_opt = task_queue_mutex.lock().unwrap();
         if let Some(task_queue) = task_queue_opt.as_mut() {
-            task_queue.push_back(target_job);
+            task_queue.push_back(task_job);
             task_queue_cvar.notify_one();
         }
     }
@@ -285,8 +291,8 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
 
 struct TaskExecutorWorkerArgs {
     pub workspace_dir: PathBuf,
-    pub task_queue: Arc<(Mutex<Option<VecDeque<TargetJob>>>, Condvar)>,
-    pub task_result_sender: Sender<TargetJobMessage>,
+    pub task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
+    pub task_result_sender: Sender<TaskJobMessage>,
     pub cache: Arc<TaskExecutorCache>
 }
 
@@ -313,7 +319,7 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
         let next_task = task_queue_locked.as_mut().unwrap().pop_front().unwrap();
         drop(task_queue_locked);
 
-        execute_target_job(args.workspace_dir.as_path(), &lua, &db_env, &next_task, args.task_result_sender.clone(), args.cache.clone());
+        execute_task_job(args.workspace_dir.as_path(), &lua, &db_env, &next_task, args.task_result_sender.clone(), args.cache.clone());
     }
 }
 
@@ -349,29 +355,29 @@ fn ensure_build_env_is_cached(lua: &mlua::Lua, build_env: &BuildEnv) -> mlua::Re
     Ok(())
 }
 
-fn execute_target_actions<'lua>(lua: &'lua mlua::Lua, target: &TargetJob) -> mlua::Result<mlua::Value<'lua>> {
+fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob) -> mlua::Result<mlua::Value<'lua>> {
     // Make sure build envs and tools we need are 
-    for (_, tool) in target.tools.iter() {
+    for (_, tool) in task.tools.iter() {
         ensure_tool_is_cached(lua, tool.as_ref())?;
     }
 
-    for (_, env) in target.envs.iter() {
+    for (_, env) in task.envs.iter() {
         ensure_build_env_is_cached(lua, env.as_ref())?;
     }
 
-    let extra_tools: HashMap<&str, &str> = target.tools.iter()
+    let extra_tools: HashMap<&str, &str> = task.tools.iter()
         .map(|(t_alias, t)| (t_alias.as_str(), t.name.as_str()))
         .collect();
 
-    let extra_build_envs: HashMap<&str, &str> = target.tools.iter()
+    let extra_build_envs: HashMap<&str, &str> = task.tools.iter()
         .map(|(e_alias, e)| (e_alias.as_str(), e.name.as_str()))
         .collect();
 
-    let project_dir = target.target.dir.to_str()
-        .ok_or_else(|| mlua::Error::runtime(format!("Unable to convert path to a UTF-8 string: {}", target.target.dir.display())))?;
+    let project_dir = task.task.dir.to_str()
+        .ok_or_else(|| mlua::Error::runtime(format!("Unable to convert path to a UTF-8 string: {}", task.task.dir.display())))?;
 
     let mut args: mlua::Value = mlua::Value::Table(lua.create_table()?);
-    for action in target.target.actions.iter() {
+    for action in task.task.actions.iter() {
         let action_lua = lua.pack(action.clone())?;
 
         let cobble_table: mlua::Table = lua.globals().get("cobble")?;
@@ -380,7 +386,7 @@ fn execute_target_actions<'lua>(lua: &'lua mlua::Lua, target: &TargetJob) -> mlu
             action_lua.clone(),
             extra_tools.clone(),
             extra_build_envs.clone(),
-            target.target.dir.to_str(),
+            task.task.dir.to_str(),
             project_dir.to_owned(),
             args.clone())
         )?;
@@ -393,9 +399,9 @@ fn execute_target_actions<'lua>(lua: &'lua mlua::Lua, target: &TargetJob) -> mlu
     Ok(args)
 }
 
-fn execute_target_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TargetJob, task_result_sender: Sender<TargetJobMessage>, cache: Arc<TaskExecutorCache>) {
+fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
     let mut up_to_date = true;
-    let task_record_opt = match get_target_record(&db_env, task.target_name.as_str()) {
+    let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
         Ok(r) => Some(r),
         Err(e) => match e {
             GetError::NotFound(_) => None,
@@ -409,12 +415,12 @@ fn execute_target_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Envi
             None => { up_to_date = false; break; }
         };
         
-        if task.target.file_deps.len() != task_record.input.file_hashes.len() {
+        if task.task.file_deps.len() != task_record.input.file_hashes.len() {
             up_to_date = false;
             break;
         }
 
-        for file_dep in task.target.file_deps.iter() {
+        for file_dep in task.task.file_deps.iter() {
             let prev_hash = match task_record.input.file_hashes.get(file_dep) {
                 Some(hash) => hash,
                 None => { up_to_date = false; break; }
@@ -436,28 +442,28 @@ fn execute_target_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Envi
             }
         }
 
-        if task.target.target_deps.len() != task_record.input.task_outputs.len() {
+        if task.task.task_deps.len() != task_record.input.task_outputs.len() {
             up_to_date = false;
             break;
         }
 
-        for target_dep in task.target.target_deps.iter() {
-            let prev_target_output = match task_record.input.task_outputs.get(target_dep) {
+        for task_dep in task.task.task_deps.iter() {
+            let prev_task_output = match task_record.input.task_outputs.get(task_dep) {
                 Some(output) => output,
                 None => { up_to_date = false; break; }
             };
 
-            let cached_target_output = cache.target_outputs.read().unwrap().get(target_dep).cloned();
-            let current_target_output = match cached_target_output {
+            let cached_task_output = cache.task_outputs.read().unwrap().get(task_dep).cloned();
+            let current_task_output = match cached_task_output {
                 Some(output) => output,
                 None => {
-                    let target_record = get_target_record(&db_env, target_dep).unwrap();
-                    cache.target_outputs.write().unwrap().insert(target_dep.clone(), target_record.output.clone());
-                    target_record.output
+                    let task_record = get_task_record(&db_env, task_dep).unwrap();
+                    cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.clone());
+                    task_record.output
                 }
             };
 
-            if prev_target_output != &current_target_output {
+            if prev_task_output != &current_task_output {
                 up_to_date = false;
                 break;
             }
@@ -467,17 +473,17 @@ fn execute_target_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Envi
     }
 
     if up_to_date {
-        task_result_sender.send(TargetJobMessage::Complete {
-            target: task.target_name.clone(),
-            result: TargetResult::UpToDate
+        task_result_sender.send(TaskJobMessage::Complete {
+            task: task.task_name.clone(),
+            result: TaskResult::UpToDate
         }).unwrap();
         return;
     }
 
-    execute_target_actions(lua, task).unwrap();
-    task_result_sender.send(TargetJobMessage::Complete {
-        target: task.target_name.clone(),
-        result: TargetResult::Success
+    execute_task_actions(lua, task).unwrap();
+    task_result_sender.send(TaskJobMessage::Complete {
+        task: task.task_name.clone(),
+        result: TaskResult::Success
 }).unwrap();
 
 }
@@ -488,7 +494,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration};
 
-    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::query::TargetType};
+    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::query::TaskType};
 
     use super::*;
 
@@ -502,11 +508,11 @@ mod tests {
         let db_env = lmdb::Environment::new()
             .set_flags(lmdb::EnvironmentFlags::NO_SUB_DIR)
             .open(tmpdir.as_path().join(".cobble.db").as_path()).unwrap();
-        let (tx, rx) = mpsc::channel::<TargetJobMessage>();
+        let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
         let cache = Arc::new(TaskExecutorCache {
             file_hashes: RwLock::new(HashMap::new()),
-            target_outputs: RwLock::new(HashMap::new())
+            task_outputs: RwLock::new(HashMap::new())
         });
 
         let print_func: mlua::Function = lua.load(r#"function (c) print("Hi!", table.unpack(c.args)) end"#).eval().unwrap();
@@ -521,13 +527,13 @@ mod tests {
             }
         });
 
-        let target = Arc::new(WorkspaceTarget {
-            target_type: TargetType::Task,
+        let task = Arc::new(Task {
+            task_type: TaskType::Task,
             dir: workspace_dir.clone(),
             build_envs: HashMap::new(),
             tools: vec![(String::from("print"), String::from("print"))].into_iter().collect(),
             file_deps: Vec::new(),
-            target_deps: Vec::new(),
+            task_deps: Vec::new(),
             calc_deps: Vec::new(),
             actions: vec![Action {
                 tools: vec![(String::from("print"), String::from("print"))].into_iter().collect(),
@@ -537,21 +543,21 @@ mod tests {
             artifacts: Vec::new()
         });
 
-        let task_job = TargetJob {
-            target_name: String::from("test"),
+        let task_job = TaskJob {
+            task_name: String::from("test"),
             tools: vec![(String::from("print"), print_tool)].into_iter().collect(),
             envs: HashMap::new(),
-            target: target.clone()
+            task: task.clone()
         };
 
-        execute_target_job(workspace_dir.as_path(), &lua, &db_env, &task_job, tx.clone(), cache.clone());
+        execute_task_job(workspace_dir.as_path(), &lua, &db_env, &task_job, tx.clone(), cache.clone());
 
         let job_result = rx.recv_timeout(Duration::from_secs(1)).unwrap();
         match job_result {
-            TargetJobMessage::Complete{target: tgt, result} => {
+            TaskJobMessage::Complete{task: tgt, result} => {
                 assert_eq!(tgt, "test");
                 match result {
-                    TargetResult::Success => { /* pass */ },
+                    TaskResult::Success => { /* pass */ },
                     _ => panic!("Did not get a success message")
                 }
             },

@@ -1,3 +1,6 @@
+// For now, allow dead code, since a lot of large areas of the program are still under construction
+#![allow(dead_code)]
+
 extern crate clap;
 
 mod commands;

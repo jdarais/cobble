@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::datamodel::{
     BuildEnv,
-    Task,
+    TaskDef,
     ExternalTool,
     Project
 };
@@ -88,7 +88,7 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     })?;
     cxt.set("create_build_env", create_build_env)?;
 
-    let create_task_func = lua.create_function(|_, task: Task| {
+    let create_task_func = lua.create_function(|_, task: TaskDef| {
         Ok(mlua::AnyUserData::wrap(task))
     })?;
     cxt.set("create_task", create_task_func)?;

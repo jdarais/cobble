@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf}
 };
 
-use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, Task};
+use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, TaskDef};
 
 #[derive(Debug)]
 pub enum NameResolutionError {
@@ -135,7 +135,7 @@ fn resolve_names_in_artifact(project_path: &Path, artifact: &mut Artifact) -> Re
     Ok(())
 }
 
-fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut Task) -> Result<(), NameResolutionError> {
+fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut TaskDef) -> Result<(), NameResolutionError> {
     task.name = resolve_name(project_name, task.name.as_str())?;
 
     if let Some((_, env_name)) = &mut task.build_env {

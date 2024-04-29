@@ -6,27 +6,27 @@ use std::{collections::HashMap, fmt};
 use lmdb::Transaction;
 use serde::{Serialize, Deserialize};
 
-const TARGET_KEY_PREFIX: &str = "target:";
+const TASK_KEY_PREFIX: &str = "task:";
 
 
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TargetInput {
+pub struct TaskInput {
     pub file_hashes: HashMap<String, Vec<u8>>,
     pub task_outputs: HashMap<String, serde_json::Value>
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TargetRecord {
-    pub input: TargetInput,
+pub struct TaskRecord {
+    pub input: TaskInput,
     pub output: serde_json::Value
 }
 
 
-fn get_target_key(target_name: &str) -> String {
-    let mut key = String::with_capacity(TARGET_KEY_PREFIX.len() + target_name.len());
-    key.push_str(TARGET_KEY_PREFIX);
-    key.push_str(target_name);
+fn get_task_key(task_name: &str) -> String {
+    let mut key = String::with_capacity(TASK_KEY_PREFIX.len() + task_name.len());
+    key.push_str(TASK_KEY_PREFIX);
+    key.push_str(task_name);
     key
 }
 
@@ -48,16 +48,16 @@ impl fmt::Display for GetError {
     }
 }
 
-pub fn get_target_record(db_env: &lmdb::Environment, target_name: &str) -> Result<TargetRecord, GetError> {
+pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<TaskRecord, GetError> {
     let db = db_env.open_db(None).map_err(|e| GetError::DBError(e))?;
     let tx = db_env.begin_ro_txn().map_err(|e| GetError::DBError(e))?;
     
-    let target_key = get_target_key(target_name);
-    let target_record_data = tx.get(db, &target_key)
+    let task_key = get_task_key(task_name);
+    let task_record_data = tx.get(db, &task_key)
         .map_err(|e| match e {
-            lmdb::Error::NotFound => GetError::NotFound(target_key),
+            lmdb::Error::NotFound => GetError::NotFound(task_key),
             _ => GetError::DBError(e)
         })?;
 
-    serde_json::from_slice(target_record_data).map_err(|e| GetError::ParseError(e))
+    serde_json::from_slice(task_record_data).map_err(|e| GetError::ParseError(e))
 }
