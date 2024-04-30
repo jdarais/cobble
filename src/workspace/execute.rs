@@ -3,10 +3,10 @@ extern crate sha2;
 extern crate serde_json;
 
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
@@ -20,6 +20,7 @@ use crate::workspace::db::{get_task_record, new_db_env, GetError};
 use crate::workspace::dependency::compute_forward_edges;
 use crate::workspace::query::{Workspace, Task};
 
+#[derive(Debug)]
 pub struct TaskJob {
     pub task_name: String,
     pub tools: HashMap<String, Arc<ExternalTool>>,
@@ -29,7 +30,8 @@ pub struct TaskJob {
 
 #[derive(Debug)]
 pub enum TaskJobMessage {
-    Output{task: String, output: String},
+    Stdout{task: String, s: String},
+    Stderr{task: String, s: String},
     Complete{task: String, result: TaskResult},
 }
 
@@ -57,6 +59,14 @@ impl fmt::Display for TaskExecutionError {
             EnvLookupError(env) => write!(f, "Build env not found while creating jbos: {}", env),
             TaskResultError{task, message} => write!(f, "Execution of task {} failed with error: {}", task, message)
         }
+    }
+}
+
+pub fn strip_error_context(error: &mlua::Error) -> mlua::Error {
+    match error {
+        mlua::Error::WithContext{context: _, cause} => strip_error_context(&*cause),
+        mlua::Error::CallbackError{traceback: _, cause} => strip_error_context(&*cause),
+        _ => error.clone()
     }
 }
 
@@ -159,8 +169,12 @@ impl TaskExecutor {
     {
         self.ensure_worker_threads();
 
+        let mut completed_jobs: HashSet<String> = HashSet::new();
+
         let forward_edges = compute_forward_edges(workspace);
         let mut remaining_jobs = create_jobs_for_tasks(workspace, tasks)?;
+
+        let total_jobs = remaining_jobs.len();
 
         let mut jobs_without_dependencies: Vec<String> = Vec::new();
         for (task_name, task_job) in remaining_jobs.iter() {
@@ -174,12 +188,14 @@ impl TaskExecutor {
             self.push_task_job(job);
         }
 
-        while remaining_jobs.len() > 0 {
+        while completed_jobs.len() < total_jobs {
             let message = self.message_channel.1.recv().unwrap();
 
             match message {
-                TaskJobMessage::Output{task, output} => { println!("{}: {}", task, output); },
+                TaskJobMessage::Stdout{task, s} => { print!("{}: {}", task, s); },
+                TaskJobMessage::Stderr{task, s} => { let _ = write!(io::stderr(), "{}: {}", task, s); }
                 TaskJobMessage::Complete{task, result} => {
+                    completed_jobs.insert(task.clone());
                     match result {
                         TaskResult::UpToDate => { println!("{} is up to date", task); },
                         TaskResult::Success => { println!("{} succeeded", task); },
@@ -191,7 +207,9 @@ impl TaskExecutor {
                         for &fwd_edge in fwd_edges {
                             let fwd_task_job_opt = remaining_jobs.remove(fwd_edge);
                             if let Some(fwd_task_job) = fwd_task_job_opt {
-                                self.push_task_job(fwd_task_job)
+                                if fwd_task_job.task.task_deps.iter().all(|d| completed_jobs.contains(d)) {
+                                    self.push_task_job(fwd_task_job)
+                                }
                             }
                         }
                     }
@@ -204,11 +222,13 @@ impl TaskExecutor {
 
     fn push_task_job(&mut self, task_job: TaskJob) {
         let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
-        let mut task_queue_opt = task_queue_mutex.lock().unwrap();
-        if let Some(task_queue) = task_queue_opt.as_mut() {
-            task_queue.push_back(task_job);
-            task_queue_cvar.notify_one();
+        {
+            let mut task_queue_opt = task_queue_mutex.lock().unwrap();
+            if let Some(task_queue) = task_queue_opt.as_mut() {
+                task_queue.push_back(task_job);
+            }
         }
+        task_queue_cvar.notify_one();
     }
 }
 
@@ -237,34 +257,36 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
 
         local create_action_context, invoke_tool, invoke_build_env, invoke_action
 
-        create_action_context = function (action, extra_tools, extra_build_envs, project_dir, args)
+        create_action_context = function (action, extra_tools, extra_build_envs, project_dir, out, err, args)
             local action_context = {
                 tool = {},
                 env = {},
                 args = args,
                 action = action,
-                project = { dir = project_dir }
+                project = { dir = project_dir },
+                out = out,
+                err = err
             }
 
             for tool_alias, tool_name in pairs(extra_tools) do
                 action_context.tool[tool_alias] = function (...)
-                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, table.pack(...))
+                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
                 end
             end
             for tool_alias, tool_name in pairs(action.tool) do
                 action_context.tool[tool_alias] = function (...)
-                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, table.pack(...))
+                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
                 end
             end
 
             for env_alias, env_name in pairs(extra_build_envs) do
                 action_context.env[env_alias] = function (...)
-                    return cobble.invoke_build_env(env_name, extra_tools, extra_biuld_envs, project_dir, table.pack(...))
+                    return cobble.invoke_build_env(env_name, extra_tools, extra_biuld_envs, project_dir, out, err, table.pack(...))
                 end
             end
             for env_alias, env_name in pairs(action.build_env) do
                 action_context.env[env_alias] = function (...)
-                    return cobble.invoke_build_env(env_name, extra_tools, extra_build_envs, project_dir, table.pack(...))
+                    return cobble.invoke_build_env(env_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
                 end
             end
 
@@ -278,24 +300,24 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
                 local tool_alias = next(action.tool)
                 local env_alias = next(action.build_env)
                 if tool_alias then
-                    action_context.tool[tool_alias](table.unpack(action))
+                    return action_context.tool[tool_alias](table.unpack(action))
                 elseif env_alias then
-                    action_context.env[env_alias](table.unpack(action))
+                    return action_context.env[env_alias](table.unpack(action))
                 else
                     error("No tool or build env provided for arg list style action: " .. table.concat(action, ","))
                 end
             end   
         end
 
-        invoke_tool = function (name, extra_tools, extra_build_envs, project_dir, args)
+        invoke_tool = function (name, extra_tools, extra_build_envs, project_dir, out, err, args)
             local action = cobble._tool_cache[name].action
-            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, args)
+            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, out, err, args)
             return invoke_action(action, action_context)
         end
 
-        invoke_build_env = function (name, project_dir, args)
+        invoke_build_env = function (name, extra_tools, extra_build_envs, project_dir, out, err, args)
             local action = cobble._build_env_cache[name].action
-            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, args)
+            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, out, err, args)
             return invoke_action(action, action_context)
         end
         
@@ -373,14 +395,19 @@ fn ensure_build_env_is_cached(lua: &mlua::Lua, build_env: &BuildEnv) -> mlua::Re
     Ok(())
 }
 
-fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob) -> mlua::Result<mlua::Value<'lua>> {
+enum ExecuteTaskActionError {
+    LuaError(mlua::Error),
+    ActionFailed(String),
+}
+
+fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, sender: &Sender<TaskJobMessage>) -> Result<mlua::Value<'lua>, ExecuteTaskActionError> {
     // Make sure build envs and tools we need are 
     for (_, tool) in task.tools.iter() {
-        ensure_tool_is_cached(lua, tool.as_ref())?;
+        ensure_tool_is_cached(lua, tool.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
     }
 
     for (_, env) in task.envs.iter() {
-        ensure_build_env_is_cached(lua, env.as_ref())?;
+        ensure_build_env_is_cached(lua, env.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
     }
 
     let extra_tools: HashMap<&str, &str> = task.tools.iter()
@@ -392,26 +419,67 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob) -> mlua::Res
         .collect();
 
     let project_dir = task.task.dir.to_str()
-        .ok_or_else(|| mlua::Error::runtime(format!("Unable to convert path to a UTF-8 string: {}", task.task.dir.display())))?;
+        .ok_or_else(|| mlua::Error::runtime(format!("Unable to convert path to a UTF-8 string: {}", task.task.dir.display())))
+        .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
 
-    let mut args: mlua::Value = mlua::Value::Table(lua.create_table()?);
+    let out_task_name_clone = task.task_name.clone();
+    let out_sender_clone = sender.clone();
+    let out = lua.create_function(move |_lua, s: String| {
+        out_sender_clone.send(TaskJobMessage::Stdout{task: out_task_name_clone.clone(), s})
+            .map_err(|e| mlua::Error::runtime(format!("Error sending output from executor thread: {}", e)))
+    }).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
+    let err_task_name_clone = task.task_name.clone();
+    let err_sender_clone = sender.clone();
+    let err = lua.create_function(move |_lua, s: String| {
+        err_sender_clone.send(TaskJobMessage::Stderr{task: err_task_name_clone.clone(), s})
+            .map_err(|e| mlua::Error::runtime(format!("Error sending output from executor thread: {}", e)))
+    }).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
+    let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
-        let action_lua = lua.pack(action.clone())?;
+        let action_lua = lua.pack(action.clone())
+            .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
 
-        let cobble_table: mlua::Table = lua.globals().get("cobble")?;
-        let create_action_context: mlua::Function = cobble_table.get("create_action_context")?;
+        let cobble_table: mlua::Table = lua.globals().get("cobble")
+            .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
+        let create_action_context: mlua::Function = cobble_table.get("create_action_context")
+            .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
         let action_context: mlua::Table = create_action_context.call((
             action_lua.clone(),
             extra_tools.clone(),
             extra_build_envs.clone(),
-            task.task.dir.to_str(),
             project_dir.to_owned(),
+            out.clone(),
+            err.clone(),
             args.clone())
-        )?;
+        ).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
 
-        let invoke_action: mlua::Function = cobble_table.get("invoke_action")?;
-        let action_result: mlua::Value = invoke_action.call((action_lua, action_context))?;
-        args = action_result;
+        let invoke_action_chunk = lua.load(r#"
+            local action, action_context = ...
+            return xpcall(cobble.invoke_action, function (msg) return msg end, action, action_context)
+        "#);
+
+        let action_result: mlua::MultiValue = invoke_action_chunk.call((action_lua, action_context))
+            .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
+        let mut action_result_iter = action_result.into_iter();
+        let success = action_result_iter.next().unwrap_or(mlua::Value::Nil);
+        let result = action_result_iter.next().unwrap_or(mlua::Value::Nil);
+
+        let success_bool: bool = lua.unpack(success).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+        if success_bool {
+            args = result;
+        } else {
+            let message = match result {
+                mlua::Value::String(s) => s.to_str().unwrap_or("<error reading message>").to_owned(),
+                mlua::Value::Error(e) => e.to_string(),
+                _ => format!("{:?}", result)
+            };
+            return Err(ExecuteTaskActionError::ActionFailed(message));
+        }
     }
 
     Ok(args)
@@ -498,12 +566,26 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         return;
     }
 
-    execute_task_actions(lua, task).unwrap();
-    task_result_sender.send(TaskJobMessage::Complete {
-        task: task.task_name.clone(),
-        result: TaskResult::Success
-}).unwrap();
+    let result = execute_task_actions(lua, task, &task_result_sender);
+    match result {
+        Ok(_) => {
+            task_result_sender.send(TaskJobMessage::Complete {
+                task: task.task_name.clone(),
+                result: TaskResult::Success
+            }).unwrap();
+        },
+        Err(e) => {
+            let message = match e {
+                ExecuteTaskActionError::ActionFailed(msg) => msg,
+                ExecuteTaskActionError::LuaError(e) => e.to_string()
+            };
 
+            task_result_sender.send(TaskJobMessage::Complete {
+                task: task.task_name.clone(),
+                result: TaskResult::Error(message)
+            }).unwrap();
+        }
+    }
 }
 
 #[cfg(test)]

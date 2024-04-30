@@ -8,7 +8,7 @@ mod datamodel;
 mod lua;
 mod workspace;
 
-use std::path::Path;
+use std::{path::Path, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 
@@ -36,7 +36,7 @@ enum Command {
 }
 
 
-fn run_from_dir(path: &Path) {
+fn run_from_dir(path: &Path) -> ExitCode {
     let config = get_workspace_config(path).unwrap();
 
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
@@ -45,9 +45,11 @@ fn run_from_dir(path: &Path) {
     for (name, proj) in projects.iter() {
         println!("\"{}\" = {}", name, proj);
     }
+
+    ExitCode::from(0)
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Cli::parse();
     
     let cwd = std::env::current_dir().expect("was run from a directory");
@@ -59,17 +61,17 @@ fn main() {
                     cwd: cwd.as_path(),
                     tasks: tasks.iter().map(|s| s.as_str()).collect()
                 };
-                list_command(input);
+                list_command(input)
             },
             Command::Run{tasks} => {
                 run_command(RunCommandInput {
                     cwd: cwd.as_path(),
                     tasks: tasks.iter().map(|s| s.as_str()).collect()
-                });
+                })
             }
         },
         None => {
-            run_from_dir(cwd.as_path());
+            run_from_dir(cwd.as_path())
         }
     }
 }

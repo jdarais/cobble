@@ -1,4 +1,4 @@
-use std::path::{Component, Path};
+use std::{path::{Component, Path}, process::ExitCode};
 
 use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, load::load_projects, query::{create_workspace, find_project_for_dir, find_tasks_for_dir, find_tasks_for_query}, resolve::project_path_to_project_name};
 
@@ -8,7 +8,7 @@ pub struct ListCommandInput<'a> {
     pub tasks: Vec<&'a str>
 }
 
-pub fn list_command<'a>(input: ListCommandInput<'a>) {
+pub fn list_command<'a>(input: ListCommandInput<'a>) -> ExitCode {
     let config = get_workspace_config(input.cwd).unwrap();
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
@@ -31,4 +31,6 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) {
 
         println!("{}", rel_name.unwrap_or(name));
     }
+
+    ExitCode::from(0)
 }

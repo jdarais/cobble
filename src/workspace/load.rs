@@ -199,7 +199,15 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     // Inject an __COBBLE_INTERNAL__ project with the "cmd" tool
     //
     let cmd_tool_action_func: mlua::Function = lua.load(r#"
-        function (c) cmd { cwd = c.project.dir, table.unpack(c.args) } end
+        function (c)
+            local result = cmd { cwd = c.project.dir, table.unpack(c.args) }
+
+            c.out(result.stdout)
+            c.err(result.stderr)
+            if result.status ~= 0 then
+                error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
+            end
+        end
     "#).eval()?;
 
     let cmd_tool = ExternalTool {
