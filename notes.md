@@ -73,7 +73,22 @@ action_context = {
 }
 ```
 
+---
+
 __Docker Build Environment:__
 I'd like to be able to support using a docker container as a build environment.  That is, installing the environment would amount to creating a docker container and installing any build dependencies into it, and actions run in that build environment would be executed with `docker exec`.  Ideally, you'd also be able to run cobble while already inside the docker environment, (e.g in CI or using devcontainers,) in which case running the action in the build environment would just drop the `docker exec` and run the command directly.
 
 I guess a challenge arises when you account for dependencies on other tasks using other environments.  How do those get executed?  Maybe it's best not to support the "I'm already in a container" scenario.  In CI, you could just run the build as usual with a dind container.  With devcontainers, you can [attach to a running container](https://code.visualstudio.com/docs/devcontainers/attach-container) to do development within the container itself.
+
+---
+
+__Calculated Dependencies:__
+I think another challenge will be calculated dependencies.  You can add `calc` as a dependency category, so that you can delegate to tasks to dynamically compute dependencies, but take the scenario where you want to parse a pyproject.toml file to compute dependencies.  The task discovers local path dependencies, and adds those as file dependencies to the poetry install task. But, we also have a docker build task, which requires that the local path dependencies are inside the poetry project directory, which also happens to be the docker context that is used to build the docker image.  So, not only do we need to read the pyproject.toml for local path dependencies, we need to also have the pyproject.toml reference an in-project version of those local archives, and then have a task that will copy them from somewhere into the project.  However, now we have a problem: it's easy enough to calculate the dependencies of the poetry install task, but how do we generate the dependencies of the copy files task(s)?  Do we re-parse the pyproject.toml file, and just apply a different transformation to the result?
+
+One idea: allow "named task dependencies".  Similar to how build environments and tools can be aliased and referenced within the task's action, we could also allow aliasing a task dependency, and outputs of dependencies would be made available in the action context under `c.deps.tasks`.
+
+We could potentially do this with files, too, which could be helpful if we ever support file globs or directories as dependencies.  The alias under `c.deps.files` would give you the list of files that the dependency resolved to.
+
+Allowing access to the output of a dependency task would enable the copy task to have a calc dependency that depends on the calc dependency of the poetry install task.  It could then simply apply a transformation to the file names to derive where the files should be copied from.
+
+Another thought was to allow "task generators", which act similarly to calc deps, but generate whole tasks instead of just dependencies.  These task generators would always have to run up-front, since they could potentially produce new artifact entries.  The question is what they would take as input.  You wouldn't get anything that wasn't available to you in the initial execution of all the project.lua scripts, but there would be an opportunity for declaring dependencies and caching results of the task generator tasks.
