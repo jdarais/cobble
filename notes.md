@@ -92,3 +92,11 @@ We could potentially do this with files, too, which could be helpful if we ever 
 Allowing access to the output of a dependency task would enable the copy task to have a calc dependency that depends on the calc dependency of the poetry install task.  It could then simply apply a transformation to the file names to derive where the files should be copied from.
 
 Another thought was to allow "task generators", which act similarly to calc deps, but generate whole tasks instead of just dependencies.  These task generators would always have to run up-front, since they could potentially produce new artifact entries.  The question is what they would take as input.  You wouldn't get anything that wasn't available to you in the initial execution of all the project.lua scripts, but there would be an opportunity for declaring dependencies and caching results of the task generator tasks.
+
+---
+
+__Artifacts and Task Outputs:__
+
+One question is, what should be considered a task's artifacts?  I think it would make sense to include both the task's (file) artifacts and action output as the task's artifacts.  For most tasks with file artifacts, the task's action output will be nil.  But, what if the task has both file artifacts and a non-nil action output?  That's fine, though other tasks need a way to make up-to-date checks against the files and action output independently.  For example, if a task depends on a file, (but not the task that has the file as its artifact,) then it should only have to re-run if the file it depends on changes.  Changes in the output of the task that produces the file should not trigger a re-run, since the depending task only declared the file as a dependency.  This is similar to the situation where a task depends on only one of another task's file artifacts.  If one file artifact changes, but the file artifact that the task depends on didn't change, then the task should not be re-run.
+
+---

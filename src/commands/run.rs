@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
+use crate::workspace::dependency::compute_file_providers;
 use crate::workspace::execute::TaskExecutor;
 use crate::workspace::load::load_projects;
 use crate::workspace::query::{create_workspace, find_tasks_for_dir, find_tasks_for_query};
@@ -16,7 +17,8 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
     let config = get_workspace_config(input.cwd).unwrap();
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
-    let workspace = create_workspace(projects.values());
+    let file_providers = compute_file_providers(projects.values());
+    let workspace = create_workspace(projects.values(), &file_providers);
 
     let project_dir = find_nearest_project_dir(input.cwd, &config.workspace_dir).unwrap();
     let project_name = project_path_to_project_name(project_dir.as_path()).unwrap();

@@ -3,7 +3,9 @@ use std::fmt;
 use std::hash::Hash;
 use std::os::raw::c_void;
 
-#[derive(Clone, Debug)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DetachedLuaValue {
     Nil,
     Boolean(bool),
@@ -12,7 +14,6 @@ pub enum DetachedLuaValue {
     String(String),
     Table(HashMap<DetachedLuaValue, DetachedLuaValue>),
     Function(FunctionDump),
-    Error(mlua::Error)
 }
 
 impl fmt::Display for DetachedLuaValue {
@@ -33,7 +34,6 @@ impl fmt::Display for DetachedLuaValue {
                 f.write_str("}")
             }
             Function(val) => write!(f, "{}", val),
-            Error(val) => write!(f, "Error({})", val)
         }
     }
 }
@@ -71,10 +71,6 @@ impl PartialEq for DetachedLuaValue {
                 Function(other_val) => this_val == other_val,
                 _ => false
             },
-            Error(this_val) => match other {
-                Error(other_val) => this_val.to_string() == other_val.to_string(),
-                _ => false
-            }
         }
     }
 }
@@ -115,10 +111,6 @@ impl Hash for DetachedLuaValue {
                     upval.hash(state);
                 }
             },
-            Error(val) => {
-                state.write(b"err");
-                val.to_string().hash(state);
-            }
         }
 
     }
@@ -216,7 +208,7 @@ pub fn detach_value<'lua>(value: mlua::Value<'lua>, lua: &'lua mlua::Lua, histor
         mlua::Value::Function(f) => Ok(DetachedLuaValue::Function(dump_function(f, lua, &history)?)),
         mlua::Value::UserData(d) => Err(mlua::Error::runtime(format!("Cannot serialize a user data object: {:?}", d))),
         mlua::Value::LightUserData(d) => Err(mlua::Error::runtime(format!("Cannot serialize a light user data object: {:?}", d))),
-        mlua::Value::Error(e) => Ok(DetachedLuaValue::Error(e)),
+        mlua::Value::Error(e) => Err(mlua::Error::runtime(format!("Cannot serialize an error object: {:?}", e))),
         mlua::Value::Thread(t) => Err(mlua::Error::runtime(format!("Cannot serialize a thread object: {:?}", t)))
     }
 }
@@ -238,12 +230,11 @@ impl <'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
             String(val) => Ok(mlua::Value::String(lua.create_string(val.as_str())?)),
             Table(val) => val.into_lua(lua),
             Function(val) => Ok(mlua::Value::Function(hydrate_function(val, lua)?)),
-            Error(val) => Ok(mlua::Value::Error(val))
         }
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct FunctionDump {
     pub source: Vec<u8>,
     pub upvalues: Vec<DetachedLuaValue>

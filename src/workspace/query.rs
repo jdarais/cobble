@@ -13,12 +13,18 @@ pub enum TaskType {
 }
 
 #[derive(Clone, Debug)]
+pub struct FileDependency {
+    pub path: String,
+    pub provided_by_task: Option<String>
+}
+
+#[derive(Clone, Debug)]
 pub struct Task {
     pub task_type: TaskType,
     pub dir: PathBuf,
     pub build_envs: HashMap<String, String>,
     pub tools: HashMap<String, String>,
-    pub file_deps: Vec<String>,
+    pub file_deps: Vec<FileDependency>,
     pub task_deps: Vec<String>,
     pub calc_deps: Vec<String>,
     pub actions: Vec<Action>,
@@ -69,11 +75,14 @@ pub fn find_tasks_for_query<'w, 'i, I>(workspace: &'w Workspace, project_name: &
     Ok(result)
 }
 
-fn add_dependency_to_task(dep: &Dependency, task: &mut Task) {
+fn add_dependency_to_task(dep: &Dependency, file_providers: &HashMap<&str, &str>, task: &mut Task) {
     match dep {
         Dependency::File(f) => {
-            if !task.file_deps.contains(f) {
-                task.file_deps.push(f.clone());
+            if !task.file_deps.iter().any(|dep| &dep.path == f) {
+                task.file_deps.push(FileDependency {
+                    path: f.clone(),
+                    provided_by_task: file_providers.get(f.as_str()).map(|&t| t.to_owned())
+                });
             }
         },
         Dependency::Task(t) => {
@@ -101,7 +110,7 @@ fn add_action_to_task(action: &Action, task: &mut Task) {
     task.actions.push(action.clone());
 }
 
-fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut Workspace) {
+fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
     let mut install_task = Task {
         task_type: TaskType::BuildEnv,
         dir: PathBuf::from(dir),
@@ -115,7 +124,7 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut 
     };
 
     for dep in build_env.deps.iter() {
-        add_dependency_to_task(dep, &mut install_task);
+        add_dependency_to_task(dep, file_providers, &mut install_task);
     }
 
     for install_action in build_env.install.iter() {
@@ -126,7 +135,7 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, workspace: &mut 
     workspace.build_envs.insert(build_env.name.clone(), Arc::new(build_env.clone()));
 }
 
-fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, workspace: &mut Workspace) {
+fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
     let mut task = Task {
         task_type: TaskType::Task,
         dir: PathBuf::from(dir),
@@ -140,7 +149,7 @@ fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, workspace: &mut Workspa
     };
 
     for dep in task_def.deps.iter() {
-        add_dependency_to_task(dep, &mut task);
+        add_dependency_to_task(dep, file_providers, &mut task);
     }
 
     for action in task_def.actions.iter() {
@@ -150,7 +159,7 @@ fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, workspace: &mut Workspa
     workspace.tasks.insert(task_def.name.clone(), Arc::new(task));
 }
 
-fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
+fn add_project_to_workspace(project: &Project, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
     if project.name != "/__COBBLE_INTERNAL__" {
         workspace.tasks.insert(project.name.clone(), Arc::new(
         Task {
@@ -170,11 +179,11 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 
     for env in project.build_envs.iter() {
-        add_build_env_to_workspace(env, project.path.as_path(), workspace);
+        add_build_env_to_workspace(env, project.path.as_path(), file_providers, workspace);
     }
 
     for task in project.tasks.iter() {
-        add_task_to_workspace(task, project.path.as_path(), workspace);
+        add_task_to_workspace(task, project.path.as_path(), file_providers, workspace);
     }
 
     for tool in project.tools.iter() {
@@ -182,7 +191,9 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 }
 
-pub fn create_workspace<'a, P>(all_projects: P) -> Workspace
+
+
+pub fn create_workspace<'a, P>(all_projects: P, file_providers: &HashMap<&'a str, &'a str>) -> Workspace
     where P: Iterator<Item = &'a Project>
 {
     let mut workspace = Workspace {
@@ -190,8 +201,11 @@ pub fn create_workspace<'a, P>(all_projects: P) -> Workspace
         build_envs: HashMap::new(),
         tools: HashMap::new()
     };
-    for project in all_projects {
-        add_project_to_workspace(project, &mut workspace);
+
+    let projects_vec: Vec<&'a Project> = all_projects.collect();
+
+    for project in projects_vec.iter().copied() {
+        add_project_to_workspace(project, &file_providers, &mut workspace);
     }
 
     workspace

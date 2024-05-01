@@ -4,6 +4,7 @@ extern crate serde_json;
 
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::f32::consts::E;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -15,8 +16,9 @@ use std::thread::{self, JoinHandle};
 use sha2::{Digest, Sha256};
 
 use crate::datamodel::{BuildEnv, ExternalTool};
+use crate::lua::detached_value::DetachedLuaValue;
 use crate::lua::lua_env::create_lua_env;
-use crate::workspace::db::{get_task_record, new_db_env, GetError};
+use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskRecord};
 use crate::workspace::dependency::compute_forward_edges;
 use crate::workspace::query::{Workspace, Task};
 
@@ -70,6 +72,12 @@ pub fn strip_error_context(error: &mlua::Error) -> mlua::Error {
     }
 }
 
+fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<&'a str> {
+    task.task_deps.iter().map(|t| t.as_str())
+    .chain(task.file_deps.iter().filter_map(|f| f.provided_by_task.as_ref().map(|t| t.as_str())))
+    .collect()
+}
+
 pub fn create_jobs_for_tasks<'a, T>(workspace: &Workspace, tasks: T) -> Result<HashMap<String, TaskJob>, TaskExecutionError>
     where T: Iterator<Item = &'a str>
 {
@@ -108,16 +116,16 @@ fn add_jobs_for_task(workspace: &Workspace, task_name: &str, jobs: &mut HashMap<
 
     jobs.insert(task_name.to_owned(), job);
 
-    for dep in task.task_deps.iter() {
-        add_jobs_for_task(workspace, dep.as_str(), jobs)?;
+    for dep in get_task_job_dependencies(&task) {
+        add_jobs_for_task(workspace, dep, jobs)?;
     }
 
     Ok(())
 }
 
-struct TaskExecutorCache {
-    file_hashes: RwLock<HashMap<String, Vec<u8>>>,
-    task_outputs: RwLock<HashMap<String, serde_json::Value>>
+pub struct TaskExecutorCache {
+    pub file_hashes: RwLock<HashMap<String, Vec<u8>>>,
+    pub task_outputs: RwLock<HashMap<String, serde_json::Value>>
 }
 
 pub struct TaskExecutor {
@@ -142,6 +150,10 @@ impl TaskExecutor {
                 task_outputs: RwLock::new(HashMap::new())
             })
         }
+    }
+
+    pub fn cache(&self) -> Arc<TaskExecutorCache> {
+        self.cache.clone()
     }
 
     pub fn ensure_worker_threads(&mut self) {
@@ -395,9 +407,24 @@ fn ensure_build_env_is_cached(lua: &mlua::Lua, build_env: &BuildEnv) -> mlua::Re
     Ok(())
 }
 
+#[derive(Debug)]
 enum ExecuteTaskActionError {
     LuaError(mlua::Error),
     ActionFailed(String),
+    SerializeError(serde_json::Error),
+    SaveOutputError(PutError)
+}
+
+impl fmt::Display for ExecuteTaskActionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ExecuteTaskActionError::*;
+        match self {
+            LuaError(e) => write!(f, "Lua error: {}", e),
+            ActionFailed(s) => write!(f, "Action failed: {}", s),
+            SerializeError(e) => write!(f, "(De)serialization of value failed: {}", e),
+            SaveOutputError(e) => write!(f, "Error saving task output to database: {}", e)
+        }
+    }
 }
 
 fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, sender: &Sender<TaskJobMessage>) -> Result<mlua::Value<'lua>, ExecuteTaskActionError> {
@@ -485,6 +512,41 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, sender: &Sen
     Ok(args)
 }
 
+fn get_current_task_input(workspace_dir: &Path, task: &TaskJob, db_env: &lmdb::Environment, cache: &Arc<TaskExecutorCache>) -> TaskInput {
+    let mut current_task_input = TaskInput {
+        file_hashes: HashMap::new(),
+        task_outputs: HashMap::new()
+    };
+
+    for file_dep in task.task.file_deps.iter() {
+        let cached_hash = cache.file_hashes.read().unwrap().get(&file_dep.path).cloned();
+        let current_hash = match cached_hash {
+            Some(hash) => hash,
+            None => {
+                let file_hash = compute_file_hash(workspace_dir.join(Path::new(file_dep.path.as_str())).as_path()).unwrap();
+                cache.file_hashes.write().unwrap().insert(file_dep.path.clone(), file_hash.clone());
+                file_hash
+            }
+        };
+        current_task_input.file_hashes.insert(file_dep.path.clone(), current_hash);
+    }
+
+    for task_dep in task.task.task_deps.iter() {
+        let cached_task_output = cache.task_outputs.read().unwrap().get(task_dep).cloned();
+        let current_task_output = match cached_task_output {
+            Some(output) => output,
+            None => {
+                let task_record = get_task_record(&db_env, task_dep).unwrap();
+                cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.clone());
+                task_record.output
+            }
+        };
+        current_task_input.task_outputs.insert(task_dep.clone(), current_task_output);
+    }
+
+    current_task_input
+}
+
 fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
     let mut up_to_date = true;
     let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
@@ -495,61 +557,43 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         }
     };
 
+    let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
+
     loop {
         let task_record = match task_record_opt {
             Some(r) => r,
             None => { up_to_date = false; break; }
         };
         
-        if task.task.file_deps.len() != task_record.input.file_hashes.len() {
+        if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
             up_to_date = false;
             break;
         }
 
-        for file_dep in task.task.file_deps.iter() {
-            let prev_hash = match task_record.input.file_hashes.get(file_dep) {
+        for (path, hash) in current_task_input.file_hashes.iter() {
+            let prev_hash = match task_record.input.file_hashes.get(path) {
                 Some(hash) => hash,
                 None => { up_to_date = false; break; }
             };
 
-            let cached_hash = cache.file_hashes.read().unwrap().get(file_dep).cloned();
-            let current_hash = match cached_hash {
-                Some(hash) => hash,
-                None => {
-                    let file_hash = compute_file_hash(workspace_dir.join(Path::new(file_dep)).as_path()).unwrap();
-                    cache.file_hashes.write().unwrap().insert(file_dep.clone(), file_hash.clone());
-                    file_hash
-                }
-            };
-
-            if prev_hash != &current_hash {
+            if prev_hash != hash {
                 up_to_date = false;
                 break;
             }
         }
 
-        if task.task.task_deps.len() != task_record.input.task_outputs.len() {
+        if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
             up_to_date = false;
             break;
         }
 
-        for task_dep in task.task.task_deps.iter() {
-            let prev_task_output = match task_record.input.task_outputs.get(task_dep) {
+        for (task_name, task_output) in current_task_input.task_outputs.iter() {
+            let prev_task_output = match task_record.input.task_outputs.get(task_name) {
                 Some(output) => output,
                 None => { up_to_date = false; break; }
             };
 
-            let cached_task_output = cache.task_outputs.read().unwrap().get(task_dep).cloned();
-            let current_task_output = match cached_task_output {
-                Some(output) => output,
-                None => {
-                    let task_record = get_task_record(&db_env, task_dep).unwrap();
-                    cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.clone());
-                    task_record.output
-                }
-            };
-
-            if prev_task_output != &current_task_output {
+            if prev_task_output != task_output {
                 up_to_date = false;
                 break;
             }
@@ -566,7 +610,21 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         return;
     }
 
-    let result = execute_task_actions(lua, task, &task_result_sender);
+    let task_name_clone = task.task_name.clone();
+    let cache_clone = cache.clone();
+
+    let result = execute_task_actions(lua, task, &task_result_sender)
+        .and_then(|v| lua.unpack::<DetachedLuaValue>(v).map_err(|e| ExecuteTaskActionError::LuaError(e)))
+        .and_then(|v| serde_json::to_value(v).map_err(|e| ExecuteTaskActionError::SerializeError(e)))
+        .and_then(move |v| {
+            let task_record = TaskRecord { input: current_task_input, output: v};
+            put_task_record(db_env, task_name_clone.as_str(), &task_record)
+                .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
+            cache_clone.task_outputs.write().unwrap().insert(task_name_clone.clone(), task_record.output);
+            Ok(())
+        });
+    
+    
     match result {
         Ok(_) => {
             task_result_sender.send(TaskJobMessage::Complete {
@@ -577,7 +635,9 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         Err(e) => {
             let message = match e {
                 ExecuteTaskActionError::ActionFailed(msg) => msg,
-                ExecuteTaskActionError::LuaError(e) => e.to_string()
+                ExecuteTaskActionError::LuaError(e) => e.to_string(),
+                ExecuteTaskActionError::SerializeError(e) => e.to_string(),
+                ExecuteTaskActionError::SaveOutputError(e) => e.to_string(),
             };
 
             task_result_sender.send(TaskJobMessage::Complete {

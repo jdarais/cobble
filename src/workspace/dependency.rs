@@ -1,12 +1,13 @@
 use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::AsRef, fmt, sync::Arc};
 
-use crate::workspace::query::{Workspace, Task};
+use crate::{datamodel::Project, workspace::{execute::{TaskExecutionError, TaskExecutor}, query::{Task, Workspace}}};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {
     CycleError(String),
     TaskLookupError(String),
-    DuplicateFileProviderError{provider1: String, provider2: String, file: String}
+    DuplicateFileProviderError{provider1: String, provider2: String, file: String},
+    TaskExecutionError(TaskExecutionError)
 }
 
 impl fmt::Display for ExecutionGraphError {
@@ -16,49 +17,60 @@ impl fmt::Display for ExecutionGraphError {
             CycleError(task) => write!(f, "Cycle detected at {}", task),
             TaskLookupError(task) => write!(f, "Task not found: {}", task),
             DuplicateFileProviderError{provider1, provider2, file} =>
-                write!(f, "Multiple providers found for file dependency {}: {}, {}", file, provider1, provider2)
+                write!(f, "Multiple providers found for file dependency {}: {}, {}", file, provider1, provider2),
+            TaskExecutionError(e) => write!(f, "{}", e)
         }
     }
 }
 
-fn compute_file_providers<'a>(workspace: &'a Workspace) -> Result<HashMap<&'a String, &'a String>, ExecutionGraphError> {
-    let mut file_providers: HashMap<&'a String, &'a String> = HashMap::new();
+pub fn compute_file_providers<'a, P>(projects: P) -> HashMap<&'a str, &'a str>
+    where P: Iterator<Item = &'a Project>
+{
+    let mut file_providers: HashMap<&'a str, &'a str> = HashMap::new();
 
-    for (task_name, task) in workspace.tasks.iter() {
-        for artifact in task.artifacts.iter() {
-            file_providers.insert(&artifact.filename, &task_name);
-        }
-    }
-
-    Ok(file_providers)
-}
-
-fn materialize_dependencies_in_subtree(workspace: &mut Workspace, task_name: &str, file_providers: &HashMap<&String, &String>) -> Result<bool, ExecutionGraphError> {
-    let task = workspace.tasks.get(task_name)
-        .ok_or_else(|| ExecutionGraphError::TaskLookupError(task_name.to_owned()))?
-        .clone();
-
-    let mut updated_task: Cow<Task> = Cow::Borrowed(task.as_ref());
-
-    for file_dep in task.file_deps.iter() {
-        if let Some(&provider) = file_providers.get(file_dep) {
-            if !updated_task.task_deps.contains(provider) {
-                updated_task.to_mut().task_deps.push(provider.to_owned());
+    for project in projects {
+        for task in project.tasks.iter() {
+            for artifact in task.artifacts.iter() {
+                file_providers.insert(artifact.filename.as_str(), task.name.as_str());
             }
         }
     }
 
-    for _calc_dep in task.calc_deps.iter() {
-        // Ignore calc deps for now
+    file_providers
+}
+
+fn resolve_calculated_dependencies_in_subtree<'a>(task_name: &str, file_providers: &HashMap<&'a str, &'a str>, workspace: &'a mut Workspace, visited: &mut HashSet<String>, task_executor: &mut TaskExecutor) -> Result<bool, ExecutionGraphError> {
+    if visited.contains(task_name) {
+        return Err(ExecutionGraphError::CycleError(task_name.to_owned()));
     }
 
-    if let Cow::Owned(owned_updated_task) = updated_task {
-        workspace.tasks.insert(task_name.to_owned(), Arc::new(owned_updated_task));
+    visited.insert(task_name.to_owned());
+    
+    let task = workspace.tasks.get(task_name)
+        .ok_or_else(|| ExecutionGraphError::TaskLookupError(task_name.to_owned()))?
+        .clone();
+
+
+    for calc_dep in task.calc_deps.iter() {
+        resolve_calculated_dependencies_in_subtree(calc_dep.as_str(), file_providers, workspace, visited, task_executor)?;
+
+        task_executor.execute_tasks(workspace, Some(calc_dep.as_str()).iter().copied())
+            .map_err(|e| ExecutionGraphError::TaskExecutionError(e))?;
+
+
+        let executor_cache = task_executor.cache();
+        let task_outputs = executor_cache.task_outputs.read().unwrap();
+        let task_output = task_outputs.get(calc_dep)
+            .expect("calculated dependency task output should be available after executing");
+
+        println!("Calculated dependencies: {}", task_output);
     }
 
     for dep in task.task_deps.iter() {
-        materialize_dependencies_in_subtree(workspace, dep.as_str(), file_providers)?;
+        resolve_calculated_dependencies_in_subtree(dep.as_str(), file_providers, workspace, visited, task_executor)?;
     }
+
+    visited.remove(task_name);
 
     Ok(false)
 }

@@ -3,7 +3,7 @@ extern crate serde;
 
 use std::{collections::HashMap, fmt, path::Path};
 
-use lmdb::Transaction;
+use lmdb::{Transaction, WriteFlags};
 use serde::{Serialize, Deserialize};
 
 const TASK_KEY_PREFIX: &str = "task:";
@@ -49,10 +49,10 @@ impl fmt::Display for GetError {
 }
 
 pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<TaskRecord, GetError> {
+    let task_key = get_task_key(task_name);
+    
     let db = db_env.open_db(None).map_err(|e| GetError::DBError(e))?;
     let tx = db_env.begin_ro_txn().map_err(|e| GetError::DBError(e))?;
-    
-    let task_key = get_task_key(task_name);
     let task_record_data = tx.get(db, &task_key)
         .map_err(|e| match e {
             lmdb::Error::NotFound => GetError::NotFound(task_key),
@@ -60,6 +60,34 @@ pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<Ta
         })?;
 
     serde_json::from_slice(task_record_data).map_err(|e| GetError::ParseError(e))
+}
+
+#[derive(Debug)]
+pub enum PutError {
+    SerializeError(serde_json::Error),
+    DBError(lmdb::Error),
+}
+
+impl fmt::Display for PutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use PutError::*;
+        match self {
+            SerializeError(e) => write!(f, "Error serializing record: {}", e),
+            DBError(e) => write!(f, "Database error: {}", e),
+        }
+    }
+}
+
+pub fn put_task_record(db_env: &lmdb::Environment, task_name: &str, record: &TaskRecord) -> Result<(), PutError> {
+    let task_key = get_task_key(task_name);
+    
+    let serialized_record = serde_json::to_vec(record).map_err(|e| PutError::SerializeError(e))?;
+    
+    let db = db_env.open_db(None).map_err(|e| PutError::DBError(e))?;
+    let mut tx = db_env.begin_rw_txn().map_err(|e| PutError::DBError(e))?;
+    tx.put(db, &task_key, &serialized_record, WriteFlags::empty()).map_err(|e| PutError::DBError(e))?;
+
+    Ok(())
 }
 
 pub fn new_db_env(path: &Path) -> lmdb::Result<lmdb::Environment> {
