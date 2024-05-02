@@ -1,11 +1,11 @@
+extern crate serde_json;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 use std::os::raw::c_void;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum DetachedLuaValue {
     Nil,
     Boolean(bool),
@@ -14,6 +14,35 @@ pub enum DetachedLuaValue {
     String(String),
     Table(HashMap<DetachedLuaValue, DetachedLuaValue>),
     Function(FunctionDump),
+}
+
+impl DetachedLuaValue {
+    pub fn to_json(&self) -> serde_json::Value {
+        use DetachedLuaValue::*;
+        match self {
+            Nil => serde_json::Value::Null,
+            Boolean(b) => serde_json::Value::Bool(*b),
+            Integer(i) => serde_json::Number::from_f64(*i as f64)
+                .map(|n| serde_json::Value::Number(n))
+                .unwrap_or(serde_json::Value::Null),
+            Number(f) => serde_json::Number::from_f64(*f)
+                .map(|n| serde_json::Value::Number(n))
+                .unwrap_or(serde_json::Value::Null),
+            String(s) => serde_json::Value::String(s.clone()),
+            Table(t) => {
+                let mut map: serde_json::Map<std::string::String, serde_json::Value> = serde_json::Map::with_capacity(t.len());
+                for (k, v) in t.iter() {
+                    let k_json = match k {
+                        String(s) => s.clone(),
+                        _ => format!("{}", k)
+                    };
+                    map.insert(k_json, v.to_json());
+                }
+                serde_json::Value::Object(map)
+            },
+            Function(f) => serde_json::Value::String(format!("{}", f))
+        }
+    }
 }
 
 impl fmt::Display for DetachedLuaValue {
@@ -234,7 +263,7 @@ impl <'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct FunctionDump {
     pub source: Vec<u8>,
     pub upvalues: Vec<DetachedLuaValue>

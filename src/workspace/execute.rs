@@ -567,63 +567,61 @@ fn get_current_task_input(workspace_dir: &Path, task: &TaskJob, db_env: &lmdb::E
     current_task_input
 }
 
-fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
-    let mut up_to_date_task_record: Option<TaskRecord> = None;
-
-    let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
-
-    loop {
-        if task.task.file_deps.len() == 0 && task.task.task_deps.len() == 0 {
-            // If a task has no dependencies at all, there's nothing to check against to determine if the task is
-            // up-to-date.  In this case, we assume that the author of the task intended for it to always be run
-            break;
-        }
-
-        let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
-            Ok(r) => Some(r),
-            Err(e) => match e {
-                GetError::NotFound(_) => None,
-                _ => { panic!("Error retrieving task record from the database"); }
-            }
-        };
-
-        let task_record = match task_record_opt {
-            Some(r) => r,
-            None => { break; }
-        };
-        if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
-            break;
-        }
-
-        for (path, hash) in current_task_input.file_hashes.iter() {
-            let prev_hash = match task_record.input.file_hashes.get(path) {
-                Some(hash) => hash,
-                None => { break; }
-            };
-
-            if prev_hash != hash {
-                break;
-            }
-        }
-
-        if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
-            break;
-        }
-
-        for (task_name, task_output) in current_task_input.task_outputs.iter() {
-            let prev_task_output = match task_record.input.task_outputs.get(task_name) {
-                Some(output) => output,
-                None => { break; }
-            };
-
-            if prev_task_output != task_output {
-                break;
-            }
-        }
-
-        up_to_date_task_record = Some(task_record);
-        break;
+fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, current_task_input: &TaskInput) -> Option<TaskRecord> {
+    if task.task.file_deps.len() == 0 && task.task.task_deps.len() == 0 {
+        // If a task has no dependencies at all, there's nothing to check against to determine if the task is
+        // up-to-date.  In this case, we assume that the author of the task intended for it to always be run
+        return None;
     }
+
+    let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
+        Ok(r) => Some(r),
+        Err(e) => match e {
+            GetError::NotFound(_) => None,
+            _ => { panic!("Error retrieving task record from the database"); }
+        }
+    };
+
+    let task_record = match task_record_opt {
+        Some(r) => r,
+        None => { return None; }
+    };
+    if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
+        return None;
+    }
+
+    for (path, hash) in current_task_input.file_hashes.iter() {
+        let prev_hash = match task_record.input.file_hashes.get(path) {
+            Some(hash) => hash,
+            None => { return None; }
+        };
+
+        if prev_hash != hash {
+            return None;
+        }
+    }
+
+    if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
+        return None;
+    }
+
+    for (task_name, task_output) in current_task_input.task_outputs.iter() {
+        let prev_task_output = match task_record.input.task_outputs.get(task_name) {
+            Some(output) => output,
+            None => { return None; }
+        };
+
+        if prev_task_output != task_output {
+            return None;
+        }
+    }
+
+    Some(task_record)
+}
+
+fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
+    let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
+    let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
 
     if let Some(task_record) = up_to_date_task_record {
         cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
@@ -639,9 +637,8 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
 
     let result = execute_task_actions(lua, task, &task_result_sender)
         .and_then(|v| lua.unpack::<DetachedLuaValue>(v).map_err(|e| ExecuteTaskActionError::LuaError(e)))
-        .and_then(|v| serde_json::to_value(v).map_err(|e| ExecuteTaskActionError::SerializeError(e)))
         .and_then(move |v| {
-            let task_record = TaskRecord { input: current_task_input, output: v};
+            let task_record = TaskRecord { input: current_task_input, output: v.to_json()};
             put_task_record(db_env, task_name_clone.as_str(), &task_record)
                 .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
             cache_clone.task_outputs.write().unwrap().insert(task_name_clone.clone(), task_record.output);
