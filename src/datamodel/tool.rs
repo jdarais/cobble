@@ -56,6 +56,7 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
 
                 Ok(ExternalTool { name, install, check, action })
             },
+            mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to action: {:?}", &value)))
         }
     }
