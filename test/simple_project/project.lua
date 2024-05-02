@@ -1,7 +1,6 @@
 task {
     name = "task1",
     actions = {
-        { "sleep", "1" },
         { "echo", "Task 1!!" },
     }
 }

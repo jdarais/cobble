@@ -568,7 +568,7 @@ fn get_current_task_input(workspace_dir: &Path, task: &TaskJob, db_env: &lmdb::E
 }
 
 fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
-    let mut up_to_date = true;
+    let mut up_to_date_task_record: Option<TaskRecord> = None;
 
     let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
 
@@ -576,7 +576,6 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         if task.task.file_deps.len() == 0 && task.task.task_deps.len() == 0 {
             // If a task has no dependencies at all, there's nothing to check against to determine if the task is
             // up-to-date.  In this case, we assume that the author of the task intended for it to always be run
-            up_to_date = false;
             break;
         }
 
@@ -590,46 +589,44 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
 
         let task_record = match task_record_opt {
             Some(r) => r,
-            None => { up_to_date = false; break; }
+            None => { break; }
         };
         if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
-            up_to_date = false;
             break;
         }
 
         for (path, hash) in current_task_input.file_hashes.iter() {
             let prev_hash = match task_record.input.file_hashes.get(path) {
                 Some(hash) => hash,
-                None => { up_to_date = false; break; }
+                None => { break; }
             };
 
             if prev_hash != hash {
-                up_to_date = false;
                 break;
             }
         }
 
         if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
-            up_to_date = false;
             break;
         }
 
         for (task_name, task_output) in current_task_input.task_outputs.iter() {
             let prev_task_output = match task_record.input.task_outputs.get(task_name) {
                 Some(output) => output,
-                None => { up_to_date = false; break; }
+                None => { break; }
             };
 
             if prev_task_output != task_output {
-                up_to_date = false;
                 break;
             }
         }
 
+        up_to_date_task_record = Some(task_record);
         break;
     }
 
-    if up_to_date {
+    if let Some(task_record) = up_to_date_task_record {
+        cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
         task_result_sender.send(TaskJobMessage::Complete {
             task: task.task_name.clone(),
             result: TaskResult::UpToDate
