@@ -619,6 +619,23 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
     Some(task_record)
 }
 
+fn execute_task_actions_and_store_result(
+    lua: &mlua::Lua,
+    db_env: &lmdb::Environment,
+    task: &TaskJob,
+    task_result_sender: &Sender<TaskJobMessage>,
+    cache: &Arc<TaskExecutorCache>,
+    current_task_input: TaskInput
+) -> Result<(), ExecuteTaskActionError> {
+    let result = execute_task_actions(lua, task, &task_result_sender)?;
+    let detached_result: DetachedLuaValue = lua.unpack(result).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+    let task_record = TaskRecord { input: current_task_input, output: detached_result.to_json()};
+    put_task_record(db_env, task.task_name.as_str(), &task_record)
+        .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
+    cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
+    Ok(())
+}
+
 fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
     let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
     let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
@@ -632,19 +649,7 @@ fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Enviro
         return;
     }
 
-    let task_name_clone = task.task_name.clone();
-    let cache_clone = cache.clone();
-
-    let result = execute_task_actions(lua, task, &task_result_sender)
-        .and_then(|v| lua.unpack::<DetachedLuaValue>(v).map_err(|e| ExecuteTaskActionError::LuaError(e)))
-        .and_then(move |v| {
-            let task_record = TaskRecord { input: current_task_input, output: v.to_json()};
-            put_task_record(db_env, task_name_clone.as_str(), &task_record)
-                .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
-            cache_clone.task_outputs.write().unwrap().insert(task_name_clone.clone(), task_record.output);
-            Ok(())
-        });
-    
+    let result = execute_task_actions_and_store_result(lua, db_env, task, &task_result_sender, &cache, current_task_input);
     
     match result {
         Ok(_) => {
