@@ -76,27 +76,6 @@ fn resolve_calculated_dependencies_in_subtree<'a>(task_name: &str, file_provider
 }
 
 
-pub fn compute_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<&'a str, Vec<&'a str>> {
-    let mut forward_edges: HashMap<&'a str, HashSet<&'a str>> = HashMap::new();
-
-    for (task_name, task) in workspace.tasks.iter() {
-        for task_dep in task.task_deps.iter() {
-            match forward_edges.get_mut(task_dep.as_str()) {
-                Some(task_dep_forward_edges) => { task_dep_forward_edges.insert(task_name.as_str()); },
-                None => {
-                    let mut task_dep_forward_edges: HashSet<&'a str> = HashSet::new();
-                    task_dep_forward_edges.insert(task_name.as_str());
-                    forward_edges.insert(task_dep.as_str(), task_dep_forward_edges);
-                }
-            }
-        }
-    }
-
-    forward_edges.into_iter()
-        .map(|(k, v)| (k, v.into_iter().collect()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
    

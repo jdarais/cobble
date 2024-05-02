@@ -3,8 +3,7 @@ extern crate sha2;
 extern crate serde_json;
 
 
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::f32::consts::E;
+use std::collections::{hash_map, HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -19,7 +18,6 @@ use crate::datamodel::{BuildEnv, ExternalTool};
 use crate::lua::detached_value::DetachedLuaValue;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskRecord};
-use crate::workspace::dependency::compute_forward_edges;
 use crate::workspace::query::{Workspace, Task};
 
 #[derive(Debug)]
@@ -76,6 +74,27 @@ fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<&'a str> {
     task.task_deps.iter().map(|t| t.as_str())
     .chain(task.file_deps.iter().filter_map(|f| f.provided_by_task.as_ref().map(|t| t.as_str())))
     .collect()
+}
+
+fn compute_task_job_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<&'a str, Vec<&'a str>> {
+    let mut forward_edges: HashMap<&'a str, HashSet<&'a str>> = HashMap::new();
+
+    for (task_name, task) in workspace.tasks.iter() {
+        for task_dep in get_task_job_dependencies(task.as_ref()) {
+            match forward_edges.get_mut(task_dep) {
+                Some(task_dep_forward_edges) => { task_dep_forward_edges.insert(task_name.as_str()); },
+                None => {
+                    let mut task_dep_forward_edges: HashSet<&'a str> = HashSet::new();
+                    task_dep_forward_edges.insert(task_name.as_str());
+                    forward_edges.insert(task_dep, task_dep_forward_edges);
+                }
+            }
+        }
+    }
+
+    forward_edges.into_iter()
+        .map(|(k, v)| (k, v.into_iter().collect()))
+        .collect()
 }
 
 pub fn create_jobs_for_tasks<'a, T>(workspace: &Workspace, tasks: T) -> Result<HashMap<String, TaskJob>, TaskExecutionError>
@@ -183,7 +202,7 @@ impl TaskExecutor {
 
         let mut completed_jobs: HashSet<String> = HashSet::new();
 
-        let forward_edges = compute_forward_edges(workspace);
+        let forward_edges = compute_task_job_forward_edges(workspace);
         let mut remaining_jobs = create_jobs_for_tasks(workspace, tasks)?;
 
         let total_jobs = remaining_jobs.len();
@@ -217,11 +236,12 @@ impl TaskExecutor {
                     let forward_edges_from_task = forward_edges.get(task.as_str());
                     if let Some(fwd_edges) = forward_edges_from_task {
                         for &fwd_edge in fwd_edges {
-                            let fwd_task_job_opt = remaining_jobs.remove(fwd_edge);
-                            if let Some(fwd_task_job) = fwd_task_job_opt {
-                                if fwd_task_job.task.task_deps.iter().all(|d| completed_jobs.contains(d)) {
-                                    self.push_task_job(fwd_task_job)
-                                }
+                            let fwd_job_is_available = match remaining_jobs.get(fwd_edge) {
+                                Some(fwd_job) => fwd_job.task.task_deps.iter().all(|d| completed_jobs.contains(d)),
+                                None => false
+                            };
+                            if fwd_job_is_available {
+                                self.push_task_job(remaining_jobs.remove(fwd_edge).unwrap());
                             }
                         }
                     }
@@ -549,22 +569,29 @@ fn get_current_task_input(workspace_dir: &Path, task: &TaskJob, db_env: &lmdb::E
 
 fn execute_task_job(workspace_dir: &Path, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
     let mut up_to_date = true;
-    let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
-        Ok(r) => Some(r),
-        Err(e) => match e {
-            GetError::NotFound(_) => None,
-            _ => { panic!("Error retrieving task record from the database"); }
-        }
-    };
 
     let current_task_input = get_current_task_input(workspace_dir, task, db_env, &cache);
 
     loop {
+        if task.task.file_deps.len() == 0 && task.task.task_deps.len() == 0 {
+            // If a task has no dependencies at all, there's nothing to check against to determine if the task is
+            // up-to-date.  In this case, we assume that the author of the task intended for it to always be run
+            up_to_date = false;
+            break;
+        }
+
+        let task_record_opt = match get_task_record(&db_env, task.task_name.as_str()) {
+            Ok(r) => Some(r),
+            Err(e) => match e {
+                GetError::NotFound(_) => None,
+                _ => { panic!("Error retrieving task record from the database"); }
+            }
+        };
+
         let task_record = match task_record_opt {
             Some(r) => r,
             None => { up_to_date = false; break; }
         };
-        
         if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
             up_to_date = false;
             break;

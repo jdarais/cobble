@@ -3,7 +3,6 @@ task {
     actions = {
         { "sleep", "1" },
         { "echo", "Task 1!!" },
-        { "false" },
     }
 }
 
