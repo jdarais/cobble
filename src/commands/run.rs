@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use crate::datamodel::workspace::create_workspace;
+use crate::workspace::graph::create_workspace;
 use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
 use crate::workspace::dependency::compute_file_providers;
 use crate::workspace::execute::TaskExecutor;

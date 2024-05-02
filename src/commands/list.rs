@@ -6,7 +6,7 @@ use crate::workspace::dependency::compute_file_providers;
 use crate::workspace::load::load_projects;
 use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
 use crate::workspace::resolve::project_path_to_project_name;
-use crate::datamodel::workspace::create_workspace;
+use crate::workspace::graph::create_workspace;
 
 
 pub struct ListCommandInput<'a> {

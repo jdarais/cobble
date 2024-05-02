@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::datamodel::Workspace;
+use crate::workspace::graph::Workspace;
 use crate::workspace::resolve::{resolve_name, NameResolutionError};
 
 pub fn find_tasks_for_dir<'a>(workspace: &'a Workspace, workspace_dir: &Path, project_dir: &Path) -> Vec<&'a str> {

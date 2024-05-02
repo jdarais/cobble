@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use crate::datamodel::{Project, Workspace};
+use crate::datamodel::Project;
 use crate::workspace::execute::{TaskExecutionError, TaskExecutor};
+use crate::workspace::graph::Workspace;
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {

@@ -15,7 +15,7 @@ use std::thread::{self, JoinHandle};
 use sha2::{Digest, Sha256};
 
 use crate::datamodel::{BuildEnv, ExternalTool};
-use crate::datamodel::workspace::{Workspace, Task};
+use crate::workspace::graph::{Workspace, Task};
 use crate::lua::detached_value::DetachedLuaValue;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskRecord};
@@ -678,7 +678,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration};
 
-    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, datamodel::workspace::TaskType};
+    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::graph::TaskType};
 
     use super::*;
 
