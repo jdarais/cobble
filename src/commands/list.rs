@@ -1,6 +1,12 @@
-use std::{path::{Component, Path}, process::ExitCode};
+use std::path::Path;
+use std::process::ExitCode;
 
-use crate::workspace::{config::{find_nearest_project_dir, get_workspace_config}, dependency::compute_file_providers, load::load_projects, query::{create_workspace, find_project_for_dir, find_tasks_for_dir, find_tasks_for_query}, resolve::project_path_to_project_name};
+use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
+use crate::workspace::dependency::compute_file_providers;
+use crate::workspace::load::load_projects;
+use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
+use crate::workspace::resolve::project_path_to_project_name;
+use crate::datamodel::workspace::create_workspace;
 
 
 pub struct ListCommandInput<'a> {

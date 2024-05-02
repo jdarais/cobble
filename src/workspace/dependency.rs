@@ -1,6 +1,8 @@
-use std::{borrow::Cow, collections::{HashMap, HashSet}, convert::AsRef, fmt, sync::Arc};
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 
-use crate::{datamodel::Project, workspace::{execute::{TaskExecutionError, TaskExecutor}, query::{Task, Workspace}}};
+use crate::datamodel::{Project, Workspace};
+use crate::workspace::execute::{TaskExecutionError, TaskExecutor};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {

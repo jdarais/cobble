@@ -3,7 +3,7 @@ extern crate sha2;
 extern crate serde_json;
 
 
-use std::collections::{hash_map, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -15,10 +15,10 @@ use std::thread::{self, JoinHandle};
 use sha2::{Digest, Sha256};
 
 use crate::datamodel::{BuildEnv, ExternalTool};
+use crate::datamodel::workspace::{Workspace, Task};
 use crate::lua::detached_value::DetachedLuaValue;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskRecord};
-use crate::workspace::query::{Workspace, Task};
 
 #[derive(Debug)]
 pub struct TaskJob {
@@ -678,7 +678,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration};
 
-    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::query::TaskType};
+    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, datamodel::workspace::TaskType};
 
     use super::*;
 

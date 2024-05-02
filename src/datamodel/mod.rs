@@ -5,6 +5,7 @@ pub mod dependency;
 pub mod project;
 pub mod task;
 pub mod tool;
+pub mod workspace;
 
 #[allow(unused_imports)]
 pub use action::{Action, ActionCmd};
@@ -14,3 +15,4 @@ pub use dependency::{Dependency, DependencyList};
 pub use project::Project;
 pub use task::TaskDef;
 pub use tool::ExternalTool;
+pub use workspace::Workspace;

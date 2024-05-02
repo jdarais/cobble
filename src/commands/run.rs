@@ -1,11 +1,12 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::datamodel::workspace::create_workspace;
 use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
 use crate::workspace::dependency::compute_file_providers;
 use crate::workspace::execute::TaskExecutor;
 use crate::workspace::load::load_projects;
-use crate::workspace::query::{create_workspace, find_tasks_for_dir, find_tasks_for_query};
+use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
 use crate::workspace::resolve::project_path_to_project_name;
 
 pub struct RunCommandInput<'a> {
