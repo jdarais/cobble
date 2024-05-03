@@ -2,6 +2,29 @@ extern crate mlua;
 
 use std::{ffi::OsString, path::{Path, PathBuf}, process::Command};
 
+fn script_dir<'lua>(lua: &'lua mlua::Lua, _args: mlua::MultiValue<'lua>) -> mlua::Result<mlua::Value<'lua>> {
+    let info = lua.inspect_stack(1)
+        .ok_or_else(|| mlua::Error::runtime("Error retrieving stack information"))?;
+
+    let source = info.source().source
+        .ok_or_else(|| mlua::Error::runtime("Error getting source information from the stack"))?;
+
+    if !source.starts_with("@") {
+        return Ok(mlua::Value::Nil);
+    }
+
+    let source_path = PathBuf::from(source[1..].to_owned());
+    let source_dir = source_path.parent();
+
+    let source_dir_str_opt = source_dir
+        .and_then(|d| d.to_str());
+
+    match source_dir_str_opt {
+        Some(s) => Ok(mlua::Value::String(lua.create_string(s)?)),
+        None => Ok(mlua::Value::Nil)
+    }
+}
+
 fn exec_shell_command<'lua>(lua: &'lua mlua::Lua, args: mlua::Table<'lua>) -> mlua::Result<mlua::Table<'lua>> {
     let args_len_int = args.len()?;
     let args_len: usize = args_len_int.try_into()
@@ -69,6 +92,9 @@ pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<mlua::Lua> {
 
     let cmd_func = lua.create_function(exec_shell_command)?;
     lua.globals().set("cmd", cmd_func)?;
+
+    let script_dir_func = lua.create_function(script_dir)?;
+    lua.globals().set("script_dir", script_dir_func)?;
 
     {
         let mut module_search_path = OsString::new();

@@ -1,6 +1,4 @@
-
 local exports = {}
-
 
 function exports.poetry_project ()
     build_env({
@@ -28,8 +26,8 @@ function exports.poetry_project ()
                 build_env = "poetry",
                 function (c)
                     local deps = {}
-                    local res = c.env.poetry { "python", WORKSPACE.dir .. "/cobble_plugins/poetry_build_deps.py" } ;
-                    for dep in res.stdout.gmatch("([^\r\n]*)") do
+                    local res = c.env.poetry { "python", script_dir() .. "/poetry_build_deps.py" } ;
+                    for dep in res.stdout:gmatch("([^\r\n]+)") do
                         table.insert(deps, dep)
                     end
                     return { files = deps }

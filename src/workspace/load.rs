@@ -207,6 +207,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             if result.status ~= 0 then
                 error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
             end
+
+            return result
         end
     "#).eval()?;
 

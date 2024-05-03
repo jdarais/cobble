@@ -46,7 +46,8 @@ pub enum TaskExecutionError {
     TaskLookupError(String),
     ToolLookupError(String),
     EnvLookupError(String),
-    TaskResultError{task: String, message: String}
+    TaskResultError{task: String, message: String},
+    UnresolvedCalcDependencyError(String)
 }
 
 impl fmt::Display for TaskExecutionError {
@@ -56,7 +57,8 @@ impl fmt::Display for TaskExecutionError {
             TaskLookupError(t) => write!(f, "Task not found while creating jobs: {}", t),
             ToolLookupError(t) => write!(f, "Tool not found while creating jobs: {}", t),
             EnvLookupError(env) => write!(f, "Build env not found while creating jbos: {}", env),
-            TaskResultError{task, message} => write!(f, "Execution of task {} failed with error: {}", task, message)
+            TaskResultError{task, message} => write!(f, "Execution of task {} failed with error: {}", task, message),
+            UnresolvedCalcDependencyError(t) => write!(f, "Encountered a task with unresolved calc dependencies: {}", t)
         }
     }
 }
@@ -119,7 +121,11 @@ fn add_jobs_for_task(
 
     let task = workspace.tasks.get(task_name).ok_or_else(|| TaskExecutionError::TaskLookupError(task_name.to_owned()))?;
 
-    let mut job = TaskJob {
+    if task.calc_deps.len() > 0 {
+        return Err(TaskExecutionError::UnresolvedCalcDependencyError(task_name.to_owned()));
+    }
+
+    let job = TaskJob {
         task_name: task_name.to_owned(),
         task: task.clone(),
         workspace: workspace.clone()
@@ -719,6 +725,7 @@ mod tests {
         let task = Arc::new(Task {
             task_type: TaskType::Task,
             dir: workspace_dir.clone(),
+            project_name: String::from("/"),
             build_envs: HashMap::new(),
             tools: vec![(String::from("print"), String::from("print"))].into_iter().collect(),
             file_deps: Vec::new(),

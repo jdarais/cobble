@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use crate::workspace::graph::create_workspace;
 use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
-use crate::workspace::dependency::compute_file_providers;
+use crate::workspace::dependency::{compute_file_providers, resolve_calculated_dependencies_in_subtree};
 use crate::workspace::execute::TaskExecutor;
 use crate::workspace::load::load_projects;
 use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
@@ -19,7 +19,7 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
     let file_providers = compute_file_providers(projects.values());
-    let workspace = create_workspace(projects.values(), &file_providers);
+    let mut workspace = create_workspace(projects.values(), &file_providers);
 
     let project_dir = find_nearest_project_dir(input.cwd, &config.workspace_dir).unwrap();
     let project_name = project_path_to_project_name(project_dir.as_path()).unwrap();
@@ -29,10 +29,16 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
         _ => find_tasks_for_query(&workspace, project_name.as_str(), input.tasks.iter().copied()).unwrap()
     };
     tasks.sort();
-    let tasks = tasks;
+    let tasks: Vec<String> = tasks.into_iter().map(|s| s.to_owned()).collect();
 
+    // Resolve calculated dependencies
     let mut executor = TaskExecutor::new(config.workspace_dir.as_path(), config.workspace_dir.join(".cobble.db").as_path());
-    let result = executor.execute_tasks(&workspace, tasks.iter().copied());
+    for task in tasks.iter() {
+        resolve_calculated_dependencies_in_subtree(task.as_str(), &file_providers, &mut workspace, &mut executor).unwrap();
+
+    }
+
+    let result = executor.execute_tasks(&workspace, tasks.iter().map(|s| s.as_str()));
 
     match result {
         Ok(_) => ExitCode::from(0),

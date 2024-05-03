@@ -99,7 +99,7 @@ pub fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolu
     Ok(resolved_name)
 }
 
-fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {
+pub fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {
     match dep {
         Dependency::File(f) => {
             *dep = Dependency::File(resolve_path(project_path, f.as_str())?);

@@ -22,6 +22,7 @@ pub struct FileDependency {
 #[derive(Clone, Debug)]
 pub struct Task {
     pub task_type: TaskType,
+    pub project_name: String,
     pub dir: PathBuf,
     pub build_envs: HashMap<String, String>,
     pub tools: HashMap<String, String>,
@@ -40,7 +41,7 @@ pub struct Workspace {
 }
 
 
-fn add_dependency_to_task(dep: &Dependency, file_providers: &HashMap<&str, &str>, task: &mut Task) {
+pub fn add_dependency_to_task(dep: &Dependency, file_providers: &HashMap<&str, &str>, task: &mut Task) {
     match dep {
         Dependency::File(f) => {
             if !task.file_deps.iter().any(|dep| &dep.path == f) {
@@ -90,10 +91,11 @@ fn add_action_to_task(action: &Action, task: &mut Task) {
     task.actions.push(action.clone());
 }
 
-fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
+fn add_build_env_to_workspace(build_env: &BuildEnv, project_name: &str, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
     let mut install_task = Task {
         task_type: TaskType::BuildEnv,
         dir: PathBuf::from(dir),
+        project_name: project_name.to_owned(),
         tools: HashMap::new(),
         build_envs: HashMap::new(),
         file_deps: Vec::new(),
@@ -115,10 +117,11 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, dir: &Path, file_providers: 
     workspace.build_envs.insert(build_env.name.clone(), Arc::new(build_env.clone()));
 }
 
-fn add_task_to_workspace(task_def: &TaskDef, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
+fn add_task_to_workspace(task_def: &TaskDef, project_name: &str, dir: &Path, file_providers: &HashMap<&str, &str>, workspace: &mut Workspace) {
     let mut task = Task {
         task_type: TaskType::Task,
         dir: PathBuf::from(dir),
+        project_name: project_name.to_owned(),
         tools: HashMap::new(),
         build_envs: task_def.build_env.iter().cloned().collect(),
         file_deps: Vec::new(),
@@ -145,6 +148,7 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<&str, &s
         Task {
                 task_type: TaskType::Project,
                 dir: project.path.clone(),
+                project_name: project.name.clone(),
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 file_deps: Vec::new(),
@@ -159,11 +163,11 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<&str, &s
     }
 
     for env in project.build_envs.iter() {
-        add_build_env_to_workspace(env, project.path.as_path(), file_providers, workspace);
+        add_build_env_to_workspace(env, project.name.as_str(), project.path.as_path(), file_providers, workspace);
     }
 
     for task in project.tasks.iter() {
-        add_task_to_workspace(task, project.path.as_path(), file_providers, workspace);
+        add_task_to_workspace(task, project.name.as_str(), project.path.as_path(), file_providers, workspace);
     }
 
     for tool in project.tools.iter() {
