@@ -23,9 +23,8 @@ use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetErro
 #[derive(Debug)]
 pub struct TaskJob {
     pub task_name: String,
-    pub tools: HashMap<String, Arc<ExternalTool>>,
-    pub envs: HashMap<String, Arc<BuildEnv>>,
-    pub task: Arc<Task>
+    pub task: Arc<Task>,
+    pub workspace: Arc<Workspace>
 }
 
 #[derive(Debug)]
@@ -97,19 +96,23 @@ fn compute_task_job_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<&'a s
         .collect()
 }
 
-pub fn create_jobs_for_tasks<'a, T>(workspace: &Workspace, tasks: T) -> Result<HashMap<String, TaskJob>, TaskExecutionError>
+pub fn create_jobs_for_tasks<'a, T>(workspace: &Arc<Workspace>, tasks: T) -> Result<HashMap<String, TaskJob>, TaskExecutionError>
     where T: Iterator<Item = &'a str>
 {
     let mut jobs: HashMap<String, TaskJob> = HashMap::new();
 
     for task in tasks {
-        add_jobs_for_task(workspace, task, &mut jobs)?;
+        add_jobs_for_task(task, workspace, &mut jobs)?;
     }
     
     Ok(jobs)
 }
 
-fn add_jobs_for_task(workspace: &Workspace, task_name: &str, jobs: &mut HashMap<String, TaskJob>) -> Result<(), TaskExecutionError> {
+fn add_jobs_for_task(
+    task_name: &str,
+    workspace: &Arc<Workspace>,
+    jobs: &mut HashMap<String, TaskJob>
+) -> Result<(), TaskExecutionError> {
     if jobs.contains_key(task_name) {
         return Ok(())
     }
@@ -118,25 +121,15 @@ fn add_jobs_for_task(workspace: &Workspace, task_name: &str, jobs: &mut HashMap<
 
     let mut job = TaskJob {
         task_name: task_name.to_owned(),
-        tools: HashMap::new(),
-        envs: HashMap::new(),
-        task: task.clone()
+        task: task.clone(),
+        workspace: workspace.clone()
     };
-
-    for (t_alias, t_name) in task.tools.iter() {
-        let tool = workspace.tools.get(t_name).ok_or_else(|| TaskExecutionError::ToolLookupError(t_name.to_owned()))?;
-        job.tools.insert(t_alias.clone(), tool.clone());
-    }
-
-    for (env_alias, env_name) in task.build_envs.iter() {
-        let env = workspace.build_envs.get(env_name).ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.to_owned()))?;
-        job.envs.insert(env_alias.clone(), env.clone());
-    }
 
     jobs.insert(task_name.to_owned(), job);
 
-    for dep in get_task_job_dependencies(&task) {
-        add_jobs_for_task(workspace, dep, jobs)?;
+
+    for dep in get_task_job_dependencies(&*task) {
+        add_jobs_for_task(dep, workspace, jobs)?;
     }
 
     Ok(())
@@ -203,7 +196,9 @@ impl TaskExecutor {
         let mut completed_jobs: HashSet<String> = HashSet::new();
 
         let forward_edges = compute_task_job_forward_edges(workspace);
-        let mut remaining_jobs = create_jobs_for_tasks(workspace, tasks)?;
+
+        let frozen_workspace = Arc::new(workspace.clone());
+        let mut remaining_jobs = create_jobs_for_tasks(&frozen_workspace, tasks)?;
 
         let total_jobs = remaining_jobs.len();
 
@@ -301,24 +296,24 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
             }
 
             for tool_alias, tool_name in pairs(extra_tools) do
-                action_context.tool[tool_alias] = function (...)
-                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
+                action_context.tool[tool_alias] = function (args)
+                    return cobble.invoke_tool(tool_name, project_dir, out, err, args)
                 end
             end
             for tool_alias, tool_name in pairs(action.tool) do
-                action_context.tool[tool_alias] = function (...)
-                    return cobble.invoke_tool(tool_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
+                action_context.tool[tool_alias] = function (args)
+                    return cobble.invoke_tool(tool_name, project_dir, out, err, args)
                 end
             end
 
             for env_alias, env_name in pairs(extra_build_envs) do
-                action_context.env[env_alias] = function (...)
-                    return cobble.invoke_build_env(env_name, extra_tools, extra_biuld_envs, project_dir, out, err, table.pack(...))
+                action_context.env[env_alias] = function (args)
+                    return cobble.invoke_build_env(env_name, project_dir, out, err, args)
                 end
             end
             for env_alias, env_name in pairs(action.build_env) do
-                action_context.env[env_alias] = function (...)
-                    return cobble.invoke_build_env(env_name, extra_tools, extra_build_envs, project_dir, out, err, table.pack(...))
+                action_context.env[env_alias] = function (args)
+                    return cobble.invoke_build_env(env_name, project_dir, out, err, args)
                 end
             end
 
@@ -332,24 +327,24 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
                 local tool_alias = next(action.tool)
                 local env_alias = next(action.build_env)
                 if tool_alias then
-                    return action_context.tool[tool_alias](table.unpack(action))
+                    return action_context.tool[tool_alias](table.move(action, 1, #action, 1, {}))
                 elseif env_alias then
-                    return action_context.env[env_alias](table.unpack(action))
+                    return action_context.env[env_alias](table.move(action, 1, #action, 1, {}))
                 else
-                    error("No tool or build env provided for arg list style action: " .. table.concat(action, ","))
+                    return action_context.tool["cmd"](table.move(action, 1, #action, 1, {}))
                 end
             end   
         end
 
-        invoke_tool = function (name, extra_tools, extra_build_envs, project_dir, out, err, args)
+        invoke_tool = function (name, project_dir, out, err, args)
             local action = cobble._tool_cache[name].action
-            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, out, err, args)
+            local action_context = create_action_context(action, {}, {}, project_dir, out, err, args)
             return invoke_action(action, action_context)
         end
 
-        invoke_build_env = function (name, extra_tools, extra_build_envs, project_dir, out, err, args)
+        invoke_build_env = function (name, project_dir, out, err, args)
             local action = cobble._build_env_cache[name].action
-            local action_context = create_action_context(action, extra_tools, extra_build_envs, project_dir, out, err, args)
+            local action_context = create_action_context(action, {}, {}, project_dir, out, err, args)
             return invoke_action(action, action_context)
         end
         
@@ -405,23 +400,41 @@ fn compute_file_hash(file_path: &Path) -> Result<Vec<u8>, io::Error> {
     Ok(hasher.finalize().to_vec())
 }
 
-fn ensure_tool_is_cached(lua: &mlua::Lua, tool: &ExternalTool) -> mlua::Result<()> {
+fn ensure_tool_is_cached(lua: &mlua::Lua, tool_name: &str, workspace: &Workspace) -> mlua::Result<()> {
+    let tool = workspace.tools.get(tool_name)
+        .ok_or_else(|| mlua::Error::runtime(format!("Tool lookup failed: {}", tool_name)))?;
+
     let cobble_table: mlua::Table = lua.globals().get("cobble")?;
     let cached_tools: mlua::Table = cobble_table.get("_tool_cache")?;
     if !cached_tools.contains_key(tool.name.clone())? {
-        cached_tools.set(tool.name.clone(), tool.clone())?;
+        cached_tools.set(tool.name.clone(), ExternalTool::clone(tool))?;
+    }
+
+    for (_, t_name) in tool.action.tools.iter() {
+        ensure_tool_is_cached(lua, t_name.as_str(), workspace)?;
     }
 
     Ok(())
 }
 
-fn ensure_build_env_is_cached(lua: &mlua::Lua, build_env: &BuildEnv) -> mlua::Result<()> {
+fn ensure_build_env_is_cached(lua: &mlua::Lua, build_env_name: &str, workspace: &Workspace) -> mlua::Result<()> {
+    let build_env = workspace.build_envs.get(build_env_name)
+        .ok_or_else(|| mlua::Error::runtime(format!("Build env lookup failed: {}", build_env_name)))?;
+
     let cobble_table: mlua::Table = lua.globals().get("cobble")?;
     let cached_build_envs: mlua::Table = cobble_table.get("_build_env_cache")?;
     if !cached_build_envs.contains_key(build_env.name.clone())? {
         let build_env_table = lua.create_table()?;
         build_env_table.set("action", build_env.action.clone())?;
         cached_build_envs.set(build_env.name.clone(), build_env_table)?;
+    }
+
+    for (_, t_name) in build_env.action.tools.iter() {
+        ensure_tool_is_cached(lua, t_name, workspace)?;
+    }
+
+    for (_, e_name) in build_env.action.build_envs.iter() {
+        ensure_build_env_is_cached(lua, e_name, workspace)?;
     }
 
     Ok(())
@@ -449,21 +462,13 @@ impl fmt::Display for ExecuteTaskActionError {
 
 fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, sender: &Sender<TaskJobMessage>) -> Result<mlua::Value<'lua>, ExecuteTaskActionError> {
     // Make sure build envs and tools we need are 
-    for (_, tool) in task.tools.iter() {
-        ensure_tool_is_cached(lua, tool.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+    for (_, t_name) in task.task.tools.iter() {
+        ensure_tool_is_cached(lua, t_name.as_str(), task.workspace.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
     }
 
-    for (_, env) in task.envs.iter() {
-        ensure_build_env_is_cached(lua, env.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+    for (_, e_name) in task.task.build_envs.iter() {
+        ensure_build_env_is_cached(lua, e_name.as_str(), task.workspace.as_ref()).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
     }
-
-    let extra_tools: HashMap<&str, &str> = task.tools.iter()
-        .map(|(t_alias, t)| (t_alias.as_str(), t.name.as_str()))
-        .collect();
-
-    let extra_build_envs: HashMap<&str, &str> = task.tools.iter()
-        .map(|(e_alias, e)| (e_alias.as_str(), e.name.as_str()))
-        .collect();
 
     let project_dir = task.task.dir.to_str()
         .ok_or_else(|| mlua::Error::runtime(format!("Unable to convert path to a UTF-8 string: {}", task.task.dir.display())))
@@ -496,8 +501,8 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, sender: &Sen
 
         let action_context: mlua::Table = create_action_context.call((
             action_lua.clone(),
-            extra_tools.clone(),
-            extra_build_envs.clone(),
+            task.task.tools.clone(),
+            task.task.build_envs.clone(),
             project_dir.to_owned(),
             out.clone(),
             err.clone(),
@@ -727,10 +732,15 @@ mod tests {
             artifacts: Vec::new()
         });
 
+        let workspace = Arc::new(Workspace {
+            tasks: vec![(String::from("test"), task.clone())].into_iter().collect(),
+            build_envs: HashMap::new(),
+            tools: vec![(String::from("print"), print_tool.clone())].into_iter().collect()
+        });
+
         let task_job = TaskJob {
             task_name: String::from("test"),
-            tools: vec![(String::from("print"), print_tool)].into_iter().collect(),
-            envs: HashMap::new(),
+            workspace: workspace.clone(),
             task: task.clone()
         };
 

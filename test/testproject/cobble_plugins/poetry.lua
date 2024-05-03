@@ -14,8 +14,8 @@ function exports.poetry_project ()
         },
         action = {
             tool = "poetry",
-            function(cxt)
-                return cxt.tool.poetry { cwd = cxt.cwd, "run", table.unpack(cxt.args) }
+            function(c)
+                return c.tool.poetry { "run", table.unpack(c.args) }
             end
         }
     })
@@ -26,9 +26,9 @@ function exports.poetry_project ()
         actions = {
             {
                 build_env = "poetry",
-                function (cxt)
+                function (c)
                     local deps = {}
-                    local res = cxt.env.poetry { "python", WORKSPACE.dir .. "/cobble_plugins/poetry_build_deps.py" } ;
+                    local res = c.env.poetry { "python", WORKSPACE.dir .. "/cobble_plugins/poetry_build_deps.py" } ;
                     for dep in res.stdout.gmatch("([^\r\n]*)") do
                         table.insert(deps, dep)
                     end

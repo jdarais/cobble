@@ -9,9 +9,9 @@ external_tool {
         -- TODO: Implement this
     end,
     action = {
-        tool = "bla",
-        function(cxt)
-            return cxt.cmd { "poetry", table.unpack(cxt.args) }
+        tool = "cmd",
+        function(c)
+            return c.tool.cmd { "poetry", table.unpack(c.args) }
         end
     }
 }

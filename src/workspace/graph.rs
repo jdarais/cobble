@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Project, TaskDef};
+use crate::datamodel::{Action, ActionCmd, Artifact, BuildEnv, Dependency, ExternalTool, Project, TaskDef};
 
 
 
@@ -70,6 +70,21 @@ fn add_action_to_task(action: &Action, task: &mut Task) {
 
     for (tool_alias, tool_name) in action.tools.iter() {
         task.tools.insert(tool_alias.clone(), tool_name.clone());
+    }
+
+    match action.cmd {
+        ActionCmd::Func(_) => {
+            if let hash_map::Entry::Vacant(ent) = task.tools.entry(String::from("cmd")) {
+                ent.insert(String::from("cmd"));
+            }
+        },
+        ActionCmd::Cmd(_) => {
+            if action.tools.len() == 0 {
+                if let hash_map::Entry::Vacant(ent) = task.tools.entry(String::from("cmd")) {
+                    ent.insert(String::from("cmd"));
+                }
+            }
+        }
     }
 
     task.actions.push(action.clone());
