@@ -100,3 +100,13 @@ __Artifacts and Task Outputs:__
 One question is, what should be considered a task's artifacts?  I think it would make sense to include both the task's (file) artifacts and action output as the task's artifacts.  For most tasks with file artifacts, the task's action output will be nil.  But, what if the task has both file artifacts and a non-nil action output?  That's fine, though other tasks need a way to make up-to-date checks against the files and action output independently.  For example, if a task depends on a file, (but not the task that has the file as its artifact,) then it should only have to re-run if the file it depends on changes.  Changes in the output of the task that produces the file should not trigger a re-run, since the depending task only declared the file as a dependency.  This is similar to the situation where a task depends on only one of another task's file artifacts.  If one file artifact changes, but the file artifact that the task depends on didn't change, then the task should not be re-run.
 
 ---
+
+__CLI Args:__
+
+CLI args should be supported, and can be added after a `--` arg, so that args can be separated from task targets.  CLI args should be available to tasks that declare a dependency on CLI args, but not otherwise.  That way, CLI args can be included in the inputs of a task for the up-to-date check without causing an invocation of run from dirtying the inputs of a task that doesn't make use of the CLI args.  An alternative to including CLI args in the inputs of a task for up-to-date checks, declaring a dependency on CLI args could simply cause a task to always run, since it might seem odd to have subsequent invocations of a task to do nothing, even if they include the same CLI args as the last invocation.
+
+If a task declares a dependency on CLI args, then the CLI args will be passed into the context of the first action of that task as `c.args`.
+
+If a task wants to have some parameterization, then it should use `vars`, which is a concept that hasn't been fully developed here, but there should be a set of `vars` defined by either config, environment variables, or command line, and a task can declare a dependency on individual vars.  The vars should be accessible in the action context as `c.vars`.
+
+---
