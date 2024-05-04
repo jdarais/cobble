@@ -8,6 +8,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use mlua::AsChunk;
+
 use crate::datamodel::{
     Action, ActionCmd, BuildEnv, ExternalTool, Project, TaskDef
 };
@@ -16,14 +18,21 @@ use crate::lua::lua_env::create_lua_env;
 use crate::workspace::resolve::resolve_names_in_project;
 use crate::workspace::config::PROJECT_FILE_NAME;
 
+enum PathOrString {
+    Path(PathBuf),
+    String(String)
+}
 
-fn process_project(lua: &mlua::Lua, project_source: &str, project_name: &str, project_dir: &str) -> mlua::Result<()> {
+fn process_project(lua: &mlua::Lua, chunk: PathOrString, project_name: &str, project_dir: &str) -> mlua::Result<()> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
 
     start_project.call((project_name, project_dir))?;
 
-    lua.load(project_source).exec()?;
+    match chunk {
+        PathOrString::Path(p) => { lua.load(p).exec()?; },
+        PathOrString::String(s) => { lua.load(s).exec()?; }
+    }
 
     end_project.call(())?;
 
@@ -52,22 +61,9 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         return Err(mlua::Error::runtime(format!("Project file {} doesn't exist", project_file_path.display())));
     }
 
-    let mut project_file = match File::open(&project_file_path) {
-        Ok(f) => f,
-        Err(e) => {
-            return Err(mlua::Error::runtime(format!("Unable to open file {}: {}", project_file_path.display(), e)));
-        }
-    };
-
-    let mut project_source = String::new();
-    let project_file_read_res = project_file.read_to_string(&mut project_source);
-    if let Err(e) = project_file_read_res {
-        return Err(mlua::Error::runtime(format!("Error reading fiel {}: {}", project_file_path.display(), e)));
-    }
-
     let project_dir_str = project_dir.as_os_str().to_str()
         .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
-    process_project(lua, project_source.as_str(), project_name.as_str(), project_dir_str)?;
+    process_project(lua, PathOrString::Path(project_file_path), project_name.as_str(), project_dir_str)?;
 
     Ok(())
 }
@@ -201,10 +197,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     //
     let cmd_tool_action_func: mlua::Function = lua.load(r#"
         function (c)
-            local result = cmd { cwd = c.project.dir, table.unpack(c.args) }
+            local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, table.unpack(c.args) }
 
-            c.out(result.stdout)
-            c.err(result.stderr)
             if result.status ~= 0 then
                 error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
             end
@@ -265,7 +259,7 @@ mod tests {
 
         process_project(
             &lua,
-            r#"
+            PathOrString::String(String::from(r#"
             build_env({
                 name = "test",
                 install = {
@@ -274,7 +268,7 @@ mod tests {
                 deps = {},
                 action = function (a) print(a) end
             })
-        "#,
+        "#)),
     "testproject", 
     "testproject"
         ).unwrap();

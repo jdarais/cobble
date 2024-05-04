@@ -6,6 +6,13 @@ task {
 }
 
 task {
+    name = "take_time",
+    actions = {
+        { "bash", script_dir() .. "/take_time.sh" }
+    }
+}
+
+task {
     name = "task2",
     deps = {
         tasks = { "task1", "task3" }

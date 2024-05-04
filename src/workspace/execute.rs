@@ -3,7 +3,7 @@ extern crate sha2;
 extern crate serde_json;
 
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{hash_map, HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -146,6 +146,11 @@ pub struct TaskExecutorCache {
     pub task_outputs: RwLock<HashMap<Arc<str>, serde_json::Value>>
 }
 
+pub enum TaskConsoleOutput {
+    Out(String),
+    Err(String)
+}
+
 pub struct TaskExecutor {
     worker_threads: Vec<JoinHandle<()>>,
     workspace_dir: PathBuf,
@@ -200,6 +205,8 @@ impl TaskExecutor {
         self.ensure_worker_threads();
 
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
+        let mut task_output_buffers: HashMap<Arc<str>, Vec<TaskConsoleOutput>> = HashMap::new();
+        let mut current_output_task: Option<Arc<str>> = None;
 
         let forward_edges = compute_task_job_forward_edges(workspace);
 
@@ -224,14 +231,80 @@ impl TaskExecutor {
             let message = self.message_channel.1.recv().unwrap();
 
             match message {
-                TaskJobMessage::Stdout{task, s} => { print!("{}: {}", task, s); },
-                TaskJobMessage::Stderr{task, s} => { let _ = write!(io::stderr(), "{}: {}", task, s); }
+                TaskJobMessage::Stdout{task, s} => {
+                    let is_current_output_task = match current_output_task.as_ref() {
+                        Some(cur_out_task) => &task == cur_out_task,
+                        None => {
+                            current_output_task = Some(task.clone());
+                            true
+                        }
+                    };
+
+                    if is_current_output_task {
+                        print!("{}", s);
+                    } else {
+                        match task_output_buffers.entry(task.clone()) {
+                            hash_map::Entry::Occupied(mut ent) => {
+                                ent.get_mut().push(TaskConsoleOutput::Out(s));
+                            },
+                            hash_map::Entry::Vacant(ent) => {
+                                ent.insert(vec![TaskConsoleOutput::Out(s)]);
+                            }
+                        }
+                    }
+                },
+                TaskJobMessage::Stderr{task, s} => { 
+                    let is_current_output_task = match current_output_task.as_ref() {
+                        Some(cur_out_task) => &task == cur_out_task,
+                        None => {
+                            current_output_task = Some(task.clone());
+                            true
+                        }
+                    };
+
+                    if is_current_output_task {
+                        let _ = write!(io::stderr(), "{}", s);
+                    } else {
+                        match task_output_buffers.entry(task.clone()) {
+                            hash_map::Entry::Occupied(mut ent) => {
+                                ent.get_mut().push(TaskConsoleOutput::Err(s));
+                            },
+                            hash_map::Entry::Vacant(ent) => {
+                                ent.insert(vec![TaskConsoleOutput::Err(s)]);
+                            }
+                        }
+                    }
+                },
                 TaskJobMessage::Complete{task, result} => {
                     completed_jobs.insert(task.clone());
                     match result {
                         TaskResult::UpToDate => { println!("{} is up to date", task); },
                         TaskResult::Success => { println!("{} succeeded", task); },
                         TaskResult::Error(e) => { return Err(TaskExecutionError::TaskResultError { task: task.clone(), message: e }); }
+                    }
+
+                    let is_current_output_task = current_output_task.as_ref().map_or(false, |t| t == &task);
+                    if is_current_output_task {
+                        for completed_job in completed_jobs.iter() {
+                            if let Some(buffered_output) = task_output_buffers.remove(completed_job) {
+                                for task_output in buffered_output {
+                                    match task_output {
+                                        TaskConsoleOutput::Out(s) => { print!("{}", s); },
+                                        TaskConsoleOutput::Err(s) => { let _ = write!(io::stderr(), "{}", s); }
+                                    }
+                                }
+                            }
+                        }
+
+                        current_output_task = task_output_buffers.keys().cloned().next();
+                        if let Some(cur_out_task) = current_output_task.as_ref() {
+                            for task_output in task_output_buffers.remove(cur_out_task).unwrap() {
+                                match task_output {
+                                    TaskConsoleOutput::Out(s) => { print!("{}", s); },
+                                    TaskConsoleOutput::Err(s) => { let _ = write!(io::stderr(), "{}", s); }
+                                } 
+                            }
+                        }
                     }
 
                     let forward_edges_from_task = forward_edges.get(&task);
