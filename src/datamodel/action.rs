@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
 
 use crate::lua::detached_value::{FunctionDump, dump_function};
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
-    Cmd(Vec<String>),
+    Cmd(Vec<Arc<str>>),
     Func(FunctionDump)
 }
 
@@ -25,8 +26,9 @@ impl <'lua> mlua::FromLua<'lua> for ActionCmd {
             mlua::Value::Function(func) => Ok(ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)),
             mlua::Value::Table(tbl) => {
                 let cmd_args_res: mlua::Result<Vec<String>> = tbl.sequence_values().collect();
-                let cmd_args = cmd_args_res?;
-                Ok(ActionCmd::Cmd(cmd_args))
+                let cmd_args: Vec<String> = cmd_args_res?;
+                let cmd_args_arc_str: Vec<Arc<str>> = cmd_args.into_iter().map(|s| Arc::<str>::from(s)).collect();
+                Ok(ActionCmd::Cmd(cmd_args_arc_str))
             },
             val => Err(mlua::Error::runtime(format!("Unable to convert value to Action: {:?}", val)))
         }
@@ -35,8 +37,8 @@ impl <'lua> mlua::FromLua<'lua> for ActionCmd {
 
 #[derive(Clone, Debug)]
 pub struct Action {
-    pub tools: HashMap<String, String>,
-    pub build_envs: HashMap<String, String>,
+    pub tools: HashMap<Arc<str>, Arc<str>>,
+    pub build_envs: HashMap<Arc<str>, Arc<str>>,
     pub cmd: ActionCmd
 }
 
@@ -71,16 +73,18 @@ impl <'lua> mlua::FromLua<'lua> for Action {
         match value {
             mlua::Value::Table(tbl) => {
                 let build_env_val: mlua::Value = tbl.get("build_env")?;
-                let mut build_envs: HashMap<String, String> = HashMap::new();
+                let mut build_envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
                 match build_env_val {
                     mlua::Value::String(s) => {
-                        build_envs.insert(String::from(s.to_str()?), String::from(s.to_str()?));
+                        let build_env_name = Arc::<str>::from(s.to_str()?);
+                        build_envs.insert(build_env_name.clone(), build_env_name);
                     },
                     mlua::Value::Table(build_env_tbl) => {
                         for pair in build_env_tbl.pairs() {
-                            let (k_val, v): (mlua::Value, String) = pair?;
+                            let (k_val, v_str): (mlua::Value, String) = pair?;
+                            let v = Arc::<str>::from(v_str);
                             let k = match k_val {
-                                mlua::Value::String(s) => String::from(s.to_str()?),
+                                mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
                                 _ => v.clone()
                             };
                             build_envs.insert(k, v);
@@ -91,16 +95,18 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 }
 
                 let tool_val: mlua::Value = tbl.get("tool")?;
-                let mut tools: HashMap<String, String> = HashMap::new();
+                let mut tools: HashMap<Arc<str>, Arc<str>> = HashMap::new();
                 match tool_val {
                     mlua::Value::String(s) => {
-                        tools.insert(String::from(s.to_str()?), String::from(s.to_str()?));
+                        let tool_name = Arc::<str>::from(s.to_str()?);
+                        tools.insert(tool_name.clone(), tool_name);
                     },
                     mlua::Value::Table(tool_tbl) => {
                         for pair in tool_tbl.pairs() {
-                            let (k_val, v): (mlua::Value, String) = pair?;
+                            let (k_val, v_str): (mlua::Value, String) = pair?;
+                            let v = Arc::<str>::from(v_str);
                             let k = match k_val {
-                                mlua::Value::String(s) => String::from(s.to_str()?),
+                                mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
                                 _ => v.clone()
                             };
                             tools.insert(k, v);
@@ -110,12 +116,18 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                     _ => { return Err(mlua::Error::runtime(format!("Invalid value for 'tool' property: {:?}", tool_val)))}
                 }
                 
+                let cmd_tool_name = Arc::<str>::from("cmd");
 
                 // Check if we are a table with a single positional element, which means that we're
                 // a function command, (likely accompanied by a build_env or tool entry in the table)
                 if tbl.len()? == 1 {
                     let first_val: mlua::Value = tbl.get(1)?;
                     if let mlua::Value::Function(func) = first_val {
+                        // Function actions should always have the cmd tool available
+                        if !tools.contains_key(&cmd_tool_name) {
+                            tools.insert(cmd_tool_name.clone(), cmd_tool_name);
+                        }
+
                         return Ok(Action {
                             build_envs,
                             tools,
@@ -127,7 +139,9 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 // Otherwise, interpret the contents of the table as an args list, in which case only one
                 // build env or tool is allowed.  If no build env or tool is specified, use the "cmd" tool
                 match build_envs.len() + tools.len() {
-                    0 => { tools.insert(String::from("cmd"), String::from("cmd")); },
+                    0 => {
+                        tools.insert(cmd_tool_name.clone(), cmd_tool_name);
+                    },
                     1 => { /* no action needed */},
                     _ => { return Err(mlua::Error::runtime("Can only use one build_env or tool with argument list action")); }
                 };
@@ -138,14 +152,16 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 Ok(Action {
                     build_envs,
                     tools,
-                    cmd: ActionCmd::Cmd(args)
+                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect())
                 })
             },
             mlua::Value::Function(func) => {
                 // We are a function action without a tool or build env
+                // Function actions should always have the cmd tool available
+                let cmd_tool_name = Arc::<str>::from("cmd");
                 Ok(Action {
                     build_envs: HashMap::new(),
-                    tools: HashMap::new(),
+                    tools: vec![(cmd_tool_name.clone(), cmd_tool_name)].into_iter().collect(),
                     cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
                 })
             },
@@ -167,7 +183,7 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
                 }
 
                 for arg in args {
-                    action_table.push(arg)?;
+                    action_table.push(arg.as_ref())?;
                 }
             },
             ActionCmd::Func(f) => {
@@ -175,8 +191,11 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
             }
         }
 
-        action_table.set("tool", tools)?;
-        action_table.set("build_env", build_envs)?;
+        let tools_str: HashMap<&str, &str> = tools.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
+        let build_envs_str: HashMap<&str, &str> = build_envs.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
+
+        action_table.set("tool", tools_str)?;
+        action_table.set("build_env", build_envs_str)?;
 
         Ok(mlua::Value::Table(action_table))
     }

@@ -29,16 +29,16 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
         _ => find_tasks_for_query(&workspace, project_name.as_str(), input.tasks.iter().copied()).unwrap()
     };
     tasks.sort();
-    let tasks: Vec<String> = tasks.into_iter().map(|s| s.to_owned()).collect();
+    let tasks = tasks;
 
     // Resolve calculated dependencies
     let mut executor = TaskExecutor::new(config.workspace_dir.as_path(), config.workspace_dir.join(".cobble.db").as_path());
     for task in tasks.iter() {
-        resolve_calculated_dependencies_in_subtree(task.as_str(), &file_providers, &mut workspace, &mut executor).unwrap();
+        resolve_calculated_dependencies_in_subtree(&task, &file_providers, &mut workspace, &mut executor).unwrap();
 
     }
 
-    let result = executor.execute_tasks(&workspace, tasks.iter().map(|s| s.as_str()));
+    let result = executor.execute_tasks(&workspace, tasks.iter());
 
     match result {
         Ok(_) => ExitCode::from(0),

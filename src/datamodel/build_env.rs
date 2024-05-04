@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use crate::datamodel::{
     Action,
@@ -8,7 +8,7 @@ use crate::datamodel::{
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
-    pub name: String,
+    pub name: Arc<str>,
     pub install: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub action: Action,
@@ -42,7 +42,8 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(tbl) => {
-                let name: String = tbl.get("name")?;
+                let name_str: String = tbl.get("name")?;
+                let name = Arc::<str>::from(name_str);
 
                 let install: Vec<Action> = tbl.get("install")?;
                 let deps_opt: Option<DependencyList> = tbl.get("deps")?;
@@ -84,6 +85,6 @@ mod tests {
         "#).eval().unwrap();
 
         let build_env: BuildEnv = lua.unpack(mlua::Value::Table(build_env_table)).unwrap();
-        assert_eq!(build_env.name, String::from("poetry"));
+        assert_eq!(build_env.name, Arc::<str>::from("poetry"));
     }
 }

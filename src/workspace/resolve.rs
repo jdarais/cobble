@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    path::{Component, Path, PathBuf}
+    path::{Component, Path, PathBuf}, sync::Arc
 };
 
 use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, TaskDef};
@@ -45,20 +45,20 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
     Ok(project_name)
 }
 
-pub fn resolve_path(project_path: &Path, path: &str) -> Result<String, NameResolutionError> {
+pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameResolutionError> {
     let full_path = project_path.join(path);
-    let full_path_str_opt = full_path.to_str();
+    let full_path_str_opt = full_path.into_os_string().into_string();
     match full_path_str_opt {
-        Some(full_path_str) => {
-            Ok(full_path_str.to_owned())
+        Ok(full_path_str) => {
+            Ok(full_path_str.into())
         },
-        None => Err(NameResolutionError::PathToStringError(full_path))
+        Err(os_str) => Err(NameResolutionError::PathToStringError(PathBuf::from(os_str)))
     }
 }
 
-pub fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolutionError> {
+pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
     if name.starts_with("/") {
-        return Ok(name.to_owned());
+        return Ok(name.clone());
     }
 
     if !project_name.starts_with("/") {
@@ -93,8 +93,8 @@ pub fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolu
     }
 
     let resolved_name = match full_name_segments.len() {
-        0 | 1 => String::from("/"),
-        _ => full_name_segments.join("/")
+        0 | 1 => Arc::<str>::from("/"),
+        _ => Arc::<str>::from(full_name_segments.join("/"))
     };
     Ok(resolved_name)
 }
@@ -102,15 +102,15 @@ pub fn resolve_name(project_name: &str, name: &str) -> Result<String, NameResolu
 pub fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {
     match dep {
         Dependency::File(f) => {
-            *dep = Dependency::File(resolve_path(project_path, f.as_str())?);
+            *dep = Dependency::File(resolve_path(project_path, f.as_ref())?);
             Ok(())
         },
         Dependency::Task(t) => {
-            *dep = Dependency::Task(resolve_name(project_name, t.as_str())?);
+            *dep = Dependency::Task(resolve_name(project_name, &t)?);
             Ok(())
         },
         Dependency::Calc(c) => {
-            *dep = Dependency::Calc(resolve_name(project_name, c.as_str())?);
+            *dep = Dependency::Calc(resolve_name(project_name, &c)?);
             Ok(())
         }
     }
@@ -120,14 +120,14 @@ fn resolve_names_in_action(project_name: &str, action: &mut Action) -> Result<()
     // Tool names are global, no need to resolve tool names
     
     for (_, env_name) in action.build_envs.iter_mut() {
-        *env_name = resolve_name(project_name, env_name.as_str())?;
+        *env_name = resolve_name(project_name, &env_name)?;
     }
 
     Ok(())
 }
 
 fn resolve_names_in_build_env(project_name: &str, project_path: &Path, build_env: &mut BuildEnv) -> Result<(), NameResolutionError> {
-    build_env.name = resolve_name(project_name, build_env.name.as_str())?;
+    build_env.name = resolve_name(project_name, &build_env.name)?;
 
     for action in build_env.install.iter_mut() {
         resolve_names_in_action(project_name, action)?;
@@ -158,16 +158,16 @@ fn resolve_names_in_tool(project_name: &str, tool: &mut ExternalTool) -> Result<
 }
 
 fn resolve_names_in_artifact(project_path: &Path, artifact: &mut Artifact) -> Result<(), NameResolutionError> {
-    artifact.filename = resolve_path(project_path, artifact.filename.as_str())?;
+    artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
 
     Ok(())
 }
 
 fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut TaskDef) -> Result<(), NameResolutionError> {
-    task.name = resolve_name(project_name, task.name.as_str())?;
+    task.name = resolve_name(project_name, &task.name)?;
 
     if let Some((_, env_name)) = &mut task.build_env {
-        *env_name = resolve_name(project_name, env_name.as_str())?;
+        *env_name = resolve_name(project_name, &env_name)?;
     }
 
     for action in task.actions.iter_mut() {
@@ -209,14 +209,14 @@ mod tests {
 
     #[test]
     fn test_resolve_name() {
-        let full_name = resolve_name("/subproject", "myname").unwrap();
-        assert_eq!(full_name, "/subproject/myname");
+        let full_name = resolve_name("/subproject", &Arc::<str>::from("myname")).unwrap();
+        assert_eq!(full_name.as_ref(), "/subproject/myname");
     }
 
     #[test]
     fn test_resolve_name_from_root() {
-        let full_name = resolve_name("/", "myname").unwrap();
-        assert_eq!(full_name, "/myname");
+        let full_name = resolve_name("/", &Arc::<str>::from("myname")).unwrap();
+        assert_eq!(full_name.as_ref(), "/myname");
     }
 
     #[test]

@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::datamodel::{
     Action, ActionCmd, BuildEnv, ExternalTool, Project, TaskDef
@@ -213,7 +214,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     "#).eval()?;
 
     let cmd_tool = ExternalTool {
-        name: String::from("cmd"),
+        name: Arc::<str>::from("cmd"),
         install: None,
         check: None,
         action: Action {
@@ -224,8 +225,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     };
 
     projects.insert(String::from("/__COBBLE_INTERNAL__"), Project {
-        name: String::from("/__COBBLE_INTERNAL__"),
-        path: PathBuf::from("./__COBBLE_INTERNAL__"),
+        name: Arc::<str>::from("/__COBBLE_INTERNAL__"),
+        path: PathBuf::from("./__COBBLE_INTERNAL__").into(),
         build_envs: Vec::new(),
         tasks: Vec::new(),
         tools: vec![cmd_tool],
@@ -284,6 +285,6 @@ mod tests {
         let project = projects.get("/testproject").unwrap();
         assert_eq!(project.build_envs.len(), 1);
         assert_eq!(project.tasks.len(), 0);
-        assert_eq!(project.path, Path::new("testproject"))
+        assert_eq!(project.path.as_ref(), Path::new("testproject"))
     }
 }

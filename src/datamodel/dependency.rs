@@ -1,6 +1,6 @@
 extern crate serde_json;
 
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,19 +28,19 @@ impl DependencyList {
 
         if let Some(mut files) = deps_by_type.files.take() {
             for (_, f) in files.drain() {
-                deps.push(Dependency::File(f));
+                deps.push(Dependency::File(f.into()));
             }
         }
 
         if let Some(mut tasks) = deps_by_type.tasks.take() {
             for (_, t) in tasks.drain() {
-                deps.push(Dependency::Task(t));
+                deps.push(Dependency::Task(t.into()));
             }
         }
 
         if let Some(mut calc_deps) = deps_by_type.calc.take() {
             for (_, c) in calc_deps.drain() {
-                deps.push(Dependency::Calc(c));
+                deps.push(Dependency::Calc(c.into()));
             }
         }
 
@@ -65,9 +65,9 @@ impl <'lua> mlua::FromLua<'lua> for DependencyList {
             }
         }
 
-        let deps: Vec<Dependency> = file_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|f| Dependency::File(f))
-            .chain(task_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|t| Dependency::Task(t)))
-            .chain(calc_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|c| Dependency::Calc(c)))
+        let deps: Vec<Dependency> = file_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|f| Dependency::File(f.into()))
+            .chain(task_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|t| Dependency::Task(t.into())))
+            .chain(calc_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|c| Dependency::Calc(c.into())))
             .collect();
 
         Ok(DependencyList(deps))
@@ -76,18 +76,18 @@ impl <'lua> mlua::FromLua<'lua> for DependencyList {
 
 #[derive(Clone, Debug)]
 pub enum Dependency {
-    File(String),
-    Task(String),
-    Calc(String)
+    File(Arc<str>),
+    Task(Arc<str>),
+    Calc(Arc<str>)
 }
 
 impl fmt::Display for Dependency {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Dependency::*;
         match self {
-            File(val) => write!(f, "File({})", val.as_str()),
-            Task(val) => write!(f, "Task({})", val.as_str()),
-            Calc(val) => write!(f, "Calc({})", val.as_str())
+            File(val) => write!(f, "File({})", val.as_ref()),
+            Task(val) => write!(f, "Task({})", val.as_ref()),
+            Calc(val) => write!(f, "Calc({})", val.as_ref())
         }
     }
 }

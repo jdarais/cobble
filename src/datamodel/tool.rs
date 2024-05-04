@@ -1,12 +1,12 @@
 extern crate mlua;
 
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 use crate::datamodel::Action;
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {
-    pub name: String,
+    pub name: Arc<str>,
     pub install: Option<Action>,
     pub check: Option<Action>,
     pub action: Action
@@ -33,7 +33,8 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
     fn from_lua(value: mlua::prelude::LuaValue<'lua>, _lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
-                let name: String = tbl.get("name")?;
+                let name_str: String = tbl.get("name")?;
+                let name = Arc::<str>::from(name_str);
 
                 let install: Option<Action> = tbl.get("install")?;
                 if let Some(ins) = &install {
@@ -67,7 +68,7 @@ impl <'lua> mlua::IntoLua<'lua> for ExternalTool {
         let ExternalTool { name, install, check, action } = self;
         let tool_table = lua.create_table()?;
 
-        tool_table.set("name", name)?;
+        tool_table.set("name", name.as_ref())?;
         
         if let Some(inst) = install {
             tool_table.set("install", inst)?;

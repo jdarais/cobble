@@ -36,7 +36,7 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> ExitCode {
             .map(|n| n.strip_prefix("/").unwrap_or(n))
             .map(|n| if n.len() > 0 { n } else { "(default)" });
 
-        println!("{}", rel_name.unwrap_or(name));
+        println!("{}", rel_name.unwrap_or(name.as_ref()));
     }
 
     ExitCode::from(0)

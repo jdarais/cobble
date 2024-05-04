@@ -1,5 +1,5 @@
-use std::fmt;
-use std::path::PathBuf;
+use std::{fmt, sync::Arc};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use crate::datamodel::{BuildEnv, ExternalTool, TaskDef};
@@ -7,12 +7,12 @@ use crate::datamodel::{BuildEnv, ExternalTool, TaskDef};
 
 #[derive(Debug)]
 pub struct Project {
-    pub name: String,
-    pub path: PathBuf,
+    pub name: Arc<str>,
+    pub path: Arc<Path>,
     pub build_envs: Vec<BuildEnv>,
     pub tasks: Vec<TaskDef>,
     pub tools: Vec<ExternalTool>,
-    pub child_project_names: Vec<String>
+    pub child_project_names: Vec<Arc<str>>
 }
 
 impl fmt::Display for Project {
@@ -53,17 +53,22 @@ impl <'lua> mlua::FromLua<'lua> for Project {
             _ => { return Err(mlua::Error::runtime(format!("Project must be a lua table value"))); }
         };
 
-        let name: String = project_table.get("name")?;
+        let name_str: String = project_table.get("name")?;
+        let name = Arc::<str>::from(name_str);
+
         let path_str: String = project_table.get("dir")?;
-        let path = PathBuf::from_str(path_str.as_str()).expect("Conversion from str to PathBuf is infalliable");
+        let path_buf = PathBuf::from_str(path_str.as_str()).expect("Conversion from str to PathBuf is infalliable");
+        let path = Arc::<Path>::from(path_buf);
+
         let build_envs: Vec<BuildEnv> = project_table.get("build_envs")?;
         let tasks: Vec<TaskDef> = project_table.get("tasks")?;
         let tools: Vec<ExternalTool> = project_table.get("tools")?;
 
         let child_projects: Vec<mlua::Table> = project_table.get("child_projects")?;
-        let mut child_project_names: Vec<String> = Vec::with_capacity(child_projects.len());
+        let mut child_project_names: Vec<Arc<str>> = Vec::with_capacity(child_projects.len());
         for child_project in child_projects {
-            child_project_names.push(child_project.get("name")?);
+            let child_project_name: String = child_project.get("name")?;
+            child_project_names.push(child_project_name.into());
         }
 
         Ok(Project{ name, path, build_envs, tasks, tools, child_project_names })

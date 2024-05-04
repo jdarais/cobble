@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::datamodel::{
     Action,
@@ -9,8 +9,8 @@ use crate::datamodel::{
 
 #[derive(Clone, Debug)]
 pub struct TaskDef {
-    pub name: String,
-    pub build_env: Option<(String, String)>,
+    pub name: Arc<str>,
+    pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub artifacts: Vec<Artifact>
@@ -52,16 +52,20 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(task_table) => {
-                let name: String = task_table.get("name")?;
-
+                let name_str: String = task_table.get("name")?;
+                let name = Arc::<str>::from(name_str);
+                
                 let build_env_val: mlua::Value = task_table.get("build_env")?;
                 let build_env = match build_env_val {
-                    mlua::Value::String(s) => Some((String::from(s.to_str()?), String::from(s.to_str()?))),
+                    mlua::Value::String(s) => {
+                        let build_env_name = Arc::<str>::from(s.to_str()?);
+                        Some((build_env_name.clone(), build_env_name))
+                    },
                     mlua::Value::Table(t) => {
-                        let mut envs: HashMap<String, String> = HashMap::new();
+                        let mut envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
                         for pair in t.pairs() {
                             let (k, v): (String, String) = pair?;
-                            envs.insert(k, v);
+                            envs.insert(k.into(), v.into());
                         }
 
                         if envs.len() > 1 {
