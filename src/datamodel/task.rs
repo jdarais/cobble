@@ -1,10 +1,7 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::datamodel::{
-    Action,
-    Dependency,
-    DependencyList,
-    Artifact,
+    action::validate_action_list, artifact::validate_artifact, dependency::validate_dep_list, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence}, Action, Artifact, Dependency, DependencyList
 };
 
 #[derive(Clone, Debug)]
@@ -14,6 +11,50 @@ pub struct TaskDef {
     pub actions: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub artifacts: Vec<Artifact>
+}
+
+pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    let tbl_val = validate_is_table(value)?;
+
+    validate_required_key(tbl_val, "name")?;
+
+    for pair in tbl_val.clone().pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+        let k_str = validate_is_string(&k)?;
+        match k_str.to_str()? {
+            "name" => validate_is_string(&v).map(|_| ()),
+            "build_env" => match v {
+                mlua::Value::String(_) => Ok(()),
+                mlua::Value::Table(t) => {
+                    let mut has_build_env = false;
+                    for pair in t.pairs() {
+                        if has_build_env { return Err(mlua::Error::runtime("Only one build_env is allowed at the task level")); }
+
+                        let (env_alias, env_name): (mlua::Value, mlua::Value) = pair?;
+                        validate_is_string(&env_alias)?;
+                        validate_is_string(&env_name)?;
+                        has_build_env = true;
+                    }
+                    Ok(())
+                },
+                _ => Err(mlua::Error::runtime(format!("Expected a string or table, but got a {}: {:?}", v.type_name(), v)))
+            },
+            "actions" => validate_action_list(lua, &v),
+            "deps" => validate_dep_list(lua, &v),
+            "artifacts" => {
+                let artifacts_tbl =  validate_is_table(&v)?;
+                validate_table_is_sequence(&artifacts_tbl)?;
+                for artifact_res in artifacts_tbl.clone().sequence_values() {
+                    let artifact: mlua::Value = artifact_res?;
+                    validate_artifact(lua, &artifact)?;
+                }
+                Ok(())
+            },
+            unknown_key => key_validation_error(unknown_key, vec!["name", "build_env", "actions", "deps", "artifacts"])
+        }?;
+    }
+
+    Ok(())
 }
 
 impl fmt::Display for TaskDef {
@@ -86,7 +127,6 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
         
                 Ok(TaskDef { name, build_env, actions, deps, artifacts })
             },
-            mlua::Value::UserData(val) => Ok(val.borrow::<TaskDef>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }
     }

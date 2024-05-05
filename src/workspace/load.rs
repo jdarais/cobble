@@ -3,15 +3,14 @@ extern crate toml;
 extern crate serde;
 
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mlua::AsChunk;
-
+use crate::datamodel::build_env::validate_build_env;
+use crate::datamodel::task::validate_task;
+use crate::datamodel::tool::validate_tool;
 use crate::datamodel::{
-    Action, ActionCmd, BuildEnv, ExternalTool, Project, TaskDef
+    Action, ActionCmd, ExternalTool, Project
 };
 use crate::lua::detached_value::dump_function;
 use crate::lua::lua_env::create_lua_env;
@@ -78,20 +77,20 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     })?;
     cxt.set("process_project_dir", project_dir_func)?;
 
-    let create_build_env = lua.create_function(|_, build_env: BuildEnv| {
-        Ok(mlua::AnyUserData::wrap(build_env))
+    let validate_build_env = lua.create_function(|lua, val: mlua::Value| {
+        validate_build_env(lua, &val)
     })?;
-    cxt.set("create_build_env", create_build_env)?;
+    cxt.set("validate_build_env", validate_build_env)?;
 
-    let create_task_func = lua.create_function(|_, task: TaskDef| {
-        Ok(mlua::AnyUserData::wrap(task))
+    let validate_task = lua.create_function(|lua, val: mlua::Value| {
+        validate_task(lua, &val)
     })?;
-    cxt.set("create_task", create_task_func)?;
+    cxt.set("validate_task", validate_task)?;
 
-    let create_tool_func = lua.create_function(|_, tool: ExternalTool| {
-        Ok(mlua::AnyUserData::wrap(tool))
+    let validate_tool = lua.create_function(|lua, val: mlua::Value| {
+        validate_tool(lua, &val)
     })?;
-    cxt.set("create_external_tool", create_tool_func)?;
+    cxt.set("validate_tool", validate_tool)?;
 
     lua.load(r#"
         local cxt = ...
@@ -161,18 +160,20 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         end
 
         function build_env (env)
-            local created = cxt.create_build_env(env)
-            table.insert(PROJECT.build_envs, created)
+            local status, err = pcall(cxt.validate_build_env, env)
+            if not status then error(err, 1) end
+            table.insert(PROJECT.build_envs, env)
         end
 
         function external_tool (tool)
-            local created = cxt.create_external_tool(tool)
-            table.insert(PROJECT.tools, created)
+            cxt.validate_tool(tool)
+            table.insert(PROJECT.tools, tool)
         end
 
         function task (tsk)
-            local created = cxt.create_task(tsk)
-            table.insert(PROJECT.tasks, created)
+            local status, err = pcall(cxt.validate_task, tsk)
+            if not status then error(err, 1) end
+            table.insert(PROJECT.tasks, tsk)
         end
     "#).call(cxt)
 }

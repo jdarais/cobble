@@ -2,7 +2,7 @@ extern crate mlua;
 
 use std::{fmt, sync::Arc};
 
-use crate::datamodel::Action;
+use crate::datamodel::{action::validate_action, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key}, Action};
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {
@@ -10,6 +10,27 @@ pub struct ExternalTool {
     pub install: Option<Action>,
     pub check: Option<Action>,
     pub action: Action
+}
+
+pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+    let tool_tbl = validate_is_table(&value)?;
+
+    validate_required_key(&tool_tbl, "name")?;
+    validate_required_key(&tool_tbl, "action")?;
+
+    for pair in tool_tbl.clone().pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+        let k_str = validate_is_string(&k)?;
+        match k_str.to_str()? {
+            "name" => validate_is_string(&v).and(Ok(())),
+            "install" => validate_action(lua, &v),
+            "check" => validate_action(lua, &v),
+            "action" => validate_action(lua, &v),
+            unknown_key => key_validation_error(unknown_key, vec!["name", "install", "check", "action"])
+        }?;
+    }
+
+    Ok(())
 }
 
 impl fmt::Display for ExternalTool {
@@ -57,7 +78,6 @@ impl <'lua> mlua::FromLua<'lua> for ExternalTool {
 
                 Ok(ExternalTool { name, install, check, action })
             },
-            mlua::Value::UserData(val) => Ok(val.borrow::<ExternalTool>()?.clone()),
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to action: {:?}", &value)))
         }
     }

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
+use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence};
 use crate::lua::detached_value::{FunctionDump, dump_function};
 
 #[derive(Clone, Debug)]
@@ -20,27 +21,78 @@ impl fmt::Display for ActionCmd {
     }
 }
 
-impl <'lua> mlua::FromLua<'lua> for ActionCmd {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        match value {
-            mlua::Value::Function(func) => Ok(ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)),
-            mlua::Value::Table(tbl) => {
-                let cmd_args_res: mlua::Result<Vec<String>> = tbl.sequence_values().collect();
-                let cmd_args: Vec<String> = cmd_args_res?;
-                let cmd_args_arc_str: Vec<Arc<str>> = cmd_args.into_iter().map(|s| Arc::<str>::from(s)).collect();
-                Ok(ActionCmd::Cmd(cmd_args_arc_str))
-            },
-            val => Err(mlua::Error::runtime(format!("Unable to convert value to Action: {:?}", val)))
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Action {
     pub tools: HashMap<Arc<str>, Arc<str>>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
     pub cmd: ActionCmd
 }
+
+fn validate_name_alias_table<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    match value {
+        mlua::Value::Table(tbl_val) => validate_table_has_only_string_or_sequence_keys(tbl_val),
+        mlua::Value::String(_) => Ok(()),
+        _ => Err(mlua::Error::runtime(format!("Expected a table or string, but got a {}: {:?}", value.type_name(), value)))
+    }
+}
+
+pub fn validate_action_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    let tbl_val = validate_is_table(value)?;
+    validate_table_is_sequence(tbl_val)?;
+    for action_tbl_res in tbl_val.clone().sequence_values() {
+        let action_tbl: mlua::Value = action_tbl_res?;
+        validate_action(lua, &action_tbl)?;
+    }
+    Ok(())
+}
+
+
+pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    match value {
+        mlua::Value::Table(tbl_val) => {
+            validate_table_has_only_string_or_sequence_keys(&tbl_val)?;
+            let mut sequence_values: Vec<mlua::Value> = Vec::with_capacity(tbl_val.len()? as usize);
+            sequence_values.resize(sequence_values.capacity(), mlua::Value::Nil);
+
+            for pair in tbl_val.clone().pairs() {
+                let (k, v): (mlua::Value, mlua::Value) = pair?;
+                match k {
+                    mlua::Value::Integer(i) => {
+                            sequence_values[i as usize - 1] = v;
+                            Ok(())
+                    },
+                    mlua::Value::String(ks) => match ks.to_str()? {
+                        "tool" => validate_name_alias_table(lua, &v),
+                        "env" => validate_name_alias_table(lua, &v),
+                        unknown_key => key_validation_error(unknown_key, vec!["tool", "env"])
+                    },
+                    _ => Err(mlua::Error::runtime(format!("Expected a string or integer index, but got a {}: {:?}", k.type_name(), k)))
+                }?;
+            }
+
+            if sequence_values.len() == 0 {
+                return Err(mlua::Error::runtime("Action table must have either a single function or one or more strings as positional elements"));
+            }
+
+            let first_seq_val = sequence_values.remove(0);
+            match first_seq_val {
+                mlua::Value::Function(_) => if sequence_values.len() == 0 { Ok(()) }
+                    else { Err(mlua::Error::runtime("For function actions, the function is the only allowed positional element")) },
+                mlua::Value::String(_) => { Ok(()) },
+                _ => Err(mlua::Error::runtime(format!("Expected a string or function, but got a {}: {:?}", first_seq_val.type_name(), first_seq_val)))
+            }?;
+
+            for val in sequence_values {
+                validate_is_string(&val)?;
+            }
+
+            Ok(())
+        },
+        mlua::Value::Function(_) => { Ok(()) },
+        _ => Err(mlua::Error::runtime(format!("Expected table or function, but got a {}:, {:?}", value.type_name(), value)))
+    }
+}
+
 
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

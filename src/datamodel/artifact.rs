@@ -1,8 +1,14 @@
 use std::{fmt, sync::Arc};
 
+use crate::datamodel::validate::validate_is_string;
+
 #[derive(Clone, Debug)]
 pub struct Artifact {
     pub filename: Arc<str>
+}
+
+pub fn validate_artifact<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    validate_is_string(value).and(Ok(()))
 }
 
 impl fmt::Display for Artifact {

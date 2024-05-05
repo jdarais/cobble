@@ -16,7 +16,14 @@ pub struct RunCommandInput<'a> {
 
 pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
     let config = get_workspace_config(input.cwd).unwrap();
-    let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
+    let projects_res = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str()));
+    let projects = match projects_res {
+        Ok(p) => p,
+        Err(e) => {
+            println!("Encountered an error while loading projects:\n{}", e);
+            return ExitCode::from(1);
+        }
+    };
 
     let file_providers = compute_file_providers(projects.values());
     let mut workspace = create_workspace(projects.values(), &file_providers);

@@ -1,9 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use crate::datamodel::{
-    Action,
-    Dependency,
-    DependencyList,
+    action::{validate_action, validate_action_list}, dependency::validate_dep_list, validate::{key_validation_error, validate_is_string, validate_table_is_sequence}, Action, Dependency, DependencyList
 };
 
 #[derive(Clone, Debug)]
@@ -12,6 +10,28 @@ pub struct BuildEnv {
     pub install: Vec<Action>,
     pub deps: Vec<Dependency>,
     pub action: Action,
+}
+
+
+pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+    match value {
+        mlua::Value::Table(tbl_val) => {
+            for pair in tbl_val.clone().pairs() {
+                let (k, v): (mlua::Value, mlua::Value) = pair?;
+                let k_str = validate_is_string(&k)?;
+                match k_str.to_str()? {
+                    "name" => validate_is_string(&v).and(Ok(())),
+                    "install" => validate_action_list(lua, &v),
+                    "deps" => validate_dep_list(lua, &v),
+                    "action" => validate_action(lua, &v),
+                    s_str => key_validation_error(s_str, vec!["name", "install", "deps"])
+                }?;
+            }
+
+            Ok(())
+        },
+        _ => Err(mlua::Error::runtime(format!("Expected a table, but got a {}: {:?}", value.type_name(), value)))
+    }
 }
 
 impl fmt::Display for BuildEnv {
@@ -52,7 +72,6 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
         
                 Ok(BuildEnv { name, install, deps, action })
             },
-            mlua::Value::UserData(val) => Ok(val.borrow::<BuildEnv>()?.clone()),
             val => { return Err(mlua::Error::runtime(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
         }
     }

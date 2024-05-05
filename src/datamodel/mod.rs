@@ -5,6 +5,8 @@ pub mod dependency;
 pub mod project;
 pub mod task;
 pub mod tool;
+pub mod types;
+pub mod validate;
 
 #[allow(unused_imports)]
 pub use action::{Action, ActionCmd};

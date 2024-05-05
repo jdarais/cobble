@@ -4,12 +4,8 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[serde(untagged)]
-enum StringOrInt {
-    String(String),
-    Int(i64)
-}
+use crate::datamodel::types::StringOrInt;
+use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
 
 #[derive(Serialize, Deserialize)]
 struct DependencyListByType {
@@ -19,6 +15,25 @@ struct DependencyListByType {
 }
 
 pub struct DependencyList(pub Vec<Dependency>);
+
+pub fn validate_dep_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+    match value {
+        mlua::Value::Table(dep_tbl) => {
+            for pair in dep_tbl.clone().pairs() {
+                let (dep_type, dep_list): (mlua::Value, mlua::Value) = pair?;
+                let dep_type_str = validate_is_string(&dep_type)?;
+                match dep_type_str.to_str()? {
+                    "files" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
+                    "tasks" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
+                    "calc" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
+                    key => key_validation_error(key, vec!["files", "tasks", "calc"])
+                }?;
+            }
+            Ok(())
+        },
+        _ => Err(mlua::Error::runtime(format!("Expected a table, but got a {}: {:?}", value.type_name(), value)))
+    }
+}
 
 impl DependencyList {
     pub fn from_json(val: serde_json::Value) -> serde_json::Result<DependencyList> {
