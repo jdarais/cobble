@@ -16,7 +16,7 @@ struct DependencyListByType {
 
 pub struct DependencyList(pub Vec<Dependency>);
 
-pub fn validate_dep_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     match value {
         mlua::Value::Table(dep_tbl) => {
             for pair in dep_tbl.clone().pairs() {

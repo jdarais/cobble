@@ -1,8 +1,9 @@
 use std::{fmt, sync::Arc};
 
-use crate::datamodel::{
-    action::{validate_action, validate_action_list}, dependency::validate_dep_list, validate::{key_validation_error, validate_is_string, validate_table_is_sequence}, Action, Dependency, DependencyList
-};
+use crate::datamodel::action::{validate_action, validate_action_list};
+use crate::datamodel::dependency::validate_dep_list;
+use crate::datamodel::validate::{key_validation_error, validate_is_string};
+use crate::datamodel::{Action, Dependency, DependencyList};
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {

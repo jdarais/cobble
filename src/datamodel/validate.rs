@@ -40,6 +40,13 @@ pub fn validate_is_string<'a, 'lua>(value: &'a mlua::Value<'lua>) -> mlua::Resul
     }
 }
 
+pub fn validate_is_bool(value: &mlua::Value) -> mlua::Result<bool> {
+    match value {
+        mlua::Value::Boolean(b) => Ok(*b),
+        _ => Err(mlua::Error::runtime(format!("Expected a boolean, but got a {}: {:?}", value.type_name(), value)))
+    }
+}
+
 pub fn validate_is_table<'a, 'lua>(value: &'a mlua::Value<'lua>) -> mlua::Result<&'a mlua::Table<'lua>> {
     match value {
         mlua::Value::Table(t) => Ok(t),

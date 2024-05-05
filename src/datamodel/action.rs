@@ -28,7 +28,7 @@ pub struct Action {
     pub cmd: ActionCmd
 }
 
-fn validate_name_alias_table<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+fn validate_name_alias_table<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
     match value {
         mlua::Value::Table(tbl_val) => validate_table_has_only_string_or_sequence_keys(tbl_val),
         mlua::Value::String(_) => Ok(()),

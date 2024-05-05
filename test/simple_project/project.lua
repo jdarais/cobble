@@ -5,12 +5,14 @@ task {
     }
 }
 
-task {
-    name = "take_time",
-    actions = {
-        { "bash", script_dir() .. "/take_time.sh" }
+project("time", function ()
+    task {
+        name = "take_time",
+        actions = {
+            { "bash", script_dir() .. "/take_time.sh" }
+        }
     }
-}
+end)
 
 task {
     name = "task2",
@@ -24,6 +26,7 @@ task {
 
 task {
     name = "task3",
+    default = true,
     actions = {
         { "echo", "Task 3!!" },
     }

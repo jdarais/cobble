@@ -1,12 +1,13 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::datamodel::{
-    action::validate_action_list, artifact::validate_artifact, dependency::validate_dep_list, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence}, Action, Artifact, Dependency, DependencyList
+    action::validate_action_list, artifact::validate_artifact, dependency::validate_dep_list, validate::{key_validation_error, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence}, Action, Artifact, Dependency, DependencyList
 };
 
 #[derive(Clone, Debug)]
 pub struct TaskDef {
     pub name: Arc<str>,
+    pub is_default: Option<bool>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
     pub deps: Vec<Dependency>,
@@ -22,7 +23,8 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
         let (k, v): (mlua::Value, mlua::Value) = pair?;
         let k_str = validate_is_string(&k)?;
         match k_str.to_str()? {
-            "name" => validate_is_string(&v).map(|_| ()),
+            "name" => validate_is_string(&v).and(Ok(())),
+            "default" => validate_is_bool(&v).and(Ok(())),
             "build_env" => match v {
                 mlua::Value::String(_) => Ok(()),
                 mlua::Value::Table(t) => {
@@ -95,6 +97,8 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
             mlua::Value::Table(task_table) => {
                 let name_str: String = task_table.get("name")?;
                 let name = Arc::<str>::from(name_str);
+
+                let is_default: Option<bool> = task_table.get("default")?;
                 
                 let build_env_val: mlua::Value = task_table.get("build_env")?;
                 let build_env = match build_env_val {
@@ -125,7 +129,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
                 let artifacts = artifacts_opt.unwrap_or_default();
         
-                Ok(TaskDef { name, build_env, actions, deps, artifacts })
+                Ok(TaskDef { name, is_default, build_env, actions, deps, artifacts })
             },
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }

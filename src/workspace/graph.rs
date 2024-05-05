@@ -129,22 +129,29 @@ fn add_task_to_workspace(task_def: &TaskDef, project_name: &Arc<str>, dir: &Arc<
 
 fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>, Arc<str>>, workspace: &mut Workspace) {
     if project.name.as_ref() != "/__COBBLE_INTERNAL__" {
-        workspace.tasks.insert(project.name.clone(), Arc::new(
-        Task {
+        let mut project_task = Task {
                 task_type: TaskType::Project,
                 dir: project.path.clone(),
                 project_name: project.name.clone(),
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 file_deps: Vec::new(),
-                task_deps: project.tasks.iter().map(|t| t.name.clone())
-                    .chain(project.child_project_names.iter().map(|name| name.clone()))
-                    .collect(),
+                task_deps: project.child_project_names.iter().cloned().collect(),
                 calc_deps: Vec::new(),
                 actions: Vec::new(),
                 artifacts: Vec::new()
-            }
-        ));
+            };
+        let mut default_tasks: Vec<&TaskDef> = project.tasks.iter().filter(|t| t.is_default.unwrap_or(false)).collect();
+        if default_tasks.len() == 0 {
+            // Not specifying any default tasks for a project results in all tasks being default
+            default_tasks = project.tasks.iter().collect();
+        }
+
+        for task in default_tasks.into_iter() {
+            project_task.task_deps.push(task.name.clone())
+        }
+
+        workspace.tasks.insert(project.name.clone(), Arc::new(project_task));
     }
 
     for env in project.build_envs.iter() {
