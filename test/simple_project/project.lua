@@ -12,7 +12,10 @@ project("time", function ()
     task {
         name = "take_time",
         actions = {
-            { "bash", script_dir() .. "/take_time.sh" }
+            function (c) c.tool.cmd { "bash", c.files["script"].path } end
+        },
+        deps = {
+            files = { script = "take_time.sh" }
         }
     }
 end)

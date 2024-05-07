@@ -381,11 +381,9 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
             local action_context = {
                 tool = {},
                 env = {},
-                deps = {
-                    files = file_hashes,
-                    vars = vars,
-                    tasks = task_outputs
-                },
+                files = file_hashes,
+                vars = vars,
+                tasks = task_outputs,
                 args = args,
                 action = action,
                 project = { dir = project_dir },
@@ -571,7 +569,19 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, task_inputs:
     let extra_tools: HashMap<&str, &str> = task.task.tools.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
     let extra_build_envs: HashMap<&str, &str> = task.task.build_envs.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
 
-    let file_hashes = task_inputs.file_hashes.clone();
+    // let file_hashes = task_inputs.file_hashes.clone();
+    let files = lua.create_table()
+        .and_then(|tbl| {
+            for (k, v) in task_inputs.file_hashes.iter() {
+                let file_tbl = lua.create_table()?;
+                file_tbl.set("path", task.task.file_deps.get(k.as_str()).map(|dep| dep.path.to_string()))?;
+                file_tbl.set("hash", String::from_utf8(v.clone()).unwrap_or_else(|_e| String::from("")))?;
+                tbl.set(k.clone(), file_tbl)?;
+            }
+            Ok(tbl)
+        })
+        .map_err(|e| ExecuteTaskActionError::LuaError(e))?;
+
     let vars = task_inputs.vars.clone();
 
     let task_outputs = lua.create_table()
@@ -616,7 +626,7 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, task_inputs:
             action_lua.clone(),
             extra_tools.clone(),
             extra_build_envs.clone(),
-            file_hashes.clone(),
+            files.clone(),
             vars.clone(),
             task_outputs.clone(),
             project_dir.to_owned(),
