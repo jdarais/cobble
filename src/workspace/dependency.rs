@@ -3,10 +3,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::datamodel::{DependencyList, Project};
+use crate::datamodel::dependency::Dependencies;
+use crate::datamodel::{DependencyListByType, Project};
 use crate::workspace::execute::{TaskExecutionError, TaskExecutor};
-use crate::workspace::graph::{add_dependency_to_task, Task, Workspace};
-use crate::workspace::resolve::{resolve_names_in_dependency, NameResolutionError};
+use crate::workspace::graph::{add_dependency_list_to_task, Task, Workspace};
+use crate::workspace::resolve::{resolve_names_in_dependency_list, NameResolutionError};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {
@@ -78,22 +79,22 @@ fn resolve_calculated_dependencies_in_subtree_with_history<'a>(task_name: &Arc<s
         let task_output = task_outputs.get(calc_dep.as_ref())
             .expect("calculated dependency task output should be available after executing");
 
-        let deps = DependencyList::from_json(task_output.clone())
+        let deps_list_by_type: DependencyListByType = serde_json::from_value(task_output.clone())
             .map_err(|e| ExecutionGraphError::OutputDeserializationError(e.to_string()))?;
+        let mut deps: Dependencies = deps_list_by_type.into();
 
         task_cow.to_mut().calc_deps = task_cow.to_mut().calc_deps.drain(..).filter(|s| s != calc_dep).collect();
-        for mut dep in deps.0.into_iter() {
-            resolve_names_in_dependency(task.project_name.as_ref(), task.dir.as_ref(), &mut dep)
-                .map_err(|e| ExecutionGraphError::NameResolutionError(e))?;
-            add_dependency_to_task(&dep, file_providers, task_cow.to_mut());
-        }
+        
+        resolve_names_in_dependency_list(task.project_name.as_ref(), task.dir.as_ref(), &mut deps)
+            .map_err(|e| ExecutionGraphError::NameResolutionError(e))?;
+        add_dependency_list_to_task(&deps, file_providers, task_cow.to_mut());
     }
 
     if let Cow::Owned(updated_task) = task_cow {
         workspace.tasks.insert(task_name.clone(), Arc::new(updated_task));
     }
 
-    for dep in task.task_deps.iter() {
+    for dep in task.task_deps.values() {
         resolve_calculated_dependencies_in_subtree_with_history(dep, file_providers, workspace, visited, task_executor)?;
     }
 

@@ -1,8 +1,9 @@
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use crate::workspace::graph::create_workspace;
-use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
+use crate::workspace::config::{add_cli_vars_to_workspace_config, find_nearest_project_dir, get_workspace_config};
 use crate::workspace::dependency::{compute_file_providers, resolve_calculated_dependencies_in_subtree};
 use crate::workspace::execute::TaskExecutor;
 use crate::workspace::load::load_projects;
@@ -11,11 +12,15 @@ use crate::workspace::resolve::project_path_to_project_name;
 
 pub struct RunCommandInput<'a> {
     pub cwd: &'a Path,
-    pub tasks: Vec<&'a str>
+    pub tasks: Vec<&'a str>,
+    pub vars: Vec<String>
 }
 
 pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
-    let config = get_workspace_config(input.cwd).unwrap();
+    let mut config = get_workspace_config(input.cwd).unwrap();
+    add_cli_vars_to_workspace_config(input.vars.iter().map(String::as_ref), &mut config).unwrap();
+    let config = Arc::new(config);
+
     let projects_res = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str()));
     let projects = match projects_res {
         Ok(p) => p,
@@ -39,7 +44,7 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
     let tasks = tasks;
 
     // Resolve calculated dependencies
-    let mut executor = TaskExecutor::new(config.workspace_dir.as_path(), config.workspace_dir.join(".cobble.db").as_path());
+    let mut executor = TaskExecutor::new(config.clone(), config.workspace_dir.join(".cobble.db").as_path());
     for task in tasks.iter() {
         resolve_calculated_dependencies_in_subtree(&task, &file_providers, &mut workspace, &mut executor).unwrap();
 

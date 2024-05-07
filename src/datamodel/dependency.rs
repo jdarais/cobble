@@ -7,14 +7,110 @@ use serde::{Deserialize, Serialize};
 use crate::datamodel::types::StringOrInt;
 use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
 
-#[derive(Serialize, Deserialize)]
-struct DependencyListByType {
-    files: Option<HashMap<StringOrInt, String>>,
-    tasks: Option<HashMap<StringOrInt, String>>,
-    calc: Option<HashMap<StringOrInt, String>>
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct DependencyListByType {
+    pub files: Option<HashMap<StringOrInt, String>>,
+    pub tasks: Option<HashMap<StringOrInt, String>>,
+    pub vars: Option<HashMap<StringOrInt, String>>,
+    pub calc: Option<HashMap<StringOrInt, String>>
 }
 
-pub struct DependencyList(pub Vec<Dependency>);
+#[derive(Clone, Debug, Default)]
+pub struct Dependencies {
+    pub files: HashMap<Arc<str>, Arc<str>>,
+    pub tasks: HashMap<Arc<str>, Arc<str>>,
+    pub vars: HashMap<Arc<str>, Arc<str>>,
+    pub calc: Vec<Arc<str>>,
+}
+
+impl fmt::Display for Dependencies {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl <'lua> mlua::FromLua<'lua> for Dependencies {
+    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        let deps_by_type: DependencyListByType = lua.unpack(value)?;
+        Ok(deps_by_type.into())
+    }
+}
+
+fn alias_map_from_string_or_int_map(value: HashMap<StringOrInt, String>) -> HashMap<Arc<str>, Arc<str>> {
+    let mut result = HashMap::with_capacity(value.len());
+    for (k, v) in value {
+        match k {
+            StringOrInt::Int(_i) => {
+                let f_dep = Arc::<str>::from(v);
+                result.insert(f_dep.clone(), f_dep); 
+            },
+            StringOrInt::String(s) => {
+                result.insert(s.into(), v.into());
+            }
+        }
+    }
+    result
+}
+
+impl From<DependencyListByType> for Dependencies {
+    fn from(value: DependencyListByType) -> Self {
+        let DependencyListByType { files, tasks, vars, calc } = value;
+
+        let mut calc_deps_list: Vec<Arc<str>> = Vec::with_capacity(calc.as_ref().map(|c| c.len()).unwrap_or(0));
+        if let Some(c_deps) = calc {
+            for (_k, v) in c_deps {
+                calc_deps_list.push(v.into());
+            }
+        }
+
+        Dependencies {
+            files: files.map(alias_map_from_string_or_int_map).unwrap_or_default(),
+            tasks: tasks.map(alias_map_from_string_or_int_map).unwrap_or_default(),
+            vars: vars.map(alias_map_from_string_or_int_map).unwrap_or_default(),
+            calc: calc_deps_list
+        }
+    }
+}
+
+fn write_string_or_int_map(f: &mut fmt::Formatter<'_>, val: &HashMap<StringOrInt, String>) -> fmt::Result {
+    for (i, (f_alias, f_path)) in val.iter().enumerate() {
+        if i > 0 { f.write_str(", ")?; }
+        write!(f, "{}: {}", f_alias, f_path)?;
+    }
+    Ok(())
+}
+
+impl fmt::Display for DependencyListByType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("{")?;
+
+        if let Some(files) = &self.files {
+            f.write_str("files={")?;
+            write_string_or_int_map(f, &files)?;
+            f.write_str("},")?;
+        }
+
+        if let Some(tasks) = &self.tasks {
+            f.write_str("tasks={")?;
+            write_string_or_int_map(f, &tasks)?;
+            f.write_str("},")?;
+        }
+
+        if let Some(vars) = &self.vars {
+            f.write_str("vars={")?;
+            write_string_or_int_map(f, &vars)?;
+            f.write_str("},")?;
+        }
+
+        if let Some(calc) = &self.calc {
+            f.write_str("calc={")?;
+            write_string_or_int_map(f, &calc)?;
+            f.write_str("}")?;
+        }
+
+        f.write_str("}")
+    }
+}
 
 pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     match value {
@@ -25,8 +121,9 @@ pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                 match dep_type_str.to_str()? {
                     "files" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
                     "tasks" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
+                    "vars" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
                     "calc" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
-                    key => key_validation_error(key, vec!["files", "tasks", "calc"])
+                    key => key_validation_error(key, vec!["files", "tasks", "vars", "calc"])
                 }?;
             }
             Ok(())
@@ -35,74 +132,27 @@ pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
     }
 }
 
-impl DependencyList {
-    pub fn from_json(val: serde_json::Value) -> serde_json::Result<DependencyList> {
-        let mut deps_by_type: DependencyListByType = serde_json::from_value(val)?;
-
-        let mut deps: Vec<Dependency> = Vec::new();
-
-        if let Some(mut files) = deps_by_type.files.take() {
-            for (_, f) in files.drain() {
-                deps.push(Dependency::File(f.into()));
-            }
-        }
-
-        if let Some(mut tasks) = deps_by_type.tasks.take() {
-            for (_, t) in tasks.drain() {
-                deps.push(Dependency::Task(t.into()));
-            }
-        }
-
-        if let Some(mut calc_deps) = deps_by_type.calc.take() {
-            for (_, c) in calc_deps.drain() {
-                deps.push(Dependency::Calc(c.into()));
-            }
-        }
-
-        Ok(DependencyList(deps))
-    }
-}
-
-impl <'lua> mlua::FromLua<'lua> for DependencyList {
+impl <'lua> mlua::FromLua<'lua> for DependencyListByType {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let mut file_deps: Option<Vec<String>> = None;
-        let mut task_deps: Option<Vec<String>> = None;
-        let mut calc_deps: Option<Vec<String>> = None;
+        let mut deps = DependencyListByType {
+            files: None,
+            tasks: None,
+            vars: None,
+            calc: None
+        };
 
         let deps_table: mlua::Table = lua.unpack(value)?;
         for pair in deps_table.pairs() {
             let (k, v): (String, mlua::Value) = pair?;
             match k.as_str() {
-                "files" => { file_deps = lua.unpack(v)?; },
-                "tasks" => { task_deps = lua.unpack(v)?; },
-                "calc" => { calc_deps = lua.unpack(v)?; },
+                "files" => { deps.files = lua.unpack(v)?; },
+                "tasks" => { deps.tasks = lua.unpack(v)?; },
+                "vars" => { deps.vars = lua.unpack(v)?; },
+                "calc" => { deps.calc = lua.unpack(v)?; },
                 _ => { return Err(mlua::Error::runtime(format!("Unknown dependency type: {}", k))); }
             }
         }
 
-        let deps: Vec<Dependency> = file_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|f| Dependency::File(f.into()))
-            .chain(task_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|t| Dependency::Task(t.into())))
-            .chain(calc_deps.unwrap_or_else(|| Vec::new()).into_iter().map(|c| Dependency::Calc(c.into())))
-            .collect();
-
-        Ok(DependencyList(deps))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Dependency {
-    File(Arc<str>),
-    Task(Arc<str>),
-    Calc(Arc<str>)
-}
-
-impl fmt::Display for Dependency {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Dependency::*;
-        match self {
-            File(val) => write!(f, "File({})", val.as_ref()),
-            Task(val) => write!(f, "Task({})", val.as_ref()),
-            Calc(val) => write!(f, "Calc({})", val.as_ref())
-        }
+        Ok(deps)
     }
 }

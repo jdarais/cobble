@@ -1,15 +1,15 @@
 use std::{fmt, sync::Arc};
 
 use crate::datamodel::action::{validate_action, validate_action_list};
-use crate::datamodel::dependency::validate_dep_list;
+use crate::datamodel::dependency::{validate_dep_list, Dependencies};
 use crate::datamodel::validate::{key_validation_error, validate_is_string};
-use crate::datamodel::{Action, Dependency, DependencyList};
+use crate::datamodel::Action;
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
     pub name: Arc<str>,
     pub install: Vec<Action>,
-    pub deps: Vec<Dependency>,
+    pub deps: Dependencies,
     pub action: Action,
 }
 
@@ -48,12 +48,7 @@ impl fmt::Display for BuildEnv {
         f.write_str("], ")?;
 
 
-        f.write_str("deps=[")?;
-        for (i, dep) in self.deps.iter().enumerate() {
-            if i > 0 { f.write_str(",")?; }
-            write!(f, "{}", dep)?;
-        }
-        f.write_str("], ")?;
+        write!(f, "deps={}", self.deps)?;
 
         write!(f, "action={})", self.action)
     }
@@ -67,8 +62,8 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
                 let name = Arc::<str>::from(name_str);
 
                 let install: Vec<Action> = tbl.get("install")?;
-                let deps_opt: Option<DependencyList> = tbl.get("deps")?;
-                let deps = deps_opt.map(|d| d.0).unwrap_or_default();
+                let deps_opt: Option<Dependencies> = tbl.get("deps")?;
+                let deps: Dependencies = deps_opt.unwrap_or_default();
                 let action: Action = tbl.get("action")?;
         
                 Ok(BuildEnv { name, install, deps, action })

@@ -6,3 +6,5 @@ pub mod graph;
 pub mod load;
 pub mod query;
 pub mod resolve;
+pub mod vars;
+

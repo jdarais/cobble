@@ -1,1 +1,4 @@
 # This is a comment
+
+[vars]
+this.var = "hideeho"

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, ExternalTool, Project, TaskDef};
+use crate::datamodel::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
 
 
 
@@ -26,8 +26,9 @@ pub struct Task {
     pub dir: Arc<Path>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
     pub tools: HashMap<Arc<str>, Arc<str>>,
-    pub file_deps: Vec<FileDependency>,
-    pub task_deps: Vec<Arc<str>>,
+    pub file_deps: HashMap<Arc<str>, FileDependency>,
+    pub task_deps: HashMap<Arc<str>, Arc<str>>,
+    pub var_deps: HashMap<Arc<str>, Arc<str>>,
     pub calc_deps: Vec<Arc<str>>,
     pub actions: Vec<Action>,
     pub artifacts: Vec<Artifact>
@@ -41,25 +42,25 @@ pub struct Workspace {
 }
 
 
-pub fn add_dependency_to_task(dep: &Dependency, file_providers: &HashMap<Arc<str>, Arc<str>>, task: &mut Task) {
-    match dep {
-        Dependency::File(f) => {
-            if !task.file_deps.iter().any(|dep| &dep.path == f) {
-                task.file_deps.push(FileDependency {
-                    path: f.clone(),
-                    provided_by_task: file_providers.get(f).cloned()
-                });
-            }
-        },
-        Dependency::Task(t) => {
-            if !task.task_deps.contains(t) {
-                task.task_deps.push(t.clone());
-            }
-        },
-        Dependency::Calc(c) => {
-            if !task.calc_deps.contains(c) {
-                task.calc_deps.push(c.clone());
-            }
+pub fn add_dependency_list_to_task(deps: &Dependencies, file_providers: &HashMap<Arc<str>, Arc<str>>, task: &mut Task) {
+    for (f_alias, f_path) in deps.files.iter() {
+        task.file_deps.insert(f_alias.clone(), FileDependency {
+            path: f_path.clone(),
+            provided_by_task: file_providers.get(f_path).cloned()
+        });
+    }
+
+    for (t_alias, t_path) in deps.tasks.iter() {
+        task.task_deps.insert(t_alias.clone(), t_path.clone());
+    }
+
+    for (v_alias, v_path) in deps.vars.iter() {
+        task.var_deps.insert(v_alias.clone(), v_path.clone());
+    }
+    
+    for c_dep in deps.calc.iter() {
+        if !task.calc_deps.contains(c_dep) {
+            task.calc_deps.push(c_dep.clone());
         }
     }
 }
@@ -83,16 +84,15 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, project_name: &Arc<str>, dir
         project_name: project_name.clone(),
         tools: HashMap::new(),
         build_envs: HashMap::new(),
-        file_deps: Vec::new(),
-        task_deps: Vec::new(),
+        file_deps: HashMap::new(),
+        task_deps: HashMap::new(),
+        var_deps: HashMap::new(),
         calc_deps: Vec::new(),
         actions: Vec::new(),
         artifacts: Vec::new()
     };
 
-    for dep in build_env.deps.iter() {
-        add_dependency_to_task(dep, file_providers, &mut install_task);
-    }
+    add_dependency_list_to_task(&build_env.deps, file_providers, &mut install_task);
 
     for install_action in build_env.install.iter() {
         add_action_to_task(install_action, &mut install_task);
@@ -109,16 +109,15 @@ fn add_task_to_workspace(task_def: &TaskDef, project_name: &Arc<str>, dir: &Arc<
         project_name: project_name.clone(),
         tools: HashMap::new(),
         build_envs: task_def.build_env.iter().cloned().collect(),
-        file_deps: Vec::new(),
-        task_deps: Vec::new(),
+        file_deps: HashMap::new(),
+        task_deps: HashMap::new(),
+        var_deps: HashMap::new(),
         calc_deps: Vec::new(),
         actions: Vec::new(),
         artifacts: task_def.artifacts.iter().cloned().collect()
     };
 
-    for dep in task_def.deps.iter() {
-        add_dependency_to_task(dep, file_providers, &mut task);
-    }
+    add_dependency_list_to_task(&task_def.deps, file_providers, &mut task);
 
     for action in task_def.actions.iter() {
         add_action_to_task(action, &mut task);
@@ -135,8 +134,9 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
                 project_name: project.name.clone(),
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
-                file_deps: Vec::new(),
-                task_deps: project.child_project_names.iter().cloned().collect(),
+                file_deps: HashMap::new(),
+                task_deps: project.child_project_names.iter().map(|t| (t.clone(), t.clone())).collect(),
+                var_deps: HashMap::new(),
                 calc_deps: Vec::new(),
                 actions: Vec::new(),
                 artifacts: Vec::new()
@@ -148,7 +148,7 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
         }
 
         for task in default_tasks.into_iter() {
-            project_task.task_deps.push(task.name.clone())
+            project_task.task_deps.insert(task.name.clone(), task.name.clone());
         }
 
         workspace.tasks.insert(project.name.clone(), Arc::new(project_task));

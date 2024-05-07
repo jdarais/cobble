@@ -1,7 +1,10 @@
 task {
     name = "task1",
     actions = {
-        { "echo", "Task 1!!" },
+        function (c) c.tool.cmd { "echo", c.deps.vars["this.var"] } end,
+    },
+    deps = {
+        vars = { "this.var" }
     }
 }
 

@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path, PathBuf}, sync::Arc
 };
 
-use crate::datamodel::{Action, Artifact, BuildEnv, Dependency, Project, ExternalTool, TaskDef};
+use crate::datamodel::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
 
 #[derive(Debug)]
 pub enum NameResolutionError {
@@ -99,21 +99,20 @@ pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, Nam
     Ok(resolved_name)
 }
 
-pub fn resolve_names_in_dependency(project_name: &str, project_path: &Path, dep: &mut Dependency) -> Result<(), NameResolutionError> {
-    match dep {
-        Dependency::File(f) => {
-            *dep = Dependency::File(resolve_path(project_path, f.as_ref())?);
-            Ok(())
-        },
-        Dependency::Task(t) => {
-            *dep = Dependency::Task(resolve_name(project_name, &t)?);
-            Ok(())
-        },
-        Dependency::Calc(c) => {
-            *dep = Dependency::Calc(resolve_name(project_name, &c)?);
-            Ok(())
-        }
+pub fn resolve_names_in_dependency_list(project_name: &str, project_path: &Path, deps: &mut Dependencies) -> Result<(), NameResolutionError> {
+    for (_, f_path) in deps.files.iter_mut() {
+        *f_path = resolve_path(project_path, f_path.as_ref())?
     }
+
+    for (_, t_name) in deps.tasks.iter_mut() {
+        *t_name = resolve_name(project_name, t_name)?;
+    }
+
+    for c_name in deps.calc.iter_mut() {
+        *c_name = resolve_name(project_name, c_name)?;
+    }
+
+    Ok(())
 }
 
 fn resolve_names_in_action(project_name: &str, action: &mut Action) -> Result<(), NameResolutionError> {
@@ -133,9 +132,7 @@ fn resolve_names_in_build_env(project_name: &str, project_path: &Path, build_env
         resolve_names_in_action(project_name, action)?;
     }
 
-    for dep in build_env.deps.iter_mut() {
-        resolve_names_in_dependency(project_name, project_path, dep)?;
-    }
+    resolve_names_in_dependency_list(project_name, project_path, &mut build_env.deps)?;
 
     resolve_names_in_action(project_name, &mut build_env.action)?;
 
@@ -174,9 +171,7 @@ fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut Tas
         resolve_names_in_action(project_name, action)?;
     }
 
-    for dep in task.deps.iter_mut() {
-        resolve_names_in_dependency(project_name, project_path, dep)?;
-    }
+    resolve_names_in_dependency_list(project_name, project_path, &mut task.deps)?;
 
     for artifact in task.artifacts.iter_mut() {
         resolve_names_in_artifact(project_path, artifact)?;

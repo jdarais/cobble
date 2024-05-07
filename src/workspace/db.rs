@@ -6,6 +6,8 @@ use std::{collections::HashMap, fmt, path::Path};
 use lmdb::{Transaction, WriteFlags};
 use serde::{Serialize, Deserialize};
 
+use crate::datamodel::types::TaskVar;
+
 const TASK_KEY_PREFIX: &str = "task:";
 
 
@@ -13,7 +15,8 @@ const TASK_KEY_PREFIX: &str = "task:";
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskInput {
     pub file_hashes: HashMap<String, Vec<u8>>,
-    pub task_outputs: HashMap<String, serde_json::Value>
+    pub task_outputs: HashMap<String, serde_json::Value>,
+    pub vars: HashMap<String, TaskVar>
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

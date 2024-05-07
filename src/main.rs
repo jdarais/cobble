@@ -31,7 +31,10 @@ enum Command {
     },
     Run {
         /// If not provided, run all tasks in the project
-        tasks: Vec<String>
+        tasks: Vec<String>,
+
+        #[arg(short, long, action=clap::ArgAction::Append)]
+        var: Vec<String>
     }
 }
 
@@ -54,7 +57,7 @@ fn main() -> ExitCode {
     
     let cwd = std::env::current_dir().expect("was run from a directory");
 
-    match &args.command {
+    match args.command {
         Some(cmd) =>     match cmd {
             Command::List{tasks} => {
                 let input = ListCommandInput {
@@ -63,10 +66,11 @@ fn main() -> ExitCode {
                 };
                 list_command(input)
             },
-            Command::Run{tasks} => {
+            Command::Run{tasks, var} => {
                 run_command(RunCommandInput {
                     cwd: cwd.as_path(),
-                    tasks: tasks.iter().map(|s| s.as_str()).collect()
+                    tasks: tasks.iter().map(|s| s.as_str()).collect(),
+                    vars: var
                 })
             }
         },

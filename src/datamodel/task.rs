@@ -1,8 +1,10 @@
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use crate::datamodel::{
-    action::validate_action_list, artifact::validate_artifact, dependency::validate_dep_list, validate::{key_validation_error, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence}, Action, Artifact, Dependency, DependencyList
-};
+use crate::datamodel::action::validate_action_list;
+use crate::datamodel::artifact::validate_artifact;
+use crate::datamodel::dependency::{validate_dep_list, Dependencies};
+use crate::datamodel::validate::{key_validation_error, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence};
+use crate::datamodel::{Action, Artifact};
 
 #[derive(Clone, Debug)]
 pub struct TaskDef {
@@ -10,7 +12,7 @@ pub struct TaskDef {
     pub is_default: Option<bool>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
-    pub deps: Vec<Dependency>,
+    pub deps: Dependencies,
     pub artifacts: Vec<Artifact>
 }
 
@@ -75,12 +77,7 @@ impl fmt::Display for TaskDef {
         }
         f.write_str("], ")?;
 
-        f.write_str("deps=[")?;
-        for (i, dep) in self.deps.iter().enumerate() {
-            if i > 0 { f.write_str(", ")?; }
-            write!(f, "{}", dep)?;
-        }
-        f.write_str("], ")?;
+        write!(f, "deps={},", self.deps)?;
 
         f.write_str("artifacts=[")?;
         for (i, artifact) in self.artifacts.iter().enumerate() {
@@ -124,8 +121,8 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
                 };
 
                 let actions: Vec<Action> = task_table.get("actions")?;
-                let deps_opt: Option<DependencyList> = task_table.get("deps")?;
-                let deps = deps_opt.map(|d| d.0).unwrap_or_default();
+                let deps_opt: Option<Dependencies> = task_table.get("deps")?;
+                let deps = deps_opt.unwrap_or_default();
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
                 let artifacts = artifacts_opt.unwrap_or_default();
         
