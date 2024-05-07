@@ -109,7 +109,7 @@ pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<Pat
         if project_file_path.exists() {
             let project_path = PathBuf::from(ancestor);
             let rel_project_path = project_path.strip_prefix(workspace_dir).expect("project path starts with workspace path");
-            return Ok(Path::new(".").join(rel_project_path))
+            return Ok(PathBuf::from_iter(Path::new(".").join(rel_project_path).components()))
         }
     }
 

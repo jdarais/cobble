@@ -46,7 +46,7 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
 }
 
 pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameResolutionError> {
-    let full_path = project_path.join(path);
+    let full_path = PathBuf::from_iter(project_path.join(path).components());
     let full_path_str_opt = full_path.into_os_string().into_string();
     match full_path_str_opt {
         Ok(full_path_str) => {

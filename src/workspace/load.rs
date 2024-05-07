@@ -44,7 +44,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_dir = match current_project.as_ref() {
         Some(cur_proj) => {
             let current_project_dir: String = cur_proj.get("dir")?;
-            Path::new(current_project_dir.as_str()).join(&dir)
+            PathBuf::from_iter(Path::new(current_project_dir.as_str()).join(&dir).components())
         },
         None => PathBuf::from(dir)
     };
@@ -55,7 +55,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         dir.to_owned()
     };
 
-    let project_file_path = workspace_dir.join(project_dir.as_path()).join(PROJECT_FILE_NAME);
+    let project_file_path = PathBuf::from_iter(workspace_dir.join(project_dir.as_path()).join(PROJECT_FILE_NAME).components());
     if !project_file_path.exists() {
         return Err(mlua::Error::runtime(format!("Project file {} doesn't exist", project_file_path.display())));
     }

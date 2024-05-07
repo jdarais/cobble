@@ -1,13 +1,13 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::workspace::graph::Workspace;
 use crate::workspace::resolve::{resolve_name, NameResolutionError};
 
 pub fn find_tasks_for_dir<'a>(workspace: &'a Workspace, workspace_dir: &Path, project_dir: &Path) -> Vec<Arc<str>> {
-    let full_project_dir = workspace_dir.join(project_dir);
+    let full_project_dir = PathBuf::from_iter(workspace_dir.join(project_dir).components());
     workspace.tasks.iter()
-        .filter(|(_k, v)| workspace_dir.join(v.dir.as_ref()).starts_with(&full_project_dir))
+        .filter(|(_k, v)| PathBuf::from_iter(workspace_dir.join(v.dir.as_ref()).components()).starts_with(&full_project_dir))
         .map(|(k, _v)| k.clone())
         .collect()
 }
