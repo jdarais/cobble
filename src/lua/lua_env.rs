@@ -4,7 +4,7 @@ use std::{ffi::OsString, io::{BufRead, BufReader}, path::{Path, PathBuf}, proces
 
 use mlua::{Error, Function, Lua, MultiValue, Table, Value};
 
-fn script_dir<'lua>(lua: &'lua Lua, workspace_dir: &Path) -> mlua::Result<Value<'lua>> {
+fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lua>> {
     let info = lua.inspect_stack(1)
         .ok_or_else(|| Error::runtime("Error retrieving stack information"))?;
 
@@ -17,9 +17,8 @@ fn script_dir<'lua>(lua: &'lua Lua, workspace_dir: &Path) -> mlua::Result<Value<
 
     let source_path = PathBuf::from(source[1..].to_owned());
     let source_dir = source_path.parent();
-    let rel_source_dir = source_dir.map(|d| d.strip_prefix(workspace_dir).unwrap_or(d));
 
-    let source_dir_str_opt = rel_source_dir
+    let source_dir_str_opt = source_dir
         .and_then(|d| d.to_str());
 
     match source_dir_str_opt {
@@ -204,10 +203,7 @@ pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<Lua> {
     let cmd_func = lua.create_function(exec_shell_command)?;
     lua.globals().set("cmd", cmd_func)?;
 
-    let script_dir_ws_path = module_root_path.to_owned();
-    let script_dir_func = lua.create_function(move |l, _: MultiValue| {
-        script_dir(l, script_dir_ws_path.as_path())
-    })?;
+    let script_dir_func = lua.create_function(script_dir)?;
     lua.globals().set("script_dir", script_dir_func)?;
 
     {
