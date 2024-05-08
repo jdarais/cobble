@@ -1,9 +1,11 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence};
+use crate::datamodel::validate::{key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence};
 use crate::lua::detached_value::{FunctionDump, dump_function};
+use crate::util::onscopeexit::OnScopeExitMut;
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
@@ -28,29 +30,35 @@ pub struct Action {
     pub cmd: ActionCmd
 }
 
-fn validate_name_alias_table<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+fn validate_name_alias_table<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+    
     match value {
-        mlua::Value::Table(tbl_val) => validate_table_has_only_string_or_sequence_keys(tbl_val),
+        mlua::Value::Table(tbl_val) => validate_table_has_only_string_or_sequence_keys(tbl_val, None, prop_path.as_mut()),
         mlua::Value::String(_) => Ok(()),
-        _ => Err(mlua::Error::runtime(format!("Expected a table or string, but got a {}: {:?}", value.type_name(), value)))
+        _ => Err(mlua::Error::runtime(format!("In {}: Expected a table or string, but got a {}: {:?}", prop_path_string(prop_path.as_mut()), value.type_name(), value)))
     }
 }
 
-pub fn validate_action_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
-    let tbl_val = validate_is_table(value)?;
-    validate_table_is_sequence(tbl_val)?;
-    for action_tbl_res in tbl_val.clone().sequence_values() {
+pub fn validate_action_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+    
+    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
+    validate_table_is_sequence(tbl_val, None, prop_path.as_mut())?;
+    for (i, action_tbl_res) in tbl_val.clone().sequence_values().into_iter().enumerate() {
         let action_tbl: mlua::Value = action_tbl_res?;
-        validate_action(lua, &action_tbl)?;
+        validate_action(lua, &action_tbl, Some(Cow::Owned(format!("[{}]", i))), prop_path.as_mut())?;
     }
     Ok(())
 }
 
 
-pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+
     match value {
         mlua::Value::Table(tbl_val) => {
-            validate_table_has_only_string_or_sequence_keys(&tbl_val)?;
+            validate_table_has_only_string_or_sequence_keys(&tbl_val, None, prop_path.as_mut())?;
             let mut sequence_values: Vec<mlua::Value> = Vec::with_capacity(tbl_val.len()? as usize);
             sequence_values.resize(sequence_values.capacity(), mlua::Value::Nil);
 
@@ -62,28 +70,30 @@ pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) ->
                             Ok(())
                     },
                     mlua::Value::String(ks) => match ks.to_str()? {
-                        "tool" => validate_name_alias_table(lua, &v),
-                        "env" => validate_name_alias_table(lua, &v),
-                        unknown_key => key_validation_error(unknown_key, vec!["tool", "env"])
+                        "tool" => validate_name_alias_table(lua, &v, Some(Cow::Borrowed("tool")), prop_path.as_mut()),
+                        "env" => validate_name_alias_table(lua, &v, Some(Cow::Borrowed("env")), prop_path.as_mut()),
+                        unknown_key => key_validation_error(unknown_key, vec!["tool", "env"], prop_path.as_mut())
                     },
                     _ => Err(mlua::Error::runtime(format!("Expected a string or integer index, but got a {}: {:?}", k.type_name(), k)))
                 }?;
             }
 
             if sequence_values.len() == 0 {
-                return Err(mlua::Error::runtime("Action table must have either a single function or one or more strings as positional elements"));
+                return Err(mlua::Error::runtime(
+                    format!("In {}: Action table must have either a single function or one or more strings as positional elements", prop_path_string(prop_path.as_mut()))
+                ));
             }
 
             let first_seq_val = sequence_values.remove(0);
             match first_seq_val {
                 mlua::Value::Function(_) => if sequence_values.len() == 0 { Ok(()) }
-                    else { Err(mlua::Error::runtime("For function actions, the function is the only allowed positional element")) },
+                    else { Err(mlua::Error::runtime(format!("In {}: For function actions, the function is the only allowed positional element", prop_path_string(prop_path.as_mut())))) },
                 mlua::Value::String(_) => { Ok(()) },
-                _ => Err(mlua::Error::runtime(format!("Expected a string or function, but got a {}: {:?}", first_seq_val.type_name(), first_seq_val)))
+                _ => Err(mlua::Error::runtime(format!("In {}: Expected a string or function as the first sequence item, but got a {}: {:?}", prop_path_string(prop_path.as_mut()), first_seq_val.type_name(), first_seq_val)))
             }?;
 
-            for val in sequence_values {
-                validate_is_string(&val)?;
+            for (i, val) in sequence_values.into_iter().enumerate() {
+                validate_is_string(&val, Some(Cow::Owned(format!("[{}]", i + 2))), prop_path.as_mut())?;
             }
 
             Ok(())

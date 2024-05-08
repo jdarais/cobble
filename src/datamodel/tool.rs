@@ -1,6 +1,6 @@
 extern crate mlua;
 
-use std::{fmt, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 
 use crate::datamodel::{action::validate_action, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key}, Action};
 
@@ -13,20 +13,22 @@ pub struct ExternalTool {
 }
 
 pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
-    let tool_tbl = validate_is_table(&value)?;
+    let mut prop_path: Vec<Cow<str>> = Vec::new();
 
-    validate_required_key(&tool_tbl, "name")?;
-    validate_required_key(&tool_tbl, "action")?;
+    let tool_tbl = validate_is_table(&value, None, &mut prop_path)?;
+
+    validate_required_key(&tool_tbl, "name", None, &mut prop_path)?;
+    validate_required_key(&tool_tbl, "action", None, &mut prop_path)?;
 
     for pair in tool_tbl.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
-        let k_str = validate_is_string(&k)?;
+        let k_str = validate_is_string(&k, None, &mut prop_path)?;
         match k_str.to_str()? {
-            "name" => validate_is_string(&v).and(Ok(())),
-            "install" => validate_action(lua, &v),
-            "check" => validate_action(lua, &v),
-            "action" => validate_action(lua, &v),
-            unknown_key => key_validation_error(unknown_key, vec!["name", "install", "check", "action"])
+            "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(())),
+            "install" => validate_action(lua, &v, Some(Cow::Borrowed("install")), &mut prop_path),
+            "check" => validate_action(lua, &v, Some(Cow::Borrowed("check")), &mut prop_path),
+            "action" => validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path),
+            unknown_key => key_validation_error(unknown_key, vec!["name", "install", "check", "action"], &prop_path)
         }?;
     }
 

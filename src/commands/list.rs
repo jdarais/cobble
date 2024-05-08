@@ -25,6 +25,8 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> ExitCode {
         }
     };
 
+    println!("{:?}", &projects);
+
     let file_providers = compute_file_providers(projects.values());
     let workspace = create_workspace(projects.values(), &file_providers);
 

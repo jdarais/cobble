@@ -92,6 +92,8 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     })?;
     cxt.set("validate_tool", validate_tool)?;
 
+    cxt.set("project_file_name", PROJECT_FILE_NAME)?;
+
     lua.load(r#"
         local cxt = ...
 
@@ -102,12 +104,22 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
             projects = {},
         }
 
+        local _require = require
+        require = function (modname)
+            mod, fname = _require(modname)
+            if fname then
+                table.insert(PROJECT.project_source_deps, fname)
+            end
+            return mod, fname
+        end
+
         PROJECT = nil
         WORKSPACE = cobble.workspace
 
         _project_stack = {}
 
         function start_project (name, dir)
+            local project_source_deps = {}
             if PROJECT then
                 if name == "" then
                     error("Empty name is only allowed for the root project!")
@@ -118,9 +130,18 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
                 else
                     name = PROJECT.name .. "/" .. name
                 end
+
+                if dir then
+                    project_source_deps = { dir .. "/" .. cxt.project_file_name, table.unpack(PROJECT.project_source_deps) }
+                else
+                    project_source_deps = { table.unpack(PROJECT.project_source_deps) }
+                end
                 dir = dir or PROJECT.dir
             else
                 name = "/" .. (name or "")
+                if dir then
+                    project_source_deps = { dir .. "/" .. cxt.project_file_name }
+                end
                 dir = dir or WORKSPACE.dir
             end
 
@@ -134,7 +155,8 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
                 build_envs = {},
                 tasks = {},
                 tools = {},
-                child_projects = {}
+                child_projects = {},
+                project_source_deps = project_source_deps
             }
             
             if PROJECT then table.insert(PROJECT.child_projects, project) end
@@ -149,9 +171,9 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
             PROJECT = _project_stack[#_project_stack]
         end
 
-        function project (args)
-            start_project(args.name)
-            args.def()
+        function project (proj)
+            start_project(proj.name)
+            proj.def()
             end_project()
         end
 
@@ -225,7 +247,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         build_envs: Vec::new(),
         tasks: Vec::new(),
         tools: vec![cmd_tool],
-        child_project_names: Vec::new()
+        child_project_names: Vec::new(),
+        project_source_deps: Vec::new()
     });
     // End __COBBLE_INTERNAL__ project
 

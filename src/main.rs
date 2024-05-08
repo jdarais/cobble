@@ -6,6 +6,7 @@ extern crate clap;
 mod commands;
 mod datamodel;
 mod lua;
+mod util;
 mod workspace;
 
 use std::{path::Path, process::ExitCode};

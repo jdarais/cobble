@@ -1,11 +1,12 @@
 extern crate serde_json;
 
+use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
 use crate::datamodel::types::StringOrInt;
-use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
+use crate::datamodel::validate::{key_validation_error, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct DependencyListByType {
@@ -112,18 +113,36 @@ impl fmt::Display for DependencyListByType {
     }
 }
 
-pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+pub fn validate_dep_list<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+
     match value {
         mlua::Value::Table(dep_tbl) => {
             for pair in dep_tbl.clone().pairs() {
                 let (dep_type, dep_list): (mlua::Value, mlua::Value) = pair?;
-                let dep_type_str = validate_is_string(&dep_type)?;
+                let dep_type_str = validate_is_string(&dep_type, None, prop_path.as_mut())?;
                 match dep_type_str.to_str()? {
-                    "files" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
-                    "tasks" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
-                    "vars" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
-                    "calc" => validate_table_has_only_string_or_sequence_keys(validate_is_table(&dep_list)?),
-                    key => key_validation_error(key, vec!["files", "tasks", "vars", "calc"])
+                    "files" => validate_table_has_only_string_or_sequence_keys(
+                        validate_is_table(&dep_list, Some(Cow::Borrowed("files")), prop_path.as_mut())?,
+                        Some(Cow::Borrowed("files")),
+                        prop_path.as_mut()
+                    ),
+                    "tasks" => validate_table_has_only_string_or_sequence_keys(
+                        validate_is_table(&dep_list, Some(Cow::Borrowed("tasks")), prop_path.as_mut())?,
+                        Some(Cow::Borrowed("tasks")),
+                        prop_path.as_mut()
+                    ),
+                    "vars" => validate_table_has_only_string_or_sequence_keys(
+                        validate_is_table(&dep_list, Some(Cow::Borrowed("vars")), prop_path.as_mut())?,
+                        Some(Cow::Borrowed("vars")),
+                        prop_path.as_mut()
+                    ),
+                    "calc" => validate_table_has_only_string_or_sequence_keys(
+                        validate_is_table(&dep_list, Some(Cow::Borrowed("calc")), prop_path.as_mut())?,
+                        Some(Cow::Borrowed("calc")),
+                        prop_path.as_mut()
+                    ),
+                    key => key_validation_error(key, vec!["files", "tasks", "vars", "calc"], prop_path.as_mut())
                 }?;
             }
             Ok(())

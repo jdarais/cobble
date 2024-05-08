@@ -20,10 +20,10 @@ function exports.poetry_project ()
 
     task({
         name = "calc_poetry_build_deps",
-        hidden = true,
+        -- hidden = true,
         actions = {
             {
-                build_env = "poetry",
+                env = "poetry",
                 function (c)
                     local deps = {}
                     local res = c.env.poetry { "python", script_dir() .. "/poetry_build_deps.py" } ;

@@ -12,7 +12,8 @@ pub struct Project {
     pub build_envs: Vec<BuildEnv>,
     pub tasks: Vec<TaskDef>,
     pub tools: Vec<ExternalTool>,
-    pub child_project_names: Vec<Arc<str>>
+    pub child_project_names: Vec<Arc<str>>,
+    pub project_source_deps: Vec<Arc<str>>
 }
 
 impl fmt::Display for Project {
@@ -40,7 +41,21 @@ impl fmt::Display for Project {
             if i > 0 { f.write_str(", ")?; }
             write!(f, "{}", tool)?;
         }
-        f.write_str("]")?;
+        f.write_str("],")?;
+
+        f.write_str("child_projects=[")?;
+        for (i, proj) in self.child_project_names.iter().enumerate() {
+            if i > 0 { f.write_str(", ")?; }
+            write!(f, "{}", proj)?;
+        }
+        f.write_str("],")?;
+
+        f.write_str("project_file_deps=[")?;
+        for (i, proj) in self.project_source_deps.iter().enumerate() {
+            if i > 0 { f.write_str(", ")?; }
+            write!(f, "{}", proj)?;
+        }
+        f.write_str("],")?;
 
         f.write_str(")")
     }
@@ -71,6 +86,9 @@ impl <'lua> mlua::FromLua<'lua> for Project {
             child_project_names.push(child_project_name.into());
         }
 
-        Ok(Project{ name, path, build_envs, tasks, tools, child_project_names })
+        let project_source_deps_strvec: Vec<String> = project_table.get("project_source_deps")?;
+        let project_source_deps: Vec<Arc<str>> = project_source_deps_strvec.into_iter().map(|s| s.into()).collect();
+
+        Ok(Project{ name, path, build_envs, tasks, tools, child_project_names, project_source_deps })
     }
 }

@@ -1,4 +1,4 @@
-poetry = require("cobble_plugins.poetry")
+local poetry = require("cobble_plugins.poetry")
 
 poetry.poetry_project()
 
