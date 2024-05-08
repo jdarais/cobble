@@ -13,12 +13,14 @@ use crate::workspace::resolve::project_path_to_project_name;
 pub struct RunCommandInput<'a> {
     pub cwd: &'a Path,
     pub tasks: Vec<&'a str>,
-    pub vars: Vec<String>
+    pub vars: Vec<String>,
+    pub force_run_tasks: bool
 }
 
 pub fn run_command<'a>(input: RunCommandInput<'a>) -> ExitCode {
     let mut config = get_workspace_config(input.cwd).unwrap();
     add_cli_vars_to_workspace_config(input.vars.iter().map(String::as_ref), &mut config).unwrap();
+    config.force_run_tasks = input.force_run_tasks;
     let config = Arc::new(config);
 
     let projects_res = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str()));

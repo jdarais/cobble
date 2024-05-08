@@ -33,8 +33,13 @@ enum Command {
         /// If not provided, run all tasks in the project
         tasks: Vec<String>,
 
-        #[arg(short, long, action=clap::ArgAction::Append)]
-        var: Vec<String>
+        /// Set the value for a variable
+        #[arg(short, long, value_names(["VAR=VALUE"]), action=clap::ArgAction::Append)]
+        var: Vec<String>,
+
+        /// Run tasks even if they are up-to-date
+        #[arg(short, long)]
+        force_run_tasks: bool
     }
 }
 
@@ -66,11 +71,12 @@ fn main() -> ExitCode {
                 };
                 list_command(input)
             },
-            Command::Run{tasks, var} => {
+            Command::Run{tasks, var, force_run_tasks} => {
                 run_command(RunCommandInput {
                     cwd: cwd.as_path(),
                     tasks: tasks.iter().map(|s| s.as_str()).collect(),
-                    vars: var
+                    vars: var,
+                    force_run_tasks
                 })
             }
         },

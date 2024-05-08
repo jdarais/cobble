@@ -784,16 +784,27 @@ fn execute_task_actions_and_store_result(
 }
 
 fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
-    let current_task_input = get_current_task_input(workspace_config, task, db_env, &cache);
-    let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
-
-    if let Some(task_record) = up_to_date_task_record {
-        cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
+    if cache.task_outputs.read().unwrap().contains_key(&task.task_name) {
         task_result_sender.send(TaskJobMessage::Complete {
             task: task.task_name.clone(),
             result: TaskResult::UpToDate
         }).unwrap();
         return;
+    }
+    
+    let current_task_input = get_current_task_input(workspace_config, task, db_env, &cache);
+
+    if !workspace_config.force_run_tasks {
+        let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
+    
+        if let Some(task_record) = up_to_date_task_record {
+            cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
+            task_result_sender.send(TaskJobMessage::Complete {
+                task: task.task_name.clone(),
+                result: TaskResult::UpToDate
+            }).unwrap();
+            return;
+        }
     }
 
     let result = execute_task_actions_and_store_result(lua, db_env, task, &task_result_sender, &cache, current_task_input);
@@ -838,7 +849,8 @@ mod tests {
         let workspace_config = Arc::new(WorkspaceConfig {
             workspace_dir: PathBuf::from("."),
             root_projects: vec![String::from(".")],
-            vars: HashMap::new()
+            vars: HashMap::new(),
+            force_run_tasks: false
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();

@@ -14,7 +14,8 @@ pub const PROJECT_FILE_NAME: &str = "project.lua";
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
     pub root_projects: Vec<String>,
-    pub vars: HashMap<String, TaskVar>
+    pub vars: HashMap<String, TaskVar>,
+    pub force_run_tasks: bool
 }
 
 #[derive(Debug)]
@@ -67,7 +68,8 @@ pub fn parse_workspace_config(config_str: &str, config_path: &Path) -> Result<Wo
     Ok(WorkspaceConfig{
         workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
         root_projects,
-        vars
+        vars,
+        force_run_tasks: false
     })
 }
 

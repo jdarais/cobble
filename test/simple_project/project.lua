@@ -8,17 +8,20 @@ task {
     }
 }
 
-project("time", function ()
-    task {
-        name = "take_time",
-        actions = {
-            function (c) c.tool.cmd { "bash", c.files["script"].path } end
-        },
-        deps = {
-            files = { script = "take_time.sh" }
+project {
+    name = "time",
+    def = function ()
+        task {
+            name = "take_time",
+            actions = {
+                function (c) c.tool.cmd { "bash", c.files["script"].path } end
+            },
+            deps = {
+                files = { script = "take_time.sh" }
+            }
         }
-    }
-end)
+    end
+}
 
 task {
     name = "task2",

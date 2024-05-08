@@ -149,9 +149,9 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
             PROJECT = _project_stack[#_project_stack]
         end
 
-        function project (name, def_func)
-            start_project(name)
-            def_func()
+        function project (args)
+            start_project(args.name)
+            args.def()
             end_project()
         end
 
