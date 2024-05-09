@@ -5,6 +5,7 @@ extern crate serde_json;
 
 use std::collections::{hash_map, HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -500,7 +501,7 @@ fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
     let mut result_string = String::with_capacity(80);
     result_string.push_str("sha256:");
     for b in result {
-        result_string.push_str(format!("{:x}", b).as_str());
+        write!(&mut result_string, "{:x}", b);
     }
     Ok(result_string)
 }
