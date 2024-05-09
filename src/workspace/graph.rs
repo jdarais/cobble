@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::datamodel::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
+use crate::datamodel::{dependency::Dependencies, project, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
 
 
 
@@ -31,7 +31,8 @@ pub struct Task {
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
     pub calc_deps: Vec<Arc<str>>,
     pub actions: Vec<Action>,
-    pub artifacts: Vec<Artifact>
+    pub artifacts: Vec<Artifact>,
+    pub project_source_deps: Vec<Arc<str>>
 }
 
 #[derive(Clone, Debug)]
@@ -77,7 +78,14 @@ fn add_action_to_task(action: &Action, task: &mut Task) {
     task.actions.push(action.clone());
 }
 
-fn add_build_env_to_workspace(build_env: &BuildEnv, project_name: &Arc<str>, dir: &Arc<Path>, file_providers: &HashMap<Arc<str>, Arc<str>>, workspace: &mut Workspace) {
+fn add_build_env_to_workspace(
+    build_env: &BuildEnv,
+    project_name: &Arc<str>,
+    dir: &Arc<Path>,
+    file_providers: &HashMap<Arc<str>, Arc<str>>,
+    project_source_deps: &Vec<Arc<str>>,
+    workspace: &mut Workspace
+) {
     let mut install_task = Task {
         task_type: TaskType::BuildEnv,
         dir: dir.clone(),
@@ -89,7 +97,8 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, project_name: &Arc<str>, dir
         var_deps: HashMap::new(),
         calc_deps: Vec::new(),
         actions: Vec::new(),
-        artifacts: Vec::new()
+        artifacts: Vec::new(),
+        project_source_deps: project_source_deps.clone()
     };
 
     add_dependency_list_to_task(&build_env.deps, file_providers, &mut install_task);
@@ -102,7 +111,14 @@ fn add_build_env_to_workspace(build_env: &BuildEnv, project_name: &Arc<str>, dir
     workspace.build_envs.insert(build_env.name.clone(), Arc::new(build_env.clone()));
 }
 
-fn add_task_to_workspace(task_def: &TaskDef, project_name: &Arc<str>, dir: &Arc<Path>, file_providers: &HashMap<Arc<str>, Arc<str>>, workspace: &mut Workspace) {
+fn add_task_to_workspace(
+    task_def: &TaskDef,
+    project_name: &Arc<str>,
+    dir: &Arc<Path>,
+    file_providers: &HashMap<Arc<str>, Arc<str>>,
+    project_source_deps: &Vec<Arc<str>>,
+    workspace: &mut Workspace
+) {
     let mut task = Task {
         task_type: TaskType::Task,
         dir: dir.clone(),
@@ -114,7 +130,8 @@ fn add_task_to_workspace(task_def: &TaskDef, project_name: &Arc<str>, dir: &Arc<
         var_deps: HashMap::new(),
         calc_deps: Vec::new(),
         actions: Vec::new(),
-        artifacts: task_def.artifacts.iter().cloned().collect()
+        artifacts: task_def.artifacts.iter().cloned().collect(),
+        project_source_deps: project_source_deps.clone()
     };
 
     add_dependency_list_to_task(&task_def.deps, file_providers, &mut task);
@@ -139,7 +156,8 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
                 var_deps: HashMap::new(),
                 calc_deps: Vec::new(),
                 actions: Vec::new(),
-                artifacts: Vec::new()
+                artifacts: Vec::new(),
+                project_source_deps: project.project_source_deps.clone()
             };
         let mut default_tasks: Vec<&TaskDef> = project.tasks.iter().filter(|t| t.is_default.unwrap_or(false)).collect();
         if default_tasks.len() == 0 {
@@ -155,11 +173,11 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
     }
 
     for env in project.build_envs.iter() {
-        add_build_env_to_workspace(env, &project.name, &project.path, file_providers, workspace);
+        add_build_env_to_workspace(env, &project.name, &project.path, file_providers, &project.project_source_deps, workspace);
     }
 
     for task in project.tasks.iter() {
-        add_task_to_workspace(task, &project.name, &project.path, file_providers, workspace);
+        add_task_to_workspace(task, &project.name, &project.path, file_providers, &project.project_source_deps, workspace);
     }
 
     for tool in project.tools.iter() {

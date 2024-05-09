@@ -145,7 +145,8 @@ fn add_jobs_for_task(
 }
 
 pub struct TaskExecutorCache {
-    pub file_hashes: RwLock<HashMap<Arc<str>, Vec<u8>>>,
+    pub project_source_hashes: RwLock<HashMap<Arc<str>, String>>,
+    pub file_hashes: RwLock<HashMap<Arc<str>, String>>,
     pub task_outputs: RwLock<HashMap<Arc<str>, serde_json::Value>>
 }
 
@@ -172,6 +173,7 @@ impl TaskExecutor {
             task_queue: Arc::new((Mutex::new(Some(VecDeque::new())), Condvar::new())),
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
+                project_source_hashes: RwLock::new(HashMap::new()),
                 file_hashes: RwLock::new(HashMap::new()),
                 task_outputs: RwLock::new(HashMap::new())
             })
@@ -486,14 +488,21 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
     }
 }
 
-fn compute_file_hash(file_path: &Path) -> Result<Vec<u8>, io::Error> {
+fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
     let mut file_content: Vec<u8> = Vec::with_capacity(1024);
     let mut file = File::open(file_path)?;
     file.read_to_end(&mut file_content)?;
 
     let mut hasher = Sha256::new();
     hasher.update(&file_content);
-    Ok(hasher.finalize().to_vec())
+    let result = hasher.finalize();
+
+    let mut result_string = String::with_capacity(80);
+    result_string.push_str("sha256:");
+    for b in result {
+        result_string.push_str(format!("{:x}", b).as_str());
+    }
+    Ok(result_string)
 }
 
 fn ensure_tool_is_cached(lua: &mlua::Lua, tool_name: &str, workspace: &Workspace) -> mlua::Result<()> {
@@ -575,7 +584,7 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, task_inputs:
             for (k, v) in task_inputs.file_hashes.iter() {
                 let file_tbl = lua.create_table()?;
                 file_tbl.set("path", task.task.file_deps.get(k.as_str()).map(|dep| dep.path.to_string()))?;
-                file_tbl.set("hash", String::from_utf8(v.clone()).unwrap_or_else(|_e| String::from("")))?;
+                file_tbl.set("hash", v.clone())?;
                 tbl.set(k.clone(), file_tbl)?;
             }
             Ok(tbl)
@@ -665,10 +674,24 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, task_inputs:
 
 fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db_env: &lmdb::Environment, cache: &Arc<TaskExecutorCache>) -> TaskInput {
     let mut current_task_input = TaskInput {
+        project_source_hashes: HashMap::new(),
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
         vars: HashMap::new()
     };
+
+    for project_source in task.task.project_source_deps.iter() {
+        let cached_hash = cache.project_source_hashes.read().unwrap().get(project_source).cloned();
+        let current_hash = match cached_hash {
+            Some(hash) => hash,
+            None => {
+                let file_hash = compute_file_hash(&workspace_config.workspace_dir.join(Path::new(project_source.as_ref())).as_path()).unwrap();
+                cache.project_source_hashes.write().unwrap().insert(project_source.clone(), file_hash.clone());
+                file_hash
+            }
+        };
+        current_task_input.project_source_hashes.insert(String::from(project_source.as_ref()), current_hash);
+    }
 
     for (file_alias, file_dep) in task.task.file_deps.iter() {
         let cached_hash = cache.file_hashes.read().unwrap().get(&file_dep.path).cloned();
@@ -718,6 +741,23 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         Some(r) => r,
         None => { return None; }
     };
+
+    if current_task_input.project_source_hashes.len() != task_record.input.project_source_hashes.len() {
+        return None;
+    }
+
+    for (source_file, source_hash) in current_task_input.project_source_hashes.iter() {
+        let prev_hash = match task_record.input.project_source_hashes.get(source_file) {
+            Some(hash) => hash,
+            None => { return None; }
+        };
+
+        if prev_hash != source_hash {
+            return None;
+        }
+    }
+
+
     if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
         return None;
     }
@@ -860,6 +900,7 @@ mod tests {
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
         let cache = Arc::new(TaskExecutorCache {
+            project_source_hashes: RwLock::new(HashMap::new()),
             file_hashes: RwLock::new(HashMap::new()),
             task_outputs: RwLock::new(HashMap::new())
         });
@@ -893,7 +934,8 @@ mod tests {
                 build_envs: HashMap::new(),
                 cmd: ActionCmd::Cmd(vec![Arc::<str>::from("There!")])
             }],
-            artifacts: Vec::new()
+            artifacts: Vec::new(),
+            project_source_deps: Vec::new()
         });
 
         let test_task_name = Arc::<str>::from("test");

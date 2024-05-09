@@ -70,6 +70,15 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
 pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlua::Result<()> {
     let cxt = lua.create_table()?;
     cxt.set("ws_dir", workspace_dir.to_str().unwrap_or("."))?;
+
+    let strip_path_prefix_func = lua.create_function(|lua, (path, prefix): (String, String)| {
+        let stripped_path = Path::new(path.as_str()).strip_prefix(Path::new(prefix.as_str()));
+        match stripped_path {
+            Ok(p) => Ok(p.to_str().map(|s| s.to_owned()).unwrap_or(path)),
+            Err(_) => Ok(path)
+        }
+    })?;
+    cxt.set("strip_path_prefix", strip_path_prefix_func)?;
     
     let workspace_dir_owned = PathBuf::from(workspace_dir);
     let project_dir_func = lua.create_function(move |lua, dir: String| {
@@ -108,7 +117,7 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         require = function (modname)
             mod, fname = _require(modname)
             if fname then
-                table.insert(PROJECT.project_source_deps, fname)
+                table.insert(PROJECT.project_source_deps, cxt.strip_path_prefix(fname, cxt.ws_dir))
             end
             return mod, fname
         end
@@ -132,7 +141,7 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
                 end
 
                 if dir then
-                    project_source_deps = { dir .. "/" .. cxt.project_file_name, table.unpack(PROJECT.project_source_deps) }
+                    project_source_deps = { dir .. "/" .. cxt.project_file_name }
                 else
                     project_source_deps = { table.unpack(PROJECT.project_source_deps) }
                 end
