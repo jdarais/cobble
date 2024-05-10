@@ -186,8 +186,12 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     }
 }
 
-pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<Lua> {
+pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let lua = unsafe { Lua::unsafe_new() };
+
+    let workspace_table = lua.create_table()?;
+    workspace_table.set("dir", workspace_dir.to_str())?;
+    lua.globals().set("WORKSPACE", workspace_table)?;
 
     let if_else_func: Function = lua.load(r#"
         function (cond, true_val, false_val)
@@ -208,9 +212,9 @@ pub fn create_lua_env(module_root_path: &Path) -> mlua::Result<Lua> {
 
     {
         let mut module_search_path = OsString::new();
-        module_search_path.push(module_root_path.as_os_str());
+        module_search_path.push(workspace_dir.as_os_str());
         module_search_path.push("/?.lua;");
-        module_search_path.push(module_root_path.as_os_str());
+        module_search_path.push(workspace_dir.as_os_str());
         module_search_path.push("/?/init.lua");
     
         let package_global: Table = lua.globals().get("package")?;

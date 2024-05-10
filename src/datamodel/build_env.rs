@@ -3,13 +3,14 @@ use std::{fmt, sync::Arc};
 
 use crate::datamodel::action::{validate_action, validate_action_list};
 use crate::datamodel::dependency::{validate_dep_list, Dependencies};
-use crate::datamodel::validate::{key_validation_error, validate_is_string};
+use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_required_key};
 use crate::datamodel::Action;
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
     pub name: Arc<str>,
     pub install: Vec<Action>,
+    pub clean: Vec<Action>,
     pub deps: Dependencies,
     pub action: Action,
 }
@@ -19,12 +20,17 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
     let mut prop_path: Vec<Cow<str>> = Vec::new();
     match value {
         mlua::Value::Table(tbl_val) => {
+            validate_required_key(tbl_val, "name", None, &mut prop_path)?;
+            validate_required_key(tbl_val, "install", None, &mut prop_path)?;
+            validate_required_key(tbl_val, "action", None, &mut prop_path)?;
+
             for pair in tbl_val.clone().pairs() {
                 let (k, v): (mlua::Value, mlua::Value) = pair?;
                 let k_str = validate_is_string(&k, None, &mut prop_path)?;
                 match k_str.to_str()? {
                     "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(())),
                     "install" => validate_action_list(lua, &v, Some(Cow::Borrowed("install")), &mut prop_path),
+                    "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), &mut prop_path),
                     "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path),
                     "action" => validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path),
                     s_str => key_validation_error(s_str, vec!["name", "install", "deps"], &mut prop_path)
@@ -64,11 +70,13 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
                 let name = Arc::<str>::from(name_str);
 
                 let install: Vec<Action> = tbl.get("install")?;
+                let clean_opt: Option<Vec<Action>> = tbl.get("clean")?;
+                let clean = clean_opt.unwrap_or_default();
                 let deps_opt: Option<Dependencies> = tbl.get("deps")?;
                 let deps: Dependencies = deps_opt.unwrap_or_default();
                 let action: Action = tbl.get("action")?;
         
-                Ok(BuildEnv { name, install, deps, action })
+                Ok(BuildEnv { name, install, clean, deps, action })
             },
             val => { return Err(mlua::Error::runtime(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
         }

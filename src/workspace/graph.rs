@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::datamodel::{dependency::Dependencies, project, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
+use crate::datamodel::{dependency::Dependencies, Action, ActionCmd, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
 
 
 
@@ -10,7 +10,9 @@ use crate::datamodel::{dependency::Dependencies, project, Action, Artifact, Buil
 pub enum TaskType {
     Project,
     Task,
-    BuildEnv
+    CleanTask,
+    BuildEnv,
+    CleanBuildEnv
 }
 
 #[derive(Clone, Debug)]
@@ -30,6 +32,7 @@ pub struct Task {
     pub task_deps: HashMap<Arc<str>, Arc<str>>,
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
     pub calc_deps: Vec<Arc<str>>,
+    pub execute_after: Vec<Arc<str>>,
     pub actions: Vec<Action>,
     pub artifacts: Vec<Artifact>,
     pub project_source_deps: Vec<Arc<str>>
@@ -66,6 +69,12 @@ pub fn add_dependency_list_to_task(deps: &Dependencies, file_providers: &HashMap
     }
 }
 
+fn get_clean_task_name(task_name: &str) -> Arc<str> {
+    let mut clean_task_name = String::from("@clean:");
+    clean_task_name.push_str(task_name);
+    clean_task_name.into()
+}
+
 fn add_action_to_task(action: &Action, task: &mut Task) {
     for (env_alias, env_name) in action.build_envs.iter() {
         task.build_envs.insert(env_alias.clone(), env_name.clone());
@@ -96,6 +105,7 @@ fn add_build_env_to_workspace(
         task_deps: HashMap::new(),
         var_deps: HashMap::new(),
         calc_deps: Vec::new(),
+        execute_after: Vec::new(),
         actions: Vec::new(),
         artifacts: Vec::new(),
         project_source_deps: project_source_deps.clone()
@@ -109,6 +119,41 @@ fn add_build_env_to_workspace(
 
     workspace.tasks.insert(build_env.name.clone(), Arc::new(install_task));
     workspace.build_envs.insert(build_env.name.clone(), Arc::new(build_env.clone()));
+
+    add_build_env_clean_task_to_workspace(build_env, project_name, dir, project_source_deps, workspace);
+}
+
+fn add_build_env_clean_task_to_workspace(
+    build_env: &BuildEnv,
+    project_name: &Arc<str>,
+    dir: &Arc<Path>,
+    project_source_deps: &Vec<Arc<str>>,
+    workspace: &mut Workspace
+) {
+    let mut clean_task = Task {
+        task_type: TaskType::CleanBuildEnv,
+        dir: dir.clone(),
+        project_name: project_name.clone(),
+        tools: HashMap::new(),
+        build_envs: HashMap::new(),
+        file_deps: HashMap::new(),
+        task_deps: HashMap::new(),
+        var_deps: HashMap::new(),
+        calc_deps: Vec::new(),
+        // This will need to be populated with all tasks that depend on this
+        // build environment, but we don't have that information in this function.
+        // So, we'll populate it as a post-processing step
+        execute_after: Vec::new(),
+        actions: Vec::new(),
+        artifacts: Vec::new(),
+        project_source_deps: project_source_deps.clone()
+    };
+
+    for clean_action in build_env.clean.iter() {
+        add_action_to_task(clean_action, &mut clean_task);
+    }
+
+    workspace.tasks.insert(get_clean_task_name(build_env.name.as_ref()), Arc::new(clean_task));
 }
 
 fn add_task_to_workspace(
@@ -129,6 +174,7 @@ fn add_task_to_workspace(
         task_deps: HashMap::new(),
         var_deps: HashMap::new(),
         calc_deps: Vec::new(),
+        execute_after: Vec::new(),
         actions: Vec::new(),
         artifacts: task_def.artifacts.iter().cloned().collect(),
         project_source_deps: project_source_deps.clone()
@@ -143,6 +189,40 @@ fn add_task_to_workspace(
     workspace.tasks.insert(task_def.name.clone(), Arc::new(task));
 }
 
+fn add_task_clean_task_to_workspace(
+    task_def: &TaskDef,
+    project_name: &Arc<str>,
+    dir: &Arc<Path>,
+    project_source_deps: &Vec<Arc<str>>,
+    workspace: &mut Workspace
+) {
+    let mut clean_task = Task {
+        task_type: TaskType::CleanTask,
+        dir: dir.clone(),
+        project_name: project_name.clone(),
+        tools: HashMap::new(),
+        build_envs: task_def.build_env.iter().cloned().collect(),
+        file_deps: HashMap::new(),
+        task_deps: HashMap::new(),
+        var_deps: HashMap::new(),
+        calc_deps: Vec::new(),
+        execute_after: Vec::new(),
+        actions: vec![Action {
+            tools: HashMap::new(),
+            build_envs: HashMap::new(),
+            cmd: ActionCmd::DeleteFiles(task_def.artifacts.iter().map(|a| a.filename.clone()).collect())
+        }],
+        artifacts: Vec::new(),
+        project_source_deps: project_source_deps.clone()
+    };
+
+    for clean_action in task_def.clean.iter() {
+        add_action_to_task(clean_action, &mut clean_task);
+    }
+
+    workspace.tasks.insert(get_clean_task_name(task_def.name.as_ref()), Arc::new(clean_task));
+}
+
 fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>, Arc<str>>, workspace: &mut Workspace) {
     if project.name.as_ref() != "/__COBBLE_INTERNAL__" {
         let mut project_task = Task {
@@ -155,6 +235,7 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
                 task_deps: project.child_project_names.iter().map(|t| (t.clone(), t.clone())).collect(),
                 var_deps: HashMap::new(),
                 calc_deps: Vec::new(),
+                execute_after: Vec::new(),
                 actions: Vec::new(),
                 artifacts: Vec::new(),
                 project_source_deps: project.project_source_deps.clone()
@@ -185,7 +266,24 @@ fn add_project_to_workspace(project: &Project, file_providers: &HashMap<Arc<str>
     }
 }
 
+fn populate_execute_after_for_clean_build_env_tasks(workspace: &mut Workspace) {
+   // Populate execute_after field for CleanBuildEnv tasks now that we have the necessary info
+   let mut clean_build_env_tasks: HashMap<Arc<str>, Task> = HashMap::new();
+   for (name, task) in workspace.tasks.iter() {
+       for (_env_alias, env_name) in task.build_envs.iter() {
+            let clean_build_env_task_name = get_clean_task_name(env_name.as_ref());
+            if workspace.tasks.contains_key(&clean_build_env_task_name) {
+                let clean_build_env_task = clean_build_env_tasks.entry(clean_build_env_task_name.clone())
+                    .or_insert_with(|| workspace.tasks.get(&clean_build_env_task_name).unwrap().as_ref().clone());
+                clean_build_env_task.execute_after.push(name.clone());
+            }
+       }
+   }
 
+   for (name, task) in clean_build_env_tasks {
+       workspace.tasks.insert(name, Arc::new(task));
+   }
+}
 
 pub fn create_workspace<'a, P>(all_projects: P, file_providers: &HashMap<Arc<str>, Arc<str>>) -> Workspace
     where P: Iterator<Item = &'a Project>
@@ -199,6 +297,8 @@ pub fn create_workspace<'a, P>(all_projects: P, file_providers: &HashMap<Arc<str
     for project in all_projects {
         add_project_to_workspace(project, &file_providers, &mut workspace);
     }
+
+    populate_execute_after_for_clean_build_env_tasks(&mut workspace);
 
     workspace
 }

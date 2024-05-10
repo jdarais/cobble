@@ -81,19 +81,16 @@ fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<Arc<str>> {
     .collect()
 }
 
-fn compute_task_job_forward_edges<'a>(workspace: &'a Workspace) -> HashMap<Arc<str>, Vec<Arc<str>>> {
+fn compute_task_job_forward_edges(workspace: &Workspace) -> HashMap<Arc<str>, Vec<Arc<str>>> {
     let mut forward_edges: HashMap<Arc<str>, HashSet<Arc<str>>> = HashMap::new();
 
     for (task_name, task) in workspace.tasks.iter() {
         for task_dep in get_task_job_dependencies(task.as_ref()) {
-            match forward_edges.get_mut(&task_dep) {
-                Some(task_dep_forward_edges) => { task_dep_forward_edges.insert(task_name.clone()); },
-                None => {
-                    let mut task_dep_forward_edges: HashSet<Arc<str>> = HashSet::new();
-                    task_dep_forward_edges.insert(task_name.clone());
-                    forward_edges.insert(task_dep, task_dep_forward_edges);
-                }
-            }
+            forward_edges.entry(task_dep.clone()).or_default().insert(task_name.clone());
+        }
+
+        for execute_after in task.execute_after.iter() {
+            forward_edges.entry(execute_after.clone()).or_default().insert(task_name.clone());
         }
     }
 
@@ -210,6 +207,7 @@ impl TaskExecutor {
     {
         self.ensure_worker_threads();
 
+        let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut task_output_buffers: HashMap<Arc<str>, Vec<TaskConsoleOutput>> = HashMap::new();
         let mut current_output_task: Option<Arc<str>> = None;
@@ -230,7 +228,7 @@ impl TaskExecutor {
 
         for task_name in jobs_without_dependencies.iter() {
             let job = remaining_jobs.remove(task_name).unwrap();
-            self.push_task_job(job);
+            self.push_task_job(job, &mut in_progress_jobs);
         }
 
         while completed_jobs.len() < total_jobs {
@@ -317,11 +315,17 @@ impl TaskExecutor {
                     if let Some(fwd_edges) = forward_edges_from_task {
                         for fwd_edge in fwd_edges.iter() {
                             let fwd_job_is_available = match remaining_jobs.get(fwd_edge) {
-                                Some(fwd_job) => fwd_job.task.task_deps.iter().all(|(_, t_dep)| completed_jobs.contains(t_dep)),
+                                Some(fwd_job) => {
+                                    let deps_satisfied = fwd_job.task.task_deps.iter()
+                                        .all(|(_, t_dep)| completed_jobs.contains(t_dep));
+                                    let execute_after_satisfied = fwd_job.task.execute_after.iter()
+                                        .all(|ex_after| !remaining_jobs.contains_key(ex_after) && !in_progress_jobs.contains(ex_after));
+                                    deps_satisfied && execute_after_satisfied
+                                },
                                 None => false
                             };
                             if fwd_job_is_available {
-                                self.push_task_job(remaining_jobs.remove(fwd_edge).unwrap());
+                                self.push_task_job(remaining_jobs.remove(fwd_edge).unwrap(), &mut in_progress_jobs);
                             }
                         }
                     }
@@ -332,9 +336,10 @@ impl TaskExecutor {
         Ok(())
     }
 
-    fn push_task_job(&mut self, task_job: TaskJob) {
+    fn push_task_job(&mut self, task_job: TaskJob, in_progress_jobs: &mut HashSet<Arc<str>>) {
         let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
         {
+            in_progress_jobs.insert(task_job.task_name.clone());
             let mut task_queue_opt = task_queue_mutex.lock().unwrap();
             if let Some(task_queue) = task_queue_opt.as_mut() {
                 task_queue.push_back(task_job);
@@ -422,6 +427,8 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
         invoke_action = function(action, action_context)
             if type(action[1]) == "function" then
                 return action[1](action_context)
+            elseif type(action[1] == "userdata") then
+                return action[1]:invoke(action_context)
             else
                 local tool_alias = next(action.tool)
                 local env_alias = next(action.build_env)
@@ -930,6 +937,7 @@ mod tests {
             task_deps: HashMap::new(),
             var_deps: HashMap::new(),
             calc_deps: Vec::new(),
+            execute_after: Vec::new(),
             actions: vec![Action {
                 tools: vec![(print_tool_name.clone(), print_tool_name.clone())].into_iter().collect(),
                 build_envs: HashMap::new(),

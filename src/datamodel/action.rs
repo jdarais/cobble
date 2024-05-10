@@ -1,16 +1,18 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::fs::remove_file;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::datamodel::validate::{key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence};
 use crate::lua::detached_value::{FunctionDump, dump_function};
-use crate::util::onscopeexit::OnScopeExitMut;
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
-    Func(FunctionDump)
+    Func(FunctionDump),
+    DeleteFiles(Vec<Arc<str>>)
 }
 
 impl fmt::Display for ActionCmd {
@@ -18,7 +20,8 @@ impl fmt::Display for ActionCmd {
         use ActionCmd::*;
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
-            Func(func) => write!(f, "Func({})", func)
+            Func(func) => write!(f, "Func({})", func),
+            DeleteFiles(artifacts) => write!(f, "DeleteFiles({:?})", artifacts)
         }
     }
 }
@@ -180,22 +183,35 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 
                 let cmd_tool_name = Arc::<str>::from("cmd");
 
-                // Check if we are a table with a single positional element, which means that we're
-                // a function command, (likely accompanied by a build_env or tool entry in the table)
+                // Check if we are a table with a single positional element, which could mean that
+                // we're a function or userdata command
                 if tbl.len()? == 1 {
                     let first_val: mlua::Value = tbl.get(1)?;
-                    if let mlua::Value::Function(func) = first_val {
-                        // Function actions should always have the cmd tool available
-                        if !tools.contains_key(&cmd_tool_name) {
-                            tools.insert(cmd_tool_name.clone(), cmd_tool_name);
-                        }
+                    match first_val {
+                        mlua::Value::Function(func) => {
+                            // Function actions should always have the cmd tool available
+                            if !tools.contains_key(&cmd_tool_name) {
+                                tools.insert(cmd_tool_name.clone(), cmd_tool_name);
+                            }
 
-                        return Ok(Action {
-                            build_envs,
-                            tools,
-                            cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
-                        });
+                            return Ok(Action {
+                                build_envs,
+                                tools,
+                                cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
+                            });
+                        },
+                        mlua::Value::UserData(user_data) => {
+                            if let Ok(clean_files_action) = user_data.borrow::<CleanFilesAction>() {
+                                return Ok(Action {
+                                    build_envs,
+                                    tools,
+                                    cmd: ActionCmd::DeleteFiles(clean_files_action.files.clone())
+                                });
+                            }
+                        },
+                        _ => { /* not a function or userdata action */ }
                     }
+
                 }
 
                 // Otherwise, interpret the contents of the table as an args list, in which case only one
@@ -250,6 +266,9 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
             },
             ActionCmd::Func(f) => {
                 action_table.push(f)?;
+            },
+            ActionCmd::DeleteFiles(files) => {
+                action_table.push(CleanFilesAction { files })?;
             }
         }
 
@@ -260,5 +279,29 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
         action_table.set("build_env", build_envs_str)?;
 
         Ok(mlua::Value::Table(action_table))
+    }
+}
+
+
+struct CleanFilesAction {
+    pub files: Vec<Arc<str>>
+}
+
+impl mlua::UserData for CleanFilesAction {
+    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
+
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_method("invoke", |lua, this, _cxt: mlua::Table| {
+            let workspace_global: mlua::Table = lua.globals().get("WORKSPACE")?;
+            let workspace_dir: String = workspace_global.get("dir")?;
+            for file in this.files.iter() {
+                let file_path = Path::new(workspace_dir.as_str()).join(Path::new(file.as_ref()));
+                if file_path.is_file() {
+                    remove_file(&file_path)
+                        .map_err(|e| mlua::Error::runtime(format!("Error deleting file '{}': {}", file_path.display(), e)))?;
+                }
+            }
+            Ok(())
+        });
     }
 }

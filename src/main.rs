@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 
 use workspace::config::get_workspace_config;
 
-use crate::{commands::{list::{list_command, ListCommandInput}, run::{run_command, RunCommandInput}}, workspace::load::load_projects};
+use crate::{commands::{clean::{clean_command, CleanCommandInput}, list::{list_command, ListCommandInput}, run::{run_command, RunCommandInput}}, workspace::load::load_projects};
 
 #[derive(Parser)]
 struct Cli {
@@ -41,6 +41,10 @@ enum Command {
         /// Run tasks even if they are up-to-date
         #[arg(short, long)]
         force_run_tasks: bool
+    },
+    Clean {
+        /// If not provided, cleans all default tasks, (dependencies are excluded)
+        tasks: Vec<String>,
     }
 }
 
@@ -78,6 +82,12 @@ fn main() -> ExitCode {
                     tasks: tasks.iter().map(|s| s.as_str()).collect(),
                     vars: var,
                     force_run_tasks
+                })
+            },
+            Command::Clean{tasks} => {
+                clean_command(CleanCommandInput {
+                    cwd: cwd.as_path(),
+                    tasks: tasks.iter().map(|s| s.as_str()).collect()
                 })
             }
         },

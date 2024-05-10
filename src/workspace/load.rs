@@ -107,9 +107,6 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         local cxt = ...
 
         cobble = {
-            workspace = {
-                dir = cxt.ws_dir
-            },
             projects = {},
         }
 
@@ -123,7 +120,6 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         end
 
         PROJECT = nil
-        WORKSPACE = cobble.workspace
 
         _project_stack = {}
 

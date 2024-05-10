@@ -13,6 +13,7 @@ pub struct TaskDef {
     pub is_default: Option<bool>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
+    pub clean: Vec<Action>,
     pub deps: Dependencies,
     pub artifacts: Vec<Artifact>
 }
@@ -23,6 +24,7 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
     let tbl_val = validate_is_table(value, None, &mut prop_path)?;
 
     validate_required_key(tbl_val, "name", None, &mut prop_path)?;
+    validate_required_key(tbl_val, "actions", None, &mut prop_path)?;
 
     for pair in tbl_val.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
@@ -48,6 +50,7 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                 _ => Err(mlua::Error::runtime(format!("Expected a string or table, but got a {}: {:?}", v.type_name(), v)))
             },
             "actions" => validate_action_list(lua, &v, Some(Cow::Borrowed("actions")), &mut prop_path),
+            "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), &mut prop_path),
             "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path),
             "artifacts" => {
                 let artifacts_tbl =  validate_is_table(&v, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
@@ -68,7 +71,7 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                 }
                 Ok(())
             },
-            unknown_key => key_validation_error(unknown_key, vec!["name", "env", "actions", "deps", "artifacts"], &prop_path)
+            unknown_key => key_validation_error(unknown_key, vec!["name", "env", "actions", "clean", "deps", "artifacts"], &prop_path)
         }?;
     }
 
@@ -135,12 +138,14 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
                 };
 
                 let actions: Vec<Action> = task_table.get("actions")?;
+                let clean_opt: Option<Vec<Action>> = task_table.get("clean")?;
+                let clean = clean_opt.unwrap_or_default();
                 let deps_opt: Option<Dependencies> = task_table.get("deps")?;
                 let deps = deps_opt.unwrap_or_default();
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
                 let artifacts = artifacts_opt.unwrap_or_default();
         
-                Ok(TaskDef { name, is_default, build_env, actions, deps, artifacts })
+                Ok(TaskDef { name, is_default, build_env, actions, clean, deps, artifacts })
             },
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }
