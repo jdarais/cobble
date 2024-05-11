@@ -29,7 +29,7 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> anyhow::Result<()> {
     let selected_tasks = compute_selected_tasks(&tasks, &workspace, cwd, &config.workspace_dir)?;
 
     // Resolve calculated dependencies
-    let mut executor = TaskExecutor::new(config.clone(), config.workspace_dir.join(".cobble.db").as_path());
+    let mut executor = TaskExecutor::new(config.clone(), config.workspace_dir.join(".cobble.db").as_path())?;
     resolve_calculated_dependencies_in_subtrees(selected_tasks.iter(), &mut workspace, &mut executor)?;
 
     // Execute the tasks

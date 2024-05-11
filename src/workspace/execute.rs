@@ -9,7 +9,7 @@ use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
@@ -158,18 +158,22 @@ pub enum TaskConsoleOutput {
 pub struct TaskExecutor {
     worker_threads: Vec<JoinHandle<()>>,
     workspace_config: Arc<WorkspaceConfig>,
-    db_path: PathBuf,
+    db_env: Arc<lmdb::Environment>,
+    db: lmdb::Database,
     task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
     message_channel: (Sender<TaskJobMessage>, Receiver<TaskJobMessage>),
     cache: Arc<TaskExecutorCache>
 }
 
 impl TaskExecutor {
-    pub fn new(config: Arc<WorkspaceConfig>, db_path: &Path) -> TaskExecutor {
-        TaskExecutor {
+    pub fn new(config: Arc<WorkspaceConfig>, db_path: &Path) -> anyhow::Result<TaskExecutor> {
+        let db_env = new_db_env(db_path)?;
+        let db = db_env.open_db(None)?;
+        Ok(TaskExecutor {
             worker_threads: Vec::new(),
             workspace_config: config,
-            db_path: PathBuf::from(db_path),
+            db_env: Arc::new(db_env),
+            db: db,
             task_queue: Arc::new((Mutex::new(Some(VecDeque::new())), Condvar::new())),
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
@@ -177,7 +181,7 @@ impl TaskExecutor {
                 file_hashes: RwLock::new(HashMap::new()),
                 task_outputs: RwLock::new(HashMap::new())
             })
-        }
+        })
     }
 
     pub fn cache(&self) -> Arc<TaskExecutorCache> {
@@ -189,7 +193,8 @@ impl TaskExecutor {
             for _ in 0..5 {
                 let worker_args = TaskExecutorWorkerArgs {
                     workspace_config: self.workspace_config.clone(),
-                    db_path: self.db_path.clone(),
+                    db_env: self.db_env.clone(),
+                    db: self.db.clone(),
                     task_queue: self.task_queue.clone(),
                     task_result_sender: self.message_channel.0.clone(),
                     cache: self.cache.clone()
@@ -227,6 +232,7 @@ impl TaskExecutor {
                 jobs_without_dependencies.push(task_name.clone());
             }
         }
+        println!("Jobs without dependencies: {:?}", &jobs_without_dependencies);
 
         for task_name in jobs_without_dependencies.iter() {
             let job = remaining_jobs.remove(task_name).unwrap();
@@ -283,6 +289,7 @@ impl TaskExecutor {
                 },
                 TaskJobMessage::Complete{task, result} => {
                     completed_jobs.insert(task.clone());
+                    in_progress_jobs.remove(task.as_ref());
                     match result {
                         TaskResult::UpToDate => { println!("{} is up to date", task); },
                         TaskResult::Success => { println!("{} succeeded", task); },
@@ -313,15 +320,20 @@ impl TaskExecutor {
                         }
                     }
 
+                    println!("Remaining jobs: {:?}", &remaining_jobs.keys());
+                    println!("In progress jobs: {:?}", &in_progress_jobs);
                     let forward_edges_from_task = forward_edges.get(&task);
                     if let Some(fwd_edges) = forward_edges_from_task {
+                        println!("Forward edges from completed task: {:?}", fwd_edges);
                         for fwd_edge in fwd_edges.iter() {
                             let fwd_job_is_available = match remaining_jobs.get(fwd_edge) {
                                 Some(fwd_job) => {
                                     let deps_satisfied = fwd_job.task.task_deps.iter()
                                         .all(|(_, t_dep)| completed_jobs.contains(t_dep));
+                                    println!("All deps satisfied for {:?}: {:?}", fwd_job.task_name, deps_satisfied);
                                     let execute_after_satisfied = fwd_job.task.execute_after.iter()
                                         .all(|ex_after| !remaining_jobs.contains_key(ex_after) && !in_progress_jobs.contains(ex_after));
+                                    println!("Execute after satisfied for {:?}: {:?}", fwd_job.task_name, execute_after_satisfied);
                                     deps_satisfied && execute_after_satisfied
                                 },
                                 None => false
@@ -465,7 +477,8 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
 
 struct TaskExecutorWorkerArgs {
     pub workspace_config: Arc<WorkspaceConfig>,
-    pub db_path: PathBuf,
+    pub db_env: Arc<lmdb::Environment>,
+    pub db: lmdb::Database,
     pub task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
     pub task_result_sender: Sender<TaskJobMessage>,
     pub cache: Arc<TaskExecutorCache>
@@ -474,8 +487,6 @@ struct TaskExecutorWorkerArgs {
 fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
     let lua = create_lua_env(args.workspace_config.workspace_dir.as_path()).unwrap();
     init_lua_for_task_executor(&lua).unwrap();
-
-    let db_env = new_db_env(args.db_path.as_path()).unwrap();
 
     loop {
         let (task_queue_mutex, task_queue_cvar) = &*args.task_queue;
@@ -494,7 +505,7 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
         let next_task = task_queue_locked.as_mut().unwrap().pop_front().unwrap();
         drop(task_queue_locked);
 
-        execute_task_job(&args.workspace_config, &lua, &db_env, &next_task, args.task_result_sender.clone(), args.cache.clone());
+        execute_task_job(&args.workspace_config, &lua, args.db_env.as_ref(), &args.db, &next_task, args.task_result_sender.clone(), args.cache.clone());
     }
 }
 
@@ -682,7 +693,7 @@ fn execute_task_actions<'lua>(lua: &'lua mlua::Lua, task: &TaskJob, task_inputs:
     Ok(args)
 }
 
-fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db_env: &lmdb::Environment, cache: &Arc<TaskExecutorCache>) -> TaskInput {
+fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db_env: &lmdb::Environment, db: &lmdb::Database, cache: &Arc<TaskExecutorCache>) -> TaskInput {
     let mut current_task_input = TaskInput {
         project_source_hashes: HashMap::new(),
         file_hashes: HashMap::new(),
@@ -721,7 +732,7 @@ fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db
         let current_task_output = match cached_task_output {
             Some(output) => output,
             None => {
-                let task_record = get_task_record(&db_env, task_dep).unwrap();
+                let task_record = get_task_record(&db_env, db.clone(), task_dep).unwrap();
                 cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.task_output.clone());
                 task_record.output.task_output
             }
@@ -738,8 +749,8 @@ fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db
     current_task_input
 }
 
-fn get_up_to_date_task_record(workspace_dir: &Path, db_env: &lmdb::Environment, task: &TaskJob, current_task_input: &TaskInput) -> Option<TaskRecord> {
-    let task_record_opt = match get_task_record(&db_env, task.task_name.as_ref()) {
+fn get_up_to_date_task_record(workspace_dir: &Path, db_env: &lmdb::Environment, db: &lmdb::Database, task: &TaskJob, current_task_input: &TaskInput) -> Option<TaskRecord> {
+    let task_record_opt = match get_task_record(&db_env, db.clone(), task.task_name.as_ref()) {
         Ok(r) => Some(r),
         Err(e) => match e {
             GetError::NotFound(_) => None,
@@ -848,6 +859,7 @@ fn execute_task_actions_and_store_result(
     workspace_dir: &Path,
     lua: &mlua::Lua,
     db_env: &lmdb::Environment,
+    db: &lmdb::Database,
     task: &TaskJob,
     task_result_sender: &Sender<TaskJobMessage>,
     cache: &Arc<TaskExecutorCache>,
@@ -867,13 +879,13 @@ fn execute_task_actions_and_store_result(
     let task_output_record = TaskOutput { task_output: detached_result.to_json(), file_hashes: artifact_file_hashes };
 
     let task_record = TaskRecord { input: current_task_input, output: task_output_record };
-    put_task_record(db_env, task.task_name.as_ref(), &task_record)
+    put_task_record(db_env, db.clone(), task.task_name.as_ref(), &task_record)
         .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
     cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output.task_output);
     Ok(())
 }
 
-fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db_env: &lmdb::Environment, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
+fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db_env: &lmdb::Environment, db: &lmdb::Database, task: &TaskJob, task_result_sender: Sender<TaskJobMessage>, cache: Arc<TaskExecutorCache>) {
     if cache.task_outputs.read().unwrap().contains_key(&task.task_name) {
         task_result_sender.send(TaskJobMessage::Complete {
             task: task.task_name.clone(),
@@ -882,10 +894,10 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
         return;
     }
     
-    let current_task_input = get_current_task_input(workspace_config, task, db_env, &cache);
+    let current_task_input = get_current_task_input(workspace_config, task, db_env, db, &cache);
 
     if !workspace_config.force_run_tasks && !task.task.always_run {
-        let up_to_date_task_record = get_up_to_date_task_record(&workspace_config.workspace_dir, db_env, task, &current_task_input);
+        let up_to_date_task_record = get_up_to_date_task_record(&workspace_config.workspace_dir, db_env, db, task, &current_task_input);
     
         if let Some(task_record) = up_to_date_task_record {
             cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output.task_output);
@@ -897,8 +909,8 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
         }
     }
 
-    let result = execute_task_actions_and_store_result(&workspace_config.workspace_dir, lua, db_env, task, &task_result_sender, &cache, current_task_input);
-    
+    let result = execute_task_actions_and_store_result(&workspace_config.workspace_dir, lua, db_env, db, task, &task_result_sender, &cache, current_task_input);
+    println!("Result for {:?}: {:?}", task.task_name, result);
     match result {
         Ok(_) => {
             task_result_sender.send(TaskJobMessage::Complete {
@@ -926,7 +938,7 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
 mod tests {
     extern crate mktemp;
 
-    use std::{collections::HashSet, sync::mpsc, time::Duration};
+    use std::{collections::HashSet, sync::mpsc, time::Duration, path::PathBuf};
 
     use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::graph::TaskType};
 
@@ -947,6 +959,7 @@ mod tests {
         init_lua_for_task_executor(&lua).unwrap();
     
         let db_env = new_db_env(tmpdir.as_path().join(".cobble.db").as_path()).unwrap();
+        let db = db_env.open_db(None).unwrap();
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
         let cache = Arc::new(TaskExecutorCache {
@@ -997,7 +1010,7 @@ mod tests {
             task: task.clone()
         };
 
-        execute_task_job(&workspace_config, &lua, &db_env, &task_job, tx.clone(), cache.clone());
+        execute_task_job(&workspace_config, &lua, &db_env, &db, &task_job, tx.clone(), cache.clone());
 
         let job_result = rx.recv_timeout(Duration::from_secs(1)).unwrap();
         match job_result {

@@ -9,6 +9,7 @@ use crate::{datamodel::{dependency::Dependencies, Action, ActionCmd, Artifact, B
 #[derive(Clone, Debug)]
 pub enum TaskType {
     Project,
+    CleanProject,
     Task,
     CleanTask,
     BuildEnv,
@@ -224,13 +225,13 @@ fn add_task_clean_task_to_workspace(
 fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     if project.name.as_ref() != "/__COBBLE_INTERNAL__" {
         let mut project_task = Task {
-                task_type: TaskType::Project,
-                dir: project.path.clone(),
-                project_name: project.name.clone(),
-                task_deps: project.child_project_names.iter().map(|t| (t.clone(), t.clone())).collect(),
-                project_source_deps: project.project_source_deps.clone(),
-                ..Default::default()
-            };
+            task_type: TaskType::Project,
+            dir: project.path.clone(),
+            project_name: project.name.clone(),
+            task_deps: project.child_project_names.iter().map(|t| (t.clone(), t.clone())).collect(),
+            project_source_deps: project.project_source_deps.clone(),
+            ..Default::default()
+        };
         let mut default_tasks: Vec<&TaskDef> = project.tasks.iter().filter(|t| t.is_default.unwrap_or(false)).collect();
         if default_tasks.len() == 0 {
             // Not specifying any default tasks for a project results in all tasks being default
@@ -242,6 +243,8 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
         }
 
         workspace.tasks.insert(project.name.clone(), Arc::new(project_task));
+
+        add_clean_project_task_to_workspace(project, workspace);
     }
 
     for env in project.build_envs.iter() {
@@ -255,6 +258,35 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     for tool in project.tools.iter() {
         workspace.tools.insert(tool.name.clone(), Arc::new(tool.clone()));
     }
+}
+
+fn add_clean_project_task_to_workspace(project: &Project, workspace: &mut Workspace) {
+    let mut project_clean_task = Task {
+        task_type: TaskType::CleanProject,
+        dir: project.path.clone(),
+        project_name: project.name.clone(),
+        project_source_deps: project.project_source_deps.clone(),
+        always_run: true,
+        ..Default::default()
+    };
+
+    for child_project in project.child_project_names.iter() {
+        let clean_child_project = get_clean_task_name(child_project.as_ref());
+        project_clean_task.task_deps.insert(clean_child_project.clone(), clean_child_project);
+    }
+
+    let mut default_tasks: Vec<&TaskDef> = project.tasks.iter().filter(|t| t.is_default.unwrap_or(false)).collect();
+    if default_tasks.len() == 0 {
+        // Not specifying any default tasks for a project results in all tasks being default
+        default_tasks = project.tasks.iter().collect();
+    }
+
+    for task in default_tasks.into_iter() {
+        let clean_task = get_clean_task_name(task.name.as_ref());
+        project_clean_task.task_deps.insert(clean_task.clone(), clean_task);
+    }
+
+    workspace.tasks.insert(get_clean_task_name(project.name.as_ref()), Arc::new(project_clean_task));
 }
 
 fn populate_execute_after_for_clean_build_env_tasks(workspace: &mut Workspace) {

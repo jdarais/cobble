@@ -71,7 +71,7 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     let cxt = lua.create_table()?;
     cxt.set("ws_dir", workspace_dir.to_str().unwrap_or("."))?;
 
-    let strip_path_prefix_func = lua.create_function(|lua, (path, prefix): (String, String)| {
+    let strip_path_prefix_func = lua.create_function(|_lua, (path, prefix): (String, String)| {
         let stripped_path = Path::new(path.as_str()).strip_prefix(Path::new(prefix.as_str()));
         match stripped_path {
             Ok(p) => Ok(p.to_str().map(|s| s.to_owned()).unwrap_or(path)),

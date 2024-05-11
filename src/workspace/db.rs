@@ -58,10 +58,9 @@ impl fmt::Display for GetError {
     }
 }
 
-pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<TaskRecord, GetError> {
+pub fn get_task_record(db_env: &lmdb::Environment, db: lmdb::Database, task_name: &str) -> Result<TaskRecord, GetError> {
     let task_key = get_task_key(task_name);
     
-    let db = db_env.open_db(None).map_err(|e| GetError::DBError(e))?;
     let tx = db_env.begin_ro_txn().map_err(|e| GetError::DBError(e))?;
     let task_record_data = tx.get(db, &task_key)
         .map_err(|e| match e {
@@ -91,12 +90,11 @@ impl fmt::Display for PutError {
     }
 }
 
-pub fn put_task_record(db_env: &lmdb::Environment, task_name: &str, record: &TaskRecord) -> Result<(), PutError> {
+pub fn put_task_record(db_env: &lmdb::Environment, db: lmdb::Database, task_name: &str, record: &TaskRecord) -> Result<(), PutError> {
     let task_key = get_task_key(task_name);
     
     let serialized_record = serde_json::to_vec(record).map_err(|e| PutError::SerializeError(e))?;
     
-    let db = db_env.open_db(None).map_err(|e| PutError::DBError(e))?;
     let mut tx = db_env.begin_rw_txn().map_err(|e| PutError::DBError(e))?;
     tx.put(db, &task_key, &serialized_record, WriteFlags::empty()).map_err(|e| PutError::DBError(e))?;
     tx.commit().map_err(|e| PutError::DBError(e))?;
