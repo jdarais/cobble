@@ -1,6 +1,5 @@
 use std::{
-    fmt,
-    path::{Component, Path, PathBuf}, sync::Arc
+    error::Error, fmt, path::{Component, Path, PathBuf}, sync::Arc
 };
 
 use crate::datamodel::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
@@ -12,6 +11,8 @@ pub enum NameResolutionError {
     PathToStringError(PathBuf),
     PathToNameError(PathBuf)
 }
+
+impl Error for NameResolutionError {}
 
 impl fmt::Display for NameResolutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -2,9 +2,18 @@ task {
     name = "task1",
     actions = {
         function (c) c.tool.cmd { "echo", "hi" } end,
+        function (c)
+            local result = c.tool.cmd { "echo", "there" }
+            local out_file = io.open(c.project.dir .. "/output.txt", "w")
+            out_file:write(result.stdout)
+            out_file:close()
+        end
     },
     deps = {
         vars = { "this.var" }
+    },
+    artifacts = {
+        "output.txt" 
     }
 }
 

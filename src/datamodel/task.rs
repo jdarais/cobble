@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::datamodel::action::validate_action_list;
-use crate::datamodel::artifact::validate_artifact;
 use crate::datamodel::dependency::{validate_dep_list, Dependencies};
 use crate::datamodel::validate::{key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence};
 use crate::datamodel::{Action, Artifact};
@@ -54,20 +53,10 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
             "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path),
             "artifacts" => {
                 let artifacts_tbl =  validate_is_table(&v, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
-                for pair in artifacts_tbl.clone().pairs() {
-                    let (k, v): (mlua::Value, mlua::Value) = pair?;
-                    let k_str = validate_is_string(&k, None, &mut prop_path)?;
-                    match k_str.to_str()? {
-                        "files" => {
-                            let v_tbl = validate_is_table(&v, Some(Cow::Borrowed("files")), &mut prop_path)?;
-                            for artifact_res in v_tbl.clone().sequence_values() {
-                                let artifact: mlua::Value = artifact_res?;
-                                validate_artifact(lua, &artifact, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
-                            }
-                            Ok(())
-                        },
-                        unknown_key => key_validation_error(unknown_key, vec!["files"], &prop_path)
-                    }?;
+                validate_table_is_sequence(artifacts_tbl, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
+                for v in artifacts_tbl.clone().sequence_values() {
+                    let artifact: mlua::Value = v?;
+                    validate_is_string(&artifact, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
                 }
                 Ok(())
             },

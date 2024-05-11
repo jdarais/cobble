@@ -4,6 +4,7 @@ extern crate serde_json;
 
 
 use std::collections::{hash_map, HashMap, HashSet, VecDeque};
+use std::error::Error;
 use std::fmt;
 use std::fmt::Write as FmtWrite;
 use std::fs::File;
@@ -54,6 +55,7 @@ pub enum TaskExecutionError {
     UnresolvedCalcDependencyError(Arc<str>)
 }
 
+impl Error for TaskExecutionError {}
 impl fmt::Display for TaskExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use TaskExecutionError::*;
@@ -508,7 +510,7 @@ fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
     let mut result_string = String::with_capacity(80);
     result_string.push_str("sha256:");
     for b in result {
-        write!(&mut result_string, "{:x}", b);
+        write!(&mut result_string, "{:x}", b).map_err(|e| io::Error::other(e))?;
     }
     Ok(result_string)
 }
@@ -842,7 +844,7 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
     
     let current_task_input = get_current_task_input(workspace_config, task, db_env, &cache);
 
-    if !workspace_config.force_run_tasks {
+    if !workspace_config.force_run_tasks && !task.task.always_run {
         let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
     
         if let Some(task_record) = up_to_date_task_record {
@@ -931,20 +933,13 @@ mod tests {
             task_type: TaskType::Task,
             dir: workspace_dir.clone(),
             project_name: Arc::<str>::from("/"),
-            build_envs: HashMap::new(),
             tools: vec![(print_tool_name.clone(), print_tool_name.clone())].into_iter().collect(),
-            file_deps: HashMap::new(),
-            task_deps: HashMap::new(),
-            var_deps: HashMap::new(),
-            calc_deps: Vec::new(),
-            execute_after: Vec::new(),
             actions: vec![Action {
                 tools: vec![(print_tool_name.clone(), print_tool_name.clone())].into_iter().collect(),
                 build_envs: HashMap::new(),
                 cmd: ActionCmd::Cmd(vec![Arc::<str>::from("There!")])
             }],
-            artifacts: Vec::new(),
-            project_source_deps: Vec::new()
+            ..Default::default()
         });
 
         let test_task_name = Arc::<str>::from("test");
@@ -952,7 +947,8 @@ mod tests {
         let workspace = Arc::new(Workspace {
             tasks: vec![(test_task_name.clone(), task.clone())].into_iter().collect(),
             build_envs: HashMap::new(),
-            tools: vec![(print_tool_name.clone(), print_tool.clone())].into_iter().collect()
+            tools: vec![(print_tool_name.clone(), print_tool.clone())].into_iter().collect(),
+            file_providers: HashMap::new()
         });
 
         let task_job = TaskJob {

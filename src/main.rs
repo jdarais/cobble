@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 extern crate clap;
+extern crate anyhow;
 
 mod commands;
 mod datamodel;
@@ -49,8 +50,8 @@ enum Command {
 }
 
 
-fn run_from_dir(path: &Path) -> ExitCode {
-    let config = get_workspace_config(path).unwrap();
+fn run_from_dir(path: &Path) -> anyhow::Result<()> {
+    let config = get_workspace_config(path, &Default::default()).unwrap();
 
     let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
 
@@ -59,7 +60,7 @@ fn run_from_dir(path: &Path) -> ExitCode {
         println!("\"{}\" = {}", name, proj);
     }
 
-    ExitCode::from(0)
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -67,7 +68,7 @@ fn main() -> ExitCode {
     
     let cwd = std::env::current_dir().expect("was run from a directory");
 
-    match args.command {
+    let result = match args.command {
         Some(cmd) =>     match cmd {
             Command::List{tasks} => {
                 let input = ListCommandInput {
@@ -93,6 +94,14 @@ fn main() -> ExitCode {
         },
         None => {
             run_from_dir(cwd.as_path())
+        }
+    };
+
+    match result {
+        Ok(_) => ExitCode::from(0),
+        Err(e) => {
+            println!("{:?}", e);
+            ExitCode::from(1)
         }
     }
 }

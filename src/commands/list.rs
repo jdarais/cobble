@@ -1,8 +1,6 @@
 use std::path::Path;
-use std::process::ExitCode;
 
 use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
-use crate::workspace::dependency::compute_file_providers;
 use crate::workspace::load::load_projects;
 use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
 use crate::workspace::resolve::project_path_to_project_name;
@@ -14,21 +12,13 @@ pub struct ListCommandInput<'a> {
     pub tasks: Vec<&'a str>
 }
 
-pub fn list_command<'a>(input: ListCommandInput<'a>) -> ExitCode {
-    let config = get_workspace_config(input.cwd).unwrap();
-    let projects_res = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str()));
-    let projects = match projects_res {
-        Ok(p) => p,
-        Err(e) => {
-            println!("Encountered an error while loading projects:\n{}", e);
-            return ExitCode::from(1);
-        }
-    };
+pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
+    let config = get_workspace_config(input.cwd, &Default::default()).unwrap();
+    let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str()))?;
 
     println!("{:?}", &projects);
 
-    let file_providers = compute_file_providers(projects.values());
-    let workspace = create_workspace(projects.values(), &file_providers);
+    let workspace = create_workspace(projects.values());
 
     let project_dir = find_nearest_project_dir(input.cwd, &config.workspace_dir).unwrap();
     let project_name = project_path_to_project_name(project_dir.as_path()).unwrap();
@@ -48,5 +38,5 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> ExitCode {
         println!("{}", rel_name.unwrap_or(name.as_ref()));
     }
 
-    ExitCode::from(0)
+    Ok(())
 }

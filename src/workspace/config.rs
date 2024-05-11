@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read};
@@ -18,6 +19,12 @@ pub struct WorkspaceConfig {
     pub force_run_tasks: bool
 }
 
+#[derive(Default)]
+pub struct WorkspaceConfigArgs {
+    pub vars: Vec<String>,
+    pub force_run_tasks: Option<bool>
+}
+
 #[derive(Debug)]
 pub enum WorkspaceConfigError {
     IOError(io::Error),
@@ -27,6 +34,7 @@ pub enum WorkspaceConfigError {
     SetVarError(VarLookupError)
 }
 
+impl Error for WorkspaceConfigError {}
 impl Display for WorkspaceConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use WorkspaceConfigError::*;
@@ -118,12 +126,19 @@ pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<Pat
     Ok(PathBuf::from("."))
 }
 
-pub fn get_workspace_config(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+pub fn get_workspace_config(path: &Path, args: &WorkspaceConfigArgs) -> Result<WorkspaceConfig, WorkspaceConfigError>
+{
     let config_path = find_nearest_workspace_config_file_from(path).map_err(|e| WorkspaceConfigError::IOError(e))?;
-    parse_workspace_config_file(config_path.as_path())
+    let mut config = parse_workspace_config_file(config_path.as_path())?;
+
+    if let Some(force_run_tasks) = args.force_run_tasks { config.force_run_tasks = force_run_tasks; }
+
+    add_cli_vars_to_workspace_config(args.vars.iter().map(String::as_str), &mut config)?;
+
+    Ok(config)
 }
 
-pub fn add_cli_vars_to_workspace_config<'a, I>(vars: I, config: &mut WorkspaceConfig) -> Result<(), WorkspaceConfigError>
+fn add_cli_vars_to_workspace_config<'a, I>(vars: I, config: &mut WorkspaceConfig) -> Result<(), WorkspaceConfigError>
 where I: Iterator<Item = &'a str>
 {
     for var in vars {

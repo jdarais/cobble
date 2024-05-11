@@ -25,7 +25,7 @@ pub fn validate_table_has_only_string_or_sequence_keys(table: &mlua::Table, prop
 
     let sequence_len = table.len()?;
     for pair in table.clone().pairs() {
-        let (k, v): (mlua::Value, mlua::Value) = pair?;
+        let (k, _v): (mlua::Value, mlua::Value) = pair?;
         match k {
             mlua::Value::String(_) => Ok(()),
             mlua::Value::Integer(i) => if i >= 1 && i <= sequence_len {
