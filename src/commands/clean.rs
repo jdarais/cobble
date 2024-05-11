@@ -19,7 +19,6 @@ pub fn clean_command<'a>(input: CleanCommandInput<'a>) -> anyhow::Result<()> {
 
     let selected_tasks = compute_selected_tasks(&tasks, &workspace, cwd, &config.workspace_dir)?;
     let clean_tasks: Vec<Arc<str>> = selected_tasks.iter().map(|s| s.as_ref()).map(get_clean_task_name).collect();
-    println!("Clean tasks: {:?}", clean_tasks);
 
     // Resolve calculated dependencies.  Is this needed for clean tasks, given that the only tasks they can rely on are build env tasks?
     let mut executor = TaskExecutor::new(config.clone(), config.workspace_dir.join(".cobble.db").as_path())?;

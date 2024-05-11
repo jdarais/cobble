@@ -47,6 +47,7 @@ pub enum GetError {
     NotFound(String)
 }
 
+impl Error for GetError {}
 impl fmt::Display for GetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use GetError::*;

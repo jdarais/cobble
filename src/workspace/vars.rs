@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, error::Error, fmt};
 
 use crate::datamodel::types::TaskVar;
 
@@ -9,6 +9,7 @@ pub enum VarLookupError {
     PathNotFound(String)
 }
 
+impl Error for VarLookupError {}
 impl fmt::Display for VarLookupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use VarLookupError::*;
