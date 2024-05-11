@@ -22,7 +22,7 @@ use crate::workspace::config::WorkspaceConfig;
 use crate::workspace::graph::{Workspace, Task};
 use crate::lua::detached_value::DetachedLuaValue;
 use crate::lua::lua_env::create_lua_env;
-use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskRecord};
+use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskOutput, TaskRecord};
 use crate::workspace::vars::get_var;
 
 #[derive(Debug)]
@@ -722,8 +722,8 @@ fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db
             Some(output) => output,
             None => {
                 let task_record = get_task_record(&db_env, task_dep).unwrap();
-                cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.clone());
-                task_record.output
+                cache.task_outputs.write().unwrap().insert(task_dep.clone(), task_record.output.task_output.clone());
+                task_record.output.task_output
             }
         };
         current_task_input.task_outputs.insert(String::from(task_alias.as_ref()), current_task_output);
@@ -738,7 +738,7 @@ fn get_current_task_input(workspace_config: &WorkspaceConfig, task: &TaskJob, db
     current_task_input
 }
 
-fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, current_task_input: &TaskInput) -> Option<TaskRecord> {
+fn get_up_to_date_task_record(workspace_dir: &Path, db_env: &lmdb::Environment, task: &TaskJob, current_task_input: &TaskInput) -> Option<TaskRecord> {
     let task_record_opt = match get_task_record(&db_env, task.task_name.as_ref()) {
         Ok(r) => Some(r),
         Err(e) => match e {
@@ -752,6 +752,7 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         None => { return None; }
     };
 
+    // Check project source files
     if current_task_input.project_source_hashes.len() != task_record.input.project_source_hashes.len() {
         return None;
     }
@@ -767,7 +768,7 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         }
     }
 
-
+    // Check input files
     if current_task_input.file_hashes.len() != task_record.input.file_hashes.len() {
         return None;
     }
@@ -783,6 +784,7 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         }
     }
 
+    // Check outputs of task dependencies
     if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
         return None;
     }
@@ -798,6 +800,7 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         }
     }
 
+    // Check input variables
     if current_task_input.vars.len() != task_record.input.vars.len() {
         return None;
     }
@@ -813,10 +816,36 @@ fn get_up_to_date_task_record(db_env: &lmdb::Environment, task: &TaskJob, curren
         }
     }
 
+    // Check output files
+    let mut current_output_file_hashes: HashMap<Arc<str>, String> = HashMap::with_capacity(task.task.artifacts.len());
+    for artifact in task.task.artifacts.iter() {
+        let output_file_hash_res = compute_file_hash(workspace_dir.join(Path::new(artifact.filename.as_ref())).as_path());
+        match output_file_hash_res {
+            Ok(hash) => { current_output_file_hashes.insert(artifact.filename.clone(), hash); },
+            Err(_) => { return None; }
+        };
+    }
+
+    if current_output_file_hashes.len() != task_record.output.file_hashes.len() {
+        return None;
+    }
+
+    for (file_name, file_hash) in current_output_file_hashes {
+        let prev_hash = match task_record.output.file_hashes.get(file_name.as_ref()) {
+            Some(hash) => hash,
+            None => { return None; }
+        };
+
+        if prev_hash != &file_hash {
+            return None;
+        }
+    }
+
     Some(task_record)
 }
 
 fn execute_task_actions_and_store_result(
+    workspace_dir: &Path,
     lua: &mlua::Lua,
     db_env: &lmdb::Environment,
     task: &TaskJob,
@@ -826,10 +855,21 @@ fn execute_task_actions_and_store_result(
 ) -> Result<(), ExecuteTaskActionError> {
     let result = execute_task_actions(lua, task, &current_task_input, &task_result_sender)?;
     let detached_result: DetachedLuaValue = lua.unpack(result).map_err(|e| ExecuteTaskActionError::LuaError(e))?;
-    let task_record = TaskRecord { input: current_task_input, output: detached_result.to_json()};
+
+    let mut artifact_file_hashes: HashMap<String, String> = HashMap::with_capacity(task.task.artifacts.len());
+    for artifact in task.task.artifacts.iter() {
+        let output_file_hash_res = compute_file_hash(workspace_dir.join(Path::new(artifact.filename.as_ref())).as_path());
+        match output_file_hash_res {
+            Ok(hash) => { artifact_file_hashes.insert(String::from(artifact.filename.as_ref()), hash); },
+            Err(e) => { return Err(ExecuteTaskActionError::SaveOutputError(PutError::FileError(e))); }
+        };
+    }
+    let task_output_record = TaskOutput { task_output: detached_result.to_json(), file_hashes: artifact_file_hashes };
+
+    let task_record = TaskRecord { input: current_task_input, output: task_output_record };
     put_task_record(db_env, task.task_name.as_ref(), &task_record)
         .map_err(|e| ExecuteTaskActionError::SaveOutputError(e))?;
-    cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
+    cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output.task_output);
     Ok(())
 }
 
@@ -845,10 +885,10 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
     let current_task_input = get_current_task_input(workspace_config, task, db_env, &cache);
 
     if !workspace_config.force_run_tasks && !task.task.always_run {
-        let up_to_date_task_record = get_up_to_date_task_record(db_env, task, &current_task_input);
+        let up_to_date_task_record = get_up_to_date_task_record(&workspace_config.workspace_dir, db_env, task, &current_task_input);
     
         if let Some(task_record) = up_to_date_task_record {
-            cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output);
+            cache.task_outputs.write().unwrap().insert(task.task_name.clone(), task_record.output.task_output);
             task_result_sender.send(TaskJobMessage::Complete {
                 task: task.task_name.clone(),
                 result: TaskResult::UpToDate
@@ -857,7 +897,7 @@ fn execute_task_job(workspace_config: &Arc<WorkspaceConfig>, lua: &mlua::Lua, db
         }
     }
 
-    let result = execute_task_actions_and_store_result(lua, db_env, task, &task_result_sender, &cache, current_task_input);
+    let result = execute_task_actions_and_store_result(&workspace_config.workspace_dir, lua, db_env, task, &task_result_sender, &cache, current_task_input);
     
     match result {
         Ok(_) => {

@@ -1,7 +1,7 @@
 extern crate serde_json;
 extern crate serde;
 
-use std::{collections::HashMap, fmt, path::Path};
+use std::{collections::HashMap, error::Error, fmt, io, path::Path};
 
 use lmdb::{Transaction, WriteFlags};
 use serde::{Serialize, Deserialize};
@@ -21,9 +21,15 @@ pub struct TaskInput {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TaskOutput {
+    pub file_hashes: HashMap<String, String>,
+    pub task_output: serde_json::Value
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskRecord {
     pub input: TaskInput,
-    pub output: serde_json::Value
+    pub output: TaskOutput
 }
 
 
@@ -70,14 +76,17 @@ pub fn get_task_record(db_env: &lmdb::Environment, task_name: &str) -> Result<Ta
 pub enum PutError {
     SerializeError(serde_json::Error),
     DBError(lmdb::Error),
+    FileError(io::Error)
 }
 
+impl Error for PutError {}
 impl fmt::Display for PutError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use PutError::*;
         match self {
             SerializeError(e) => write!(f, "Error serializing record: {}", e),
             DBError(e) => write!(f, "Database error: {}", e),
+            FileError(e) => write!(f, "File error: {}", e)
         }
     }
 }
