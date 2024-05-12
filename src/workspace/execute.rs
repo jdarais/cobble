@@ -460,7 +460,7 @@ fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
         invoke_action = function(action, action_context)
             if type(action[1]) == "function" then
                 return action[1](action_context)
-            elseif type(action[1] == "userdata") then
+            elseif type(action[1]) == "userdata" then
                 return action[1]:invoke(action_context)
             else
                 local tool_alias = next(action.tool)
@@ -1040,7 +1040,7 @@ mod tests {
                 assert_eq!(tgt.as_ref(), "test");
                 match result {
                     TaskResult::Success => { /* pass */ },
-                    _ => panic!("Did not get a success message")
+                    res => panic!("Did not get a success message: {:?}", res)
                 }
             },
             _ => panic!("Did not get a completion message")

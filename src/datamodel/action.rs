@@ -201,7 +201,7 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                             });
                         },
                         mlua::Value::UserData(user_data) => {
-                            if let Ok(clean_files_action) = user_data.borrow::<CleanFilesAction>() {
+                            if let Ok(clean_files_action) = user_data.borrow::<DeleteFilesAction>() {
                                 return Ok(Action {
                                     build_envs,
                                     tools,
@@ -268,7 +268,7 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
                 action_table.push(f)?;
             },
             ActionCmd::DeleteFiles(files) => {
-                action_table.push(CleanFilesAction { files })?;
+                action_table.push(DeleteFilesAction { files })?;
             }
         }
 
@@ -283,11 +283,11 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
 }
 
 
-struct CleanFilesAction {
+struct DeleteFilesAction {
     pub files: Vec<Arc<str>>
 }
 
-impl mlua::UserData for CleanFilesAction {
+impl mlua::UserData for DeleteFilesAction {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
 
     fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
@@ -303,5 +303,60 @@ impl mlua::UserData for CleanFilesAction {
             }
             Ok(())
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::lua::lua_env::create_lua_env;
+
+    #[test]
+    fn test_validate_and_convert_arg_list_action() {
+        let lua = create_lua_env(Path::new(".")).unwrap();
+        let action_val: mlua::Value = lua.load(r#"{ tool = "cmd", "echo", "hi", "there" }"#).eval().unwrap();
+        validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
+        let action: Action = lua.unpack(action_val).unwrap();
+        match action.cmd {
+            ActionCmd::Cmd(_) => { /* OK */ },
+            cmd => { panic!("Expected an ActionCmd::Cmd, but got {:?}", cmd); }
+        };
+    }
+
+    #[test]
+    fn test_validate_and_convert_function_action() {
+        let lua = create_lua_env(Path::new(".")).unwrap();
+        let action_val: mlua::Value = lua.load(r#"
+            {
+                tool = "cmd",
+                function (c) print("hello!") end
+            }
+        "#).eval().unwrap();
+        validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
+        let action: Action = lua.unpack(action_val).unwrap();
+        match action.cmd {
+            ActionCmd::Func(_) => { /* OK */ },
+            cmd => { panic!("Expected an ActionCmd::Func, but got {:?}", cmd); }
+        };
+    }
+
+    #[test]
+    fn test_mixed_function_and_string_sequence_fails_validation() {
+        let lua = create_lua_env(Path::new(".")).unwrap();
+        let action_val: mlua::Value = lua.load(r#"
+            {
+                tool = "cmd",
+                function (c) print("hello!") end,
+                "wait",
+                "what",
+                "but why"
+            }
+        "#).eval().unwrap();
+        validate_action(&lua, &action_val, None, &mut Vec::new())
+            .expect_err("Validation of action with mixed function and string sequence values should fail");
+
+        lua.unpack::<Action>(action_val)
+            .expect_err("Conversion of action that failed validation should also fail conversion to an Action object");
     }
 }
