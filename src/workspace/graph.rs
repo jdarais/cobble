@@ -176,6 +176,7 @@ fn add_task_to_workspace(
         task_type: TaskType::Task,
         dir: dir.clone(),
         project_name: project_name.clone(),
+        always_run: task_def.always_run.unwrap_or(false),
         build_envs: task_def.build_env.iter().cloned().collect(),
         artifacts: task_def.artifacts.iter().cloned().collect(),
         project_source_deps: project_source_deps.clone(),

@@ -10,6 +10,7 @@ use crate::datamodel::{Action, Artifact};
 pub struct TaskDef {
     pub name: Arc<str>,
     pub is_default: Option<bool>,
+    pub always_run: Option<bool>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
     pub clean: Vec<Action>,
@@ -31,6 +32,7 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
         match k_str.to_str()? {
             "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(())),
             "default" => validate_is_bool(&v, Some(Cow::Borrowed("default")), &mut prop_path).and(Ok(())),
+            "always_run" => validate_is_bool(&v, Some(Cow::Borrowed("always_run")), &mut prop_path).and(Ok(())),
             "env" => match v {
                 mlua::Value::String(_) => Ok(()),
                 mlua::Value::Table(t) => {
@@ -60,7 +62,11 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                 }
                 Ok(())
             },
-            unknown_key => key_validation_error(unknown_key, vec!["name", "env", "actions", "clean", "deps", "artifacts"], &prop_path)
+            unknown_key => key_validation_error(
+                unknown_key,
+                vec!["name", "default", "always_run", "env", "actions", "clean", "deps", "artifacts"],
+                &prop_path
+            )
         }?;
     }
 
@@ -102,6 +108,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
                 let name = Arc::<str>::from(name_str);
 
                 let is_default: Option<bool> = task_table.get("default")?;
+                let always_run: Option<bool> = task_table.get("always_run")?;
                 
                 let build_env_val: mlua::Value = task_table.get("env")?;
                 let build_env = match build_env_val {
@@ -134,7 +141,7 @@ impl <'lua> mlua::FromLua<'lua> for TaskDef {
                 let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
                 let artifacts = artifacts_opt.unwrap_or_default();
         
-                Ok(TaskDef { name, is_default, build_env, actions, clean, deps, artifacts })
+                Ok(TaskDef { name, is_default, always_run, build_env, actions, clean, deps, artifacts })
             },
             _ => Err(mlua::Error::runtime(format!("Unable to convert value to Task: {:?}", value)))
         }
