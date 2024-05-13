@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::cobl::workspace::Workspace;
-use crate::cobl::resolve::{resolve_name, NameResolutionError};
+use crate::workspace::Workspace;
+use crate::resolve::{resolve_name, NameResolutionError};
 
 pub fn find_tasks_for_dir<'a>(
     workspace: &'a Workspace,

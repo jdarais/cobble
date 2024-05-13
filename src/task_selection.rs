@@ -1,9 +1,9 @@
 use std::{path::Path, sync::Arc};
 
-use crate::cobl::config::find_nearest_project_dir;
-use crate::cobl::workspace::Workspace;
-use crate::cobl::query::find_tasks_for_query;
-use crate::cobl::resolve::project_path_to_project_name;
+use crate::config::find_nearest_project_dir;
+use crate::workspace::Workspace;
+use crate::query::find_tasks_for_query;
+use crate::resolve::project_path_to_project_name;
 
 pub fn compute_selected_tasks(
     task_queries: &Vec<&str>,

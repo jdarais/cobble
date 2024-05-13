@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::cobl::config::get_workspace_config;
-use crate::cobl::dependency::resolve_calculated_dependencies_in_subtrees;
-use crate::cobl::execute::TaskExecutor;
-use crate::cobl::workspace::{create_workspace, get_clean_task_name};
-use crate::cobl::load::load_projects;
-use crate::cobl::task_selection::compute_selected_tasks;
+use cobble::config::get_workspace_config;
+use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
+use cobble::execute::TaskExecutor;
+use cobble::workspace::{create_workspace, get_clean_task_name};
+use cobble::load::load_projects;
+use cobble::task_selection::compute_selected_tasks;
 
 pub struct CleanCommandInput<'a> {
     pub cwd: &'a Path,

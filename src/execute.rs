@@ -12,13 +12,13 @@ use crate::lua::serialized::SerializedLuaValue;
 use crate::project_def::types::json_to_lua;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
-use crate::cobl::config::WorkspaceConfig;
-use crate::cobl::db::{
+use crate::config::WorkspaceConfig;
+use crate::db::{
     get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskOutput,
     TaskRecord,
 };
-use crate::cobl::workspace::{Task, Workspace};
-use crate::cobl::vars::{get_var, VarLookupError};
+use crate::workspace::{Task, Workspace};
+use crate::vars::{get_var, VarLookupError};
 
 #[derive(Debug)]
 pub struct TaskJob {
@@ -1152,7 +1152,7 @@ mod tests {
     use crate::{
         lua::serialized::dump_function,
         project_def::{Action, ActionCmd},
-        cobl::workspace::TaskType,
+        workspace::TaskType,
     };
 
     use super::*;

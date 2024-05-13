@@ -6,7 +6,7 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use crate::project_def::types::TaskVar;
-use crate::cobl::vars::{set_var, VarLookupError};
+use crate::vars::{set_var, VarLookupError};
 
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
 pub const PROJECT_FILE_NAME: &str = "project.lua";

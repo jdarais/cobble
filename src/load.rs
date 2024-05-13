@@ -2,23 +2,18 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::config::PROJECT_FILE_NAME;
 use crate::lua::lua_env::create_lua_env;
 use crate::lua::serialized::dump_function;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
 use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
-use crate::cobl::config::PROJECT_FILE_NAME;
-use crate::cobl::resolve::resolve_names_in_project;
-
-enum PathOrString {
-    Path(PathBuf),
-    String(String),
-}
+use crate::resolve::resolve_names_in_project;
 
 fn process_project(
     lua: &mlua::Lua,
-    chunk: PathOrString,
+    chunk: &Path,
     project_name: &str,
     project_dir: &str,
 ) -> mlua::Result<()> {
@@ -27,14 +22,7 @@ fn process_project(
 
     start_project.call((project_name, project_dir))?;
 
-    match chunk {
-        PathOrString::Path(p) => {
-            lua.load(p).exec()?;
-        }
-        PathOrString::String(s) => {
-            lua.load(s).exec()?;
-        }
-    }
+    lua.load(chunk).exec()?;
 
     end_project.call(())?;
 
@@ -81,7 +69,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
     process_project(
         lua,
-        PathOrString::Path(project_file_path),
+        project_file_path.as_path(),
         project_name.as_str(),
         project_dir_str,
     )?;
@@ -209,27 +197,37 @@ where
 mod tests {
     use super::*;
     use crate::lua::lua_env::create_lua_env;
+    use std::{fs::File, io::Write};
 
     #[test]
     fn test_load_subproject_def() {
+        let tmpdir = mktemp::Temp::new_dir().unwrap();
         let lua = create_lua_env(Path::new(".")).unwrap();
 
         init_lua_for_project_config(&lua, Path::new("testproject")).unwrap();
 
+        let temp_proj_file_path = tmpdir.as_path().join("project.lua");
+        {
+            let mut f = File::create(&temp_proj_file_path).unwrap();
+            f.write_all(
+                br#"
+                build_env({
+                    name = "test",
+                    install = {
+                        function () print("hi!") end
+                    },
+                    deps = {},
+                    action = function (a) print(a) end
+                })
+            "#,
+            )
+            .unwrap();
+            f.flush().unwrap();
+        }
+
         process_project(
             &lua,
-            PathOrString::String(String::from(
-                r#"
-            build_env({
-                name = "test",
-                install = {
-                    function () print("hi!") end
-                },
-                deps = {},
-                action = function (a) print(a) end
-            })
-        "#,
-            )),
+            temp_proj_file_path.as_path(),
             "testproject",
             "testproject",
         )

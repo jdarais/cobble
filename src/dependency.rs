@@ -6,9 +6,9 @@ use std::sync::Arc;
 
 use crate::project_def::dependency::Dependencies;
 use crate::project_def::{DependencyListByType, Project};
-use crate::cobl::execute::{TaskExecutionError, TaskExecutor};
-use crate::cobl::workspace::{add_dependency_list_to_task, Task, Workspace};
-use crate::cobl::resolve::{resolve_names_in_dependency_list, NameResolutionError};
+use crate::execute::{TaskExecutionError, TaskExecutor};
+use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
+use crate::resolve::{resolve_names_in_dependency_list, NameResolutionError};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {

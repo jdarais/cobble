@@ -1,22 +1,16 @@
-// For now, allow dead code, since a lot of large areas of the program are still under construction
-#![allow(dead_code)]
-
 mod commands;
-mod lua;
-mod project_def;
-mod util;
-mod cobl;
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use commands::clean::{clean_command, CleanCommandInput};
-use commands::list::{list_command, ListCommandInput};
-use commands::run::{run_command, RunCommandInput};
-use cobl::config::get_workspace_config;
-use cobl::load::load_projects;
+use cobble::config::get_workspace_config;
+use cobble::load::load_projects;
+
+use crate::commands::clean::{clean_command, CleanCommandInput};
+use crate::commands::list::{list_command, ListCommandInput};
+use crate::commands::run::{run_command, RunCommandInput};
 
 #[derive(Parser)]
 struct Cli {
