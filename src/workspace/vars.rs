@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error, fmt};
 
-use crate::datamodel::types::TaskVar;
+use crate::project_def::types::TaskVar;
 
 #[derive(Debug)]
 pub enum VarLookupError {

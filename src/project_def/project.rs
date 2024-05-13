@@ -2,7 +2,7 @@ use std::{fmt, sync::Arc};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use crate::datamodel::{BuildEnv, ExternalTool, TaskDef};
+use crate::project_def::{BuildEnv, ExternalTool, TaskDef};
 
 
 #[derive(Debug)]

@@ -2,7 +2,7 @@ extern crate mlua;
 
 use std::{borrow::Cow, fmt, sync::Arc};
 
-use crate::datamodel::{action::validate_action, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key}, Action};
+use crate::project_def::{action::validate_action, validate::{key_validation_error, validate_is_string, validate_is_table, validate_required_key}, Action};
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {

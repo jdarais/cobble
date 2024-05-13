@@ -5,7 +5,7 @@ extern crate clap;
 extern crate anyhow;
 
 mod commands;
-mod datamodel;
+mod project_def;
 mod lua;
 mod util;
 mod workspace;

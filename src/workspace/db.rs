@@ -6,7 +6,7 @@ use std::{collections::HashMap, error::Error, fmt, io, path::Path};
 use lmdb::{Transaction, WriteFlags};
 use serde::{Serialize, Deserialize};
 
-use crate::datamodel::types::TaskVar;
+use crate::project_def::types::TaskVar;
 
 const TASK_KEY_PREFIX: &str = "task:";
 

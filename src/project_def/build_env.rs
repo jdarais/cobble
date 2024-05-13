@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::{fmt, sync::Arc};
 
-use crate::datamodel::action::{validate_action, validate_action_list};
-use crate::datamodel::dependency::{validate_dep_list, Dependencies};
-use crate::datamodel::validate::{key_validation_error, validate_is_string, validate_required_key};
-use crate::datamodel::Action;
+use crate::project_def::action::{validate_action, validate_action_list};
+use crate::project_def::dependency::{validate_dep_list, Dependencies};
+use crate::project_def::validate::{key_validation_error, validate_is_string, validate_required_key};
+use crate::project_def::Action;
 
 #[derive(Clone, Debug)]
 pub struct BuildEnv {

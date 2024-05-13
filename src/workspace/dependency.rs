@@ -4,8 +4,8 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::datamodel::dependency::Dependencies;
-use crate::datamodel::{DependencyListByType, Project};
+use crate::project_def::dependency::Dependencies;
+use crate::project_def::{DependencyListByType, Project};
 use crate::workspace::execute::{TaskExecutionError, TaskExecutor};
 use crate::workspace::graph::{add_dependency_list_to_task, Task, Workspace};
 use crate::workspace::resolve::{resolve_names_in_dependency_list, NameResolutionError};

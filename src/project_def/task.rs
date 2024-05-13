@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use crate::datamodel::action::validate_action_list;
-use crate::datamodel::dependency::{validate_dep_list, Dependencies};
-use crate::datamodel::validate::{key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence};
-use crate::datamodel::{Action, Artifact};
+use crate::project_def::action::validate_action_list;
+use crate::project_def::dependency::{validate_dep_list, Dependencies};
+use crate::project_def::validate::{key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string, validate_is_table, validate_required_key, validate_table_is_sequence};
+use crate::project_def::{Action, Artifact};
 
 #[derive(Clone, Debug)]
 pub struct TaskDef {

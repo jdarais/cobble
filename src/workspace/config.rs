@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use crate::datamodel::types::TaskVar;
+use crate::project_def::types::TaskVar;
 use crate::workspace::vars::{set_var, VarLookupError};
 
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";

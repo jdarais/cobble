@@ -2,7 +2,7 @@ use std::{
     error::Error, fmt, path::{Component, Path, PathBuf}, sync::Arc
 };
 
-use crate::datamodel::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
+use crate::project_def::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
 
 #[derive(Debug)]
 pub enum NameResolutionError {

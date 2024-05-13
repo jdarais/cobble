@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::datamodel::build_env::validate_build_env;
-use crate::datamodel::task::validate_task;
-use crate::datamodel::tool::validate_tool;
-use crate::datamodel::{
+use crate::project_def::build_env::validate_build_env;
+use crate::project_def::task::validate_task;
+use crate::project_def::tool::validate_tool;
+use crate::project_def::{
     Action, ActionCmd, ExternalTool, Project
 };
 use crate::lua::detached_value::dump_function;

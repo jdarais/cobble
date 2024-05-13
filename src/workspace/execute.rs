@@ -16,8 +16,9 @@ use std::thread::{self, JoinHandle};
 
 use sha2::{Digest, Sha256};
 
-use crate::datamodel::types::json_to_lua;
-use crate::datamodel::ExternalTool;
+use crate::project_def::types::json_to_lua;
+use crate::project_def::ExternalTool;
+use crate::util::hash::compute_file_hash;
 use crate::workspace::config::WorkspaceConfig;
 use crate::workspace::graph::{Workspace, Task};
 use crate::lua::detached_value::DetachedLuaValue;
@@ -546,22 +547,7 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
     }
 }
 
-fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
-    let mut file_content: Vec<u8> = Vec::with_capacity(1024);
-    let mut file = File::open(file_path)?;
-    file.read_to_end(&mut file_content)?;
 
-    let mut hasher = Sha256::new();
-    hasher.update(&file_content);
-    let result = hasher.finalize();
-
-    let mut result_string = String::with_capacity(80);
-    result_string.push_str("sha256:");
-    for b in result {
-        write!(&mut result_string, "{:x}", b).map_err(|e| io::Error::other(e))?;
-    }
-    Ok(result_string)
-}
 
 fn ensure_tool_is_cached(lua: &mlua::Lua, tool_name: &str, workspace: &Workspace) -> mlua::Result<()> {
     let tool = workspace.tools.get(tool_name)
@@ -962,7 +948,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration, path::PathBuf};
 
-    use crate::{datamodel::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::graph::TaskType};
+    use crate::{project_def::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::graph::TaskType};
 
     use super::*;
 

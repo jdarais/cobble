@@ -5,8 +5,8 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::datamodel::types::StringOrInt;
-use crate::datamodel::validate::{key_validation_error, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
+use crate::project_def::types::StringOrInt;
+use crate::project_def::validate::{key_validation_error, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct DependencyListByType {

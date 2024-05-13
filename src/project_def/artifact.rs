@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt, sync::Arc};
 
-use crate::datamodel::validate::validate_is_string;
+use crate::project_def::validate::validate_is_string;
 
 #[derive(Clone, Debug)]
 pub struct Artifact {
