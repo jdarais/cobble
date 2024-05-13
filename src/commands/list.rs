@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use crate::workspace::config::{find_nearest_project_dir, get_workspace_config};
-use crate::workspace::graph::create_workspace;
-use crate::workspace::load::load_projects;
-use crate::workspace::query::{find_tasks_for_dir, find_tasks_for_query};
-use crate::workspace::resolve::project_path_to_project_name;
+use crate::cobl::config::{find_nearest_project_dir, get_workspace_config};
+use crate::cobl::workspace::create_workspace;
+use crate::cobl::load::load_projects;
+use crate::cobl::query::{find_tasks_for_dir, find_tasks_for_query};
+use crate::cobl::resolve::project_path_to_project_name;
 
 pub struct ListCommandInput<'a> {
     pub cwd: &'a Path,

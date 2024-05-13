@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::project_def::{
     Action, ActionCmd, Artifact, BuildEnv, Dependencies, ExternalTool, Project, TaskDef,
 };
-use crate::workspace::dependency::compute_file_providers;
+use crate::cobl::dependency::compute_file_providers;
 
 #[derive(Clone, Debug)]
 pub enum TaskType {

@@ -8,8 +8,8 @@ use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
 use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
-use crate::workspace::config::PROJECT_FILE_NAME;
-use crate::workspace::resolve::resolve_names_in_project;
+use crate::cobl::config::PROJECT_FILE_NAME;
+use crate::cobl::resolve::resolve_names_in_project;
 
 enum PathOrString {
     Path(PathBuf),

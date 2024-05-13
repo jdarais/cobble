@@ -5,19 +5,18 @@ mod commands;
 mod lua;
 mod project_def;
 mod util;
-mod workspace;
+mod cobl;
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-
 use commands::clean::{clean_command, CleanCommandInput};
 use commands::list::{list_command, ListCommandInput};
 use commands::run::{run_command, RunCommandInput};
-use workspace::config::get_workspace_config;
-use workspace::load::load_projects;
+use cobl::config::get_workspace_config;
+use cobl::load::load_projects;
 
 #[derive(Parser)]
 struct Cli {
