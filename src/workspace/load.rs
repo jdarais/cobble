@@ -1,36 +1,39 @@
-extern crate mlua;
-extern crate toml;
-extern crate serde;
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::lua::lua_env::create_lua_env;
+use crate::lua::serialized::dump_function;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
-use crate::project_def::{
-    Action, ActionCmd, ExternalTool, Project
-};
-use crate::lua::serialized::dump_function;
-use crate::lua::lua_env::create_lua_env;
-use crate::workspace::resolve::resolve_names_in_project;
+use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
 use crate::workspace::config::PROJECT_FILE_NAME;
+use crate::workspace::resolve::resolve_names_in_project;
 
 enum PathOrString {
     Path(PathBuf),
-    String(String)
+    String(String),
 }
 
-fn process_project(lua: &mlua::Lua, chunk: PathOrString, project_name: &str, project_dir: &str) -> mlua::Result<()> {
+fn process_project(
+    lua: &mlua::Lua,
+    chunk: PathOrString,
+    project_name: &str,
+    project_dir: &str,
+) -> mlua::Result<()> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
 
     start_project.call((project_name, project_dir))?;
 
     match chunk {
-        PathOrString::Path(p) => { lua.load(p).exec()?; },
-        PathOrString::String(s) => { lua.load(s).exec()?; }
+        PathOrString::Path(p) => {
+            lua.load(p).exec()?;
+        }
+        PathOrString::String(s) => {
+            lua.load(s).exec()?;
+        }
     }
 
     end_project.call(())?;
@@ -44,9 +47,13 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_dir = match current_project.as_ref() {
         Some(cur_proj) => {
             let current_project_dir: String = cur_proj.get("dir")?;
-            PathBuf::from_iter(Path::new(current_project_dir.as_str()).join(&dir).components())
-        },
-        None => PathBuf::from(dir)
+            PathBuf::from_iter(
+                Path::new(current_project_dir.as_str())
+                    .join(&dir)
+                    .components(),
+            )
+        }
+        None => PathBuf::from(dir),
     };
 
     let project_name = if dir == "" || dir == "." {
@@ -55,14 +62,29 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         dir.to_owned()
     };
 
-    let project_file_path = PathBuf::from_iter(workspace_dir.join(project_dir.as_path()).join(PROJECT_FILE_NAME).components());
+    let project_file_path = PathBuf::from_iter(
+        workspace_dir
+            .join(project_dir.as_path())
+            .join(PROJECT_FILE_NAME)
+            .components(),
+    );
     if !project_file_path.exists() {
-        return Err(mlua::Error::runtime(format!("Project file {} doesn't exist", project_file_path.display())));
+        return Err(mlua::Error::runtime(format!(
+            "Project file {} doesn't exist",
+            project_file_path.display()
+        )));
     }
 
-    let project_dir_str = project_dir.as_os_str().to_str()
+    let project_dir_str = project_dir
+        .as_os_str()
+        .to_str()
         .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
-    process_project(lua, PathOrString::Path(project_file_path), project_name.as_str(), project_dir_str)?;
+    process_project(
+        lua,
+        PathOrString::Path(project_file_path),
+        project_name.as_str(),
+        project_dir_str,
+    )?;
 
     Ok(())
 }
@@ -71,138 +93,36 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     let cxt = lua.create_table()?;
     cxt.set("ws_dir", workspace_dir.to_str().unwrap_or("."))?;
 
-    let strip_path_prefix_func = lua.create_function(|_lua, (path, prefix): (String, String)| {
-        let stripped_path = Path::new(path.as_str()).strip_prefix(Path::new(prefix.as_str()));
-        match stripped_path {
-            Ok(p) => Ok(p.to_str().map(|s| s.to_owned()).unwrap_or(path)),
-            Err(_) => Ok(path)
-        }
-    })?;
+    let strip_path_prefix_func =
+        lua.create_function(|_lua, (path, prefix): (String, String)| {
+            let stripped_path = Path::new(path.as_str()).strip_prefix(Path::new(prefix.as_str()));
+            match stripped_path {
+                Ok(p) => Ok(p.to_str().map(|s| s.to_owned()).unwrap_or(path)),
+                Err(_) => Ok(path),
+            }
+        })?;
     cxt.set("strip_path_prefix", strip_path_prefix_func)?;
-    
+
     let workspace_dir_owned = PathBuf::from(workspace_dir);
     let project_dir_func = lua.create_function(move |lua, dir: String| {
         process_project_file(lua, dir.as_str(), workspace_dir_owned.as_path())
     })?;
     cxt.set("process_project_dir", project_dir_func)?;
 
-    let validate_build_env = lua.create_function(|lua, val: mlua::Value| {
-        validate_build_env(lua, &val)
-    })?;
+    let validate_build_env =
+        lua.create_function(|lua, val: mlua::Value| validate_build_env(lua, &val))?;
     cxt.set("validate_build_env", validate_build_env)?;
 
-    let validate_task = lua.create_function(|lua, val: mlua::Value| {
-        validate_task(lua, &val)
-    })?;
+    let validate_task = lua.create_function(|lua, val: mlua::Value| validate_task(lua, &val))?;
     cxt.set("validate_task", validate_task)?;
 
-    let validate_tool = lua.create_function(|lua, val: mlua::Value| {
-        validate_tool(lua, &val)
-    })?;
+    let validate_tool = lua.create_function(|lua, val: mlua::Value| validate_tool(lua, &val))?;
     cxt.set("validate_tool", validate_tool)?;
 
     cxt.set("project_file_name", PROJECT_FILE_NAME)?;
 
-    lua.load(r#"
-        local cxt = ...
-
-        cobble = {
-            projects = {},
-        }
-
-        local _require = require
-        require = function (modname)
-            mod, fname = _require(modname)
-            if fname then
-                table.insert(PROJECT.project_source_deps, cxt.strip_path_prefix(fname, cxt.ws_dir))
-            end
-            return mod, fname
-        end
-
-        PROJECT = nil
-
-        _project_stack = {}
-
-        function start_project (name, dir)
-            local project_source_deps = {}
-            if PROJECT then
-                if name == "" then
-                    error("Empty name is only allowed for the root project!")
-                end
-
-                if PROJECT.name == "/" then
-                    name = "/" .. name
-                else
-                    name = PROJECT.name .. "/" .. name
-                end
-
-                if dir then
-                    project_source_deps = { dir .. "/" .. cxt.project_file_name }
-                else
-                    project_source_deps = { table.unpack(PROJECT.project_source_deps) }
-                end
-                dir = dir or PROJECT.dir
-            else
-                name = "/" .. (name or "")
-                if dir then
-                    project_source_deps = { dir .. "/" .. cxt.project_file_name }
-                end
-                dir = dir or WORKSPACE.dir
-            end
-
-            if cobble.projects[name] then
-                error("Project " .. name .. " already exists!")
-            end
-
-            local project = {
-                name = name,
-                dir = dir,
-                build_envs = {},
-                tasks = {},
-                tools = {},
-                child_projects = {},
-                project_source_deps = project_source_deps
-            }
-            
-            if PROJECT then table.insert(PROJECT.child_projects, project) end
-
-            cobble.projects[name] = project
-            table.insert(_project_stack, project)
-            PROJECT = project
-        end
-
-        function end_project ()
-            table.remove(_project_stack)
-            PROJECT = _project_stack[#_project_stack]
-        end
-
-        function project (proj)
-            start_project(proj.name)
-            proj.def()
-            end_project()
-        end
-
-        function project_dir (dir)
-            cxt.process_project_dir(dir)
-        end
-
-        function build_env (env)
-            local status, err = pcall(cxt.validate_build_env, env)
-            if not status then error(err, 1) end
-            table.insert(PROJECT.build_envs, env)
-        end
-
-        function external_tool (tool)
-            cxt.validate_tool(tool)
-            table.insert(PROJECT.tools, tool)
-        end
-
-        function task (tsk)
-            local status, err = pcall(cxt.validate_task, tsk)
-            if not status then error(err, 1) end
-            table.insert(PROJECT.tasks, tsk)
-        end
-    "#).call(cxt)
+    let project_config_source = include_bytes!("project_config.lua");
+    lua.load(&project_config_source[..]).call(cxt)
 }
 
 pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Project>> {
@@ -215,8 +135,12 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         let (key, mut value): (String, Project) = pair?;
         let resolved_project_res = resolve_names_in_project(&mut value);
         match resolved_project_res {
-            Ok(_) => { projects.insert(key, value); },
-            Err(e) => { return Err(mlua::Error::runtime(format!("{}", e))); }
+            Ok(_) => {
+                projects.insert(key, value);
+            }
+            Err(e) => {
+                return Err(mlua::Error::runtime(format!("{}", e)));
+            }
         }
     }
 
@@ -242,26 +166,33 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         action: Action {
             tools: HashMap::new(),
             build_envs: HashMap::new(),
-            cmd: ActionCmd::Func(dump_function(cmd_tool_action_func, lua, &HashSet::new())?)
-        }
+            cmd: ActionCmd::Func(dump_function(cmd_tool_action_func, lua, &HashSet::new())?),
+        },
     };
 
-    projects.insert(String::from("/__COBBLE_INTERNAL__"), Project {
-        name: Arc::<str>::from("/__COBBLE_INTERNAL__"),
-        path: PathBuf::from("./__COBBLE_INTERNAL__").into(),
-        build_envs: Vec::new(),
-        tasks: Vec::new(),
-        tools: vec![cmd_tool],
-        child_project_names: Vec::new(),
-        project_source_deps: Vec::new()
-    });
+    projects.insert(
+        String::from("/__COBBLE_INTERNAL__"),
+        Project {
+            name: Arc::<str>::from("/__COBBLE_INTERNAL__"),
+            path: PathBuf::from("./__COBBLE_INTERNAL__").into(),
+            build_envs: Vec::new(),
+            tasks: Vec::new(),
+            tools: vec![cmd_tool],
+            child_project_names: Vec::new(),
+            project_source_deps: Vec::new(),
+        },
+    );
     // End __COBBLE_INTERNAL__ project
 
     Ok(projects)
 }
 
-pub fn load_projects<'a, P>(workspace_dir: &Path, root_projects: P) -> mlua::Result<HashMap<String, Project>>
-    where P: Iterator<Item = &'a str>
+pub fn load_projects<'a, P>(
+    workspace_dir: &Path,
+    root_projects: P,
+) -> mlua::Result<HashMap<String, Project>>
+where
+    P: Iterator<Item = &'a str>,
 {
     let project_def_lua = create_lua_env(workspace_dir)?;
 
@@ -271,14 +202,13 @@ pub fn load_projects<'a, P>(workspace_dir: &Path, root_projects: P) -> mlua::Res
         process_project_file(&project_def_lua, project_dir, workspace_dir)?;
     }
 
-    extract_project_defs(&project_def_lua) 
+    extract_project_defs(&project_def_lua)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::lua::lua_env::create_lua_env;
-
 
     #[test]
     fn test_load_subproject_def() {
@@ -288,7 +218,8 @@ mod tests {
 
         process_project(
             &lua,
-            PathOrString::String(String::from(r#"
+            PathOrString::String(String::from(
+                r#"
             build_env({
                 name = "test",
                 install = {
@@ -297,10 +228,12 @@ mod tests {
                 deps = {},
                 action = function (a) print(a) end
             })
-        "#)),
-    "testproject", 
-    "testproject"
-        ).unwrap();
+        "#,
+            )),
+            "testproject",
+            "testproject",
+        )
+        .unwrap();
 
         let projects = extract_project_defs(&lua).unwrap();
         assert_eq!(projects.len(), 2);

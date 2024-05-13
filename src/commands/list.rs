@@ -18,8 +18,6 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
         config.root_projects.iter().map(|s| s.as_str()),
     )?;
 
-    println!("{:?}", &projects);
-
     let workspace = create_workspace(projects.values());
 
     let project_dir = find_nearest_project_dir(input.cwd, &config.workspace_dir).unwrap();
@@ -42,12 +40,14 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
     let tasks = tasks;
 
     for name in tasks {
-        let rel_name = name
+        let rel_name_opt = name
             .strip_prefix(project_name.as_str())
             .map(|n| n.strip_prefix("/").unwrap_or(n))
             .map(|n| if n.len() > 0 { n } else { "(default)" });
 
-        println!("{}", rel_name.unwrap_or(name.as_ref()));
+        if let Some(rel_name) = rel_name_opt {
+            println!("{}", rel_name);
+        }
     }
 
     Ok(())

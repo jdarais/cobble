@@ -1,13 +1,20 @@
-use std::{borrow::Cow, fmt, sync::Arc};
+use std::borrow::Cow;
+use std::fmt;
+use std::sync::Arc;
 
 use crate::project_def::validate::validate_is_string;
 
 #[derive(Clone, Debug)]
 pub struct Artifact {
-    pub filename: Arc<str>
+    pub filename: Arc<str>,
 }
 
-pub fn validate_artifact<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+pub fn validate_artifact<'lua>(
+    _lua: &'lua mlua::Lua,
+    value: &mlua::Value<'lua>,
+    prop_name: Option<Cow<'static, str>>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     validate_is_string(value, prop_name, prop_path).and(Ok(()))
 }
 
@@ -17,11 +24,11 @@ impl fmt::Display for Artifact {
     }
 }
 
-impl <'lua> mlua::FromLua<'lua> for Artifact {
+impl<'lua> mlua::FromLua<'lua> for Artifact {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         let filename_str: String = lua.unpack(value)?;
         let filename = Arc::<str>::from(filename_str);
 
-        Ok(Artifact{ filename })
+        Ok(Artifact { filename })
     }
 }

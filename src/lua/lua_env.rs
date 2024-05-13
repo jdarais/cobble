@@ -1,14 +1,22 @@
 extern crate mlua;
 
-use std::{ffi::OsString, io::{BufRead, BufReader}, path::{Path, PathBuf}, process::{Command, Stdio}, sync::mpsc::channel, thread};
+use std::ffi::OsString;
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::channel;
+use std::thread;
 
 use mlua::{Error, Function, Lua, MultiValue, Table, Value};
 
 fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lua>> {
-    let info = lua.inspect_stack(1)
+    let info = lua
+        .inspect_stack(1)
         .ok_or_else(|| Error::runtime("Error retrieving stack information"))?;
 
-    let source = info.source().source
+    let source = info
+        .source()
+        .source
         .ok_or_else(|| Error::runtime("Error getting source information from the stack"))?;
 
     if !source.starts_with("@") {
@@ -18,8 +26,7 @@ fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lu
     let source_path = PathBuf::from(source[1..].to_owned());
     let source_dir = source_path.parent();
 
-    let source_dir_str_opt = source_dir
-        .and_then(|d| d.to_str());
+    let source_dir_str_opt = source_dir.and_then(|d| d.to_str());
 
     match source_dir_str_opt {
         Some(s) => {
@@ -28,8 +35,8 @@ fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lu
             } else {
                 Ok(Value::String(lua.create_string(s)?))
             }
-        },
-        None => Ok(Value::Nil)
+        }
+        None => Ok(Value::Nil),
     }
 }
 
@@ -37,12 +44,13 @@ enum ChildMessage {
     Stdout(String),
     StdoutDone,
     Stderr(String),
-    StderrDone
+    StderrDone,
 }
 
 fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<Table<'lua>> {
     let args_len_int = args.len()?;
-    let args_len: usize = args_len_int.try_into()
+    let args_len: usize = args_len_int
+        .try_into()
         .map_err(|e| Error::runtime(format!("Invalid indices used for command args: {}", e)))?;
 
     let mut cmd_with_args: Vec<String> = Vec::with_capacity(args_len);
@@ -56,23 +64,45 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
         let (k, v): (Value, Value) = pair?;
         match k {
             Value::Integer(i) => {
-                let idx: usize = i.try_into()
-                    .map_err(|e| Error::runtime(format!("Invalid index used for command args: {}", e)))?;
+                let idx: usize = i.try_into().map_err(|e| {
+                    Error::runtime(format!("Invalid index used for command args: {}", e))
+                })?;
                 if idx > cmd_with_args.len() {
-                    return Err(Error::runtime(format!("Invalid index used for command args: {}", idx)));
+                    return Err(Error::runtime(format!(
+                        "Invalid index used for command args: {}",
+                        idx
+                    )));
                 }
-                cmd_with_args[idx-1] = lua.unpack(v)?;
-            },
+                cmd_with_args[idx - 1] = lua.unpack(v)?;
+            }
             Value::String(s) => {
-                let s_str = s.to_str().map_err(|e| Error::runtime(format!("Error reading lua string value: {}", e)))?;
+                let s_str = s.to_str().map_err(|e| {
+                    Error::runtime(format!("Error reading lua string value: {}", e))
+                })?;
                 match s_str {
-                    "cwd" => { cwd = Some(PathBuf::from(lua.unpack::<String>(v)?)); },
-                    "out" => { out_func = Some(lua.unpack(v)?); },
-                    "err" => { err_func = Some(lua.unpack(v)?); },
-                    _ => { return Err(Error::runtime(format!("Unknown key in cmd input: {}", s.to_str().unwrap_or("<error reading value>")))); }
+                    "cwd" => {
+                        cwd = Some(PathBuf::from(lua.unpack::<String>(v)?));
+                    }
+                    "out" => {
+                        out_func = Some(lua.unpack(v)?);
+                    }
+                    "err" => {
+                        err_func = Some(lua.unpack(v)?);
+                    }
+                    _ => {
+                        return Err(Error::runtime(format!(
+                            "Unknown key in cmd input: {}",
+                            s.to_str().unwrap_or("<error reading value>")
+                        )));
+                    }
                 };
             }
-            _ => { return Err(Error::runtime(format!("Key type not allowed in cmd input: {}", k.type_name()))); }
+            _ => {
+                return Err(Error::runtime(format!(
+                    "Key type not allowed in cmd input: {}",
+                    k.type_name()
+                )));
+            }
         };
     }
 
@@ -107,12 +137,16 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     let res = reader.read_line(&mut buf);
                     match res {
                         Ok(bytes_read) => {
-                            if bytes_read == 0 { break; }
+                            if bytes_read == 0 {
+                                break;
+                            }
                             let out = buf.clone();
                             buf.clear();
                             stdout_tx.send(ChildMessage::Stdout(out)).unwrap();
                         }
-                        Err(_) => { break; }
+                        Err(_) => {
+                            break;
+                        }
                     }
                 }
                 stdout_tx.send(ChildMessage::StdoutDone).unwrap();
@@ -127,12 +161,16 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     let res = reader.read_line(&mut buf);
                     match res {
                         Ok(bytes_read) => {
-                            if bytes_read == 0 { break; }
+                            if bytes_read == 0 {
+                                break;
+                            }
                             let err = buf.clone();
                             buf.clear();
                             stderr_tx.send(ChildMessage::Stderr(err)).unwrap();
                         }
-                        Err(_) => { break; }
+                        Err(_) => {
+                            break;
+                        }
                     }
                 }
                 stderr_tx.send(ChildMessage::StderrDone).unwrap();
@@ -153,15 +191,19 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                         if let Some(out_fn) = &out_func {
                             out_fn.call(out)?;
                         }
-                    },
-                    ChildMessage::StdoutDone => { stdout_done = true; },
+                    }
+                    ChildMessage::StdoutDone => {
+                        stdout_done = true;
+                    }
                     ChildMessage::Stderr(err) => {
                         stderr_buf.push_str(err.as_str());
                         if let Some(err_fn) = &err_func {
                             err_fn.call(err)?;
                         }
-                    },
-                    ChildMessage::StderrDone => { stderr_done = true; }
+                    }
+                    ChildMessage::StderrDone => {
+                        stderr_done = true;
+                    }
                 }
             }
 
@@ -171,7 +213,9 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
             let status_res = child.wait();
             let status = match status_res {
                 Ok(status) => lua.pack(status.code())?,
-                Err(e) => { return Err(Error::runtime(format!("{}", e))); }
+                Err(e) => {
+                    return Err(Error::runtime(format!("{}", e)));
+                }
             };
 
             let stdout = lua.create_string(stdout_buf)?;
@@ -193,15 +237,8 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     workspace_table.set("dir", workspace_dir.to_str())?;
     lua.globals().set("WORKSPACE", workspace_table)?;
 
-    let if_else_func: Function = lua.load(r#"
-        function (cond, true_val, false_val)
-            if cond then
-                return true_val
-            else
-                return false_val
-            end
-        end
-    "#).eval()?;
+    let if_else_source = include_bytes!("if_else.lua");
+    let if_else_func: Function = lua.load(&if_else_source[..]).eval()?;
     lua.globals().set("if_else", if_else_func)?;
 
     let cmd_func = lua.create_function(exec_shell_command)?;
@@ -216,7 +253,7 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
         module_search_path.push("/?.lua;");
         module_search_path.push(workspace_dir.as_os_str());
         module_search_path.push("/?/init.lua");
-    
+
         let package_global: Table = lua.globals().get("package")?;
         package_global.set("path", module_search_path.to_str())?;
     }

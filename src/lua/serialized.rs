@@ -255,7 +255,8 @@ pub fn detach_value<'lua>(
                 let mut history_with_t = history.clone();
                 history_with_t.insert(t.to_pointer());
 
-                let mut detached_map: HashMap<SerializedLuaValue, SerializedLuaValue> = HashMap::new();
+                let mut detached_map: HashMap<SerializedLuaValue, SerializedLuaValue> =
+                    HashMap::new();
                 for pair in t.pairs::<mlua::Value, mlua::Value>().into_iter() {
                     match pair {
                         Err(e) => return Err(e),
@@ -270,9 +271,9 @@ pub fn detach_value<'lua>(
                 Ok(SerializedLuaValue::Table(detached_map))
             }
         }
-        mlua::Value::Function(f) => {
-            Ok(SerializedLuaValue::Function(dump_function(f, lua, &history)?))
-        }
+        mlua::Value::Function(f) => Ok(SerializedLuaValue::Function(dump_function(
+            f, lua, &history,
+        )?)),
         mlua::Value::UserData(d) => Err(mlua::Error::runtime(format!(
             "Cannot serialize a user data object: {:?}",
             d

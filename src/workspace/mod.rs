@@ -8,4 +8,3 @@ pub mod query;
 pub mod resolve;
 pub mod task_selection;
 pub mod vars;
-

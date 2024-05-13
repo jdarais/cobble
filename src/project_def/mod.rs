@@ -12,7 +12,7 @@ pub mod validate;
 pub use action::{Action, ActionCmd};
 pub use artifact::Artifact;
 pub use build_env::BuildEnv;
-pub use dependency::{DependencyListByType, Dependencies};
+pub use dependency::{Dependencies, DependencyListByType};
 pub use project::Project;
 pub use task::TaskDef;
 pub use tool::ExternalTool;

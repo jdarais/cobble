@@ -1,8 +1,9 @@
-use std::{fmt::Write, fs::File, io::{self, Read}, path::Path};
+use std::fmt::Write;
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::Path;
 
-use sha2::{Sha256, Digest};
-
-
+use sha2::{Digest, Sha256};
 
 pub fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
     let mut file_content: Vec<u8> = Vec::with_capacity(1024);
@@ -37,6 +38,9 @@ mod tests {
 
         let input_data = String::from("this is a test");
         let hash = compute_hash_string(input_data.as_bytes()).unwrap();
-        assert_eq!(hash, "sha256:2e99758548972a8e8822ad47fa1017ff72f06f3ff6a016851f45c398732bc5c");
+        assert_eq!(
+            hash,
+            "sha256:2e99758548972a8e8822ad47fa1017ff72f06f3ff6a016851f45c398732bc5c"
+        );
     }
 }

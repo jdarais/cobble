@@ -1,15 +1,18 @@
-use std::{
-    error::Error, fmt, path::{Component, Path, PathBuf}, sync::Arc
-};
+use std::error::Error;
+use std::fmt;
+use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
-use crate::project_def::{dependency::Dependencies, Action, Artifact, BuildEnv, ExternalTool, Project, TaskDef};
+use crate::project_def::{
+    Action, Artifact, BuildEnv, Dependencies, ExternalTool, Project, TaskDef,
+};
 
 #[derive(Debug)]
 pub enum NameResolutionError {
     InvalidName(String),
     InvalidProjectName(String),
     PathToStringError(PathBuf),
-    PathToNameError(PathBuf)
+    PathToNameError(PathBuf),
 }
 
 impl Error for NameResolutionError {}
@@ -20,8 +23,16 @@ impl fmt::Display for NameResolutionError {
         match self {
             InvalidName(s) => write!(f, "Invalid name: {}", s),
             InvalidProjectName(s) => write!(f, "Invalid project name: {}", s),
-            PathToStringError(p) => write!(f, "Error converting path to a UTF-8 string: {}", p.display()),
-            PathToNameError(p) => write!(f, "Error converting path to a resource name: {}", p.display())
+            PathToStringError(p) => write!(
+                f,
+                "Error converting path to a UTF-8 string: {}",
+                p.display()
+            ),
+            PathToNameError(p) => write!(
+                f,
+                "Error converting path to a resource name: {}",
+                p.display()
+            ),
         }
     }
 }
@@ -30,18 +41,24 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
     let mut project_name_components: Vec<String> = vec![String::from("")];
     for c in project_path.components() {
         match c {
-            Component::CurDir => { /* do nothing */ },
+            Component::CurDir => { /* do nothing */ }
             Component::Normal(s) => {
-                let name_segment = s.to_str()
-                    .ok_or_else(|| NameResolutionError::PathToStringError(project_path.to_owned()))?;
-                project_name_components.push(name_segment.to_owned()); },
-            _ => { return Err(NameResolutionError::PathToNameError(project_path.to_owned())); }
+                let name_segment = s.to_str().ok_or_else(|| {
+                    NameResolutionError::PathToStringError(project_path.to_owned())
+                })?;
+                project_name_components.push(name_segment.to_owned());
+            }
+            _ => {
+                return Err(NameResolutionError::PathToNameError(
+                    project_path.to_owned(),
+                ));
+            }
         }
     }
 
     let project_name = match project_name_components.len() {
         0 | 1 => String::from("/"),
-        _ => project_name_components.join("/")
+        _ => project_name_components.join("/"),
     };
     Ok(project_name)
 }
@@ -50,10 +67,10 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
     let full_path = PathBuf::from_iter(project_path.join(path).components());
     let full_path_str_opt = full_path.into_os_string().into_string();
     match full_path_str_opt {
-        Ok(full_path_str) => {
-            Ok(full_path_str.into())
-        },
-        Err(os_str) => Err(NameResolutionError::PathToStringError(PathBuf::from(os_str)))
+        Ok(full_path_str) => Ok(full_path_str.into()),
+        Err(os_str) => Err(NameResolutionError::PathToStringError(PathBuf::from(
+            os_str,
+        ))),
     }
 }
 
@@ -63,13 +80,16 @@ pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, Nam
     }
 
     if !project_name.starts_with("/") {
-        return Err(NameResolutionError::InvalidProjectName(project_name.to_owned()));
+        return Err(NameResolutionError::InvalidProjectName(
+            project_name.to_owned(),
+        ));
     }
 
     let project_name_segments = project_name.split("/").filter(|s| s.len() > 0);
     let name_segments = name.split("/").filter(|s| s.len() > 0);
 
-    let mut full_name_segments: Vec<&str> = vec![""].into_iter()
+    let mut full_name_segments: Vec<&str> = vec![""]
+        .into_iter()
         .chain(project_name_segments)
         .chain(name_segments)
         .collect();
@@ -81,12 +101,12 @@ pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, Nam
                 full_name_segments.remove(idx);
                 // Ignore ".." segments that would go past the root
                 if idx > 1 {
-                    full_name_segments.remove(idx-1);
+                    full_name_segments.remove(idx - 1);
                 }
-            },
+            }
             "." => {
                 full_name_segments.remove(idx);
-            },
+            }
             _ => {
                 idx += 1;
             }
@@ -95,12 +115,16 @@ pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, Nam
 
     let resolved_name = match full_name_segments.len() {
         0 | 1 => Arc::<str>::from("/"),
-        _ => Arc::<str>::from(full_name_segments.join("/"))
+        _ => Arc::<str>::from(full_name_segments.join("/")),
     };
     Ok(resolved_name)
 }
 
-pub fn resolve_names_in_dependency_list(project_name: &str, project_path: &Path, deps: &mut Dependencies) -> Result<(), NameResolutionError> {
+pub fn resolve_names_in_dependency_list(
+    project_name: &str,
+    project_path: &Path,
+    deps: &mut Dependencies,
+) -> Result<(), NameResolutionError> {
     for (_, f_path) in deps.files.iter_mut() {
         *f_path = resolve_path(project_path, f_path.as_ref())?
     }
@@ -116,9 +140,12 @@ pub fn resolve_names_in_dependency_list(project_name: &str, project_path: &Path,
     Ok(())
 }
 
-fn resolve_names_in_action(project_name: &str, action: &mut Action) -> Result<(), NameResolutionError> {
+fn resolve_names_in_action(
+    project_name: &str,
+    action: &mut Action,
+) -> Result<(), NameResolutionError> {
     // Tool names are global, no need to resolve tool names
-    
+
     for (_, env_name) in action.build_envs.iter_mut() {
         *env_name = resolve_name(project_name, &env_name)?;
     }
@@ -126,7 +153,11 @@ fn resolve_names_in_action(project_name: &str, action: &mut Action) -> Result<()
     Ok(())
 }
 
-fn resolve_names_in_build_env(project_name: &str, project_path: &Path, build_env: &mut BuildEnv) -> Result<(), NameResolutionError> {
+fn resolve_names_in_build_env(
+    project_name: &str,
+    project_path: &Path,
+    build_env: &mut BuildEnv,
+) -> Result<(), NameResolutionError> {
     build_env.name = resolve_name(project_name, &build_env.name)?;
 
     for action in build_env.install.iter_mut() {
@@ -140,7 +171,10 @@ fn resolve_names_in_build_env(project_name: &str, project_path: &Path, build_env
     Ok(())
 }
 
-fn resolve_names_in_tool(project_name: &str, tool: &mut ExternalTool) -> Result<(), NameResolutionError> {
+fn resolve_names_in_tool(
+    project_name: &str,
+    tool: &mut ExternalTool,
+) -> Result<(), NameResolutionError> {
     // External tool names are global, no need to resolve the name field
     if let Some(install) = &mut tool.install {
         resolve_names_in_action(project_name, install)?;
@@ -155,13 +189,20 @@ fn resolve_names_in_tool(project_name: &str, tool: &mut ExternalTool) -> Result<
     Ok(())
 }
 
-fn resolve_names_in_artifact(project_path: &Path, artifact: &mut Artifact) -> Result<(), NameResolutionError> {
+fn resolve_names_in_artifact(
+    project_path: &Path,
+    artifact: &mut Artifact,
+) -> Result<(), NameResolutionError> {
     artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
 
     Ok(())
 }
 
-fn resolve_names_in_task(project_name: &str, project_path: &Path, task: &mut TaskDef) -> Result<(), NameResolutionError> {
+fn resolve_names_in_task(
+    project_name: &str,
+    project_path: &Path,
+    task: &mut TaskDef,
+) -> Result<(), NameResolutionError> {
     task.name = resolve_name(project_name, &task.name)?;
 
     if let Some((_, env_name)) = &mut task.build_env {
@@ -216,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mutability() { 
+    fn test_mutability() {
         let mut val = String::from("hello");
 
         let vool = &mut val;
@@ -225,5 +266,4 @@ mod tests {
 
         assert_eq!(val, "hello there");
     }
-
 }

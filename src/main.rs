@@ -1,35 +1,35 @@
 // For now, allow dead code, since a lot of large areas of the program are still under construction
 #![allow(dead_code)]
 
-extern crate clap;
-extern crate anyhow;
-
 mod commands;
-mod project_def;
 mod lua;
+mod project_def;
 mod util;
 mod workspace;
 
-use std::{path::Path, process::ExitCode};
+use std::path::Path;
+use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use workspace::config::get_workspace_config;
 
-use crate::{commands::{clean::{clean_command, CleanCommandInput}, list::{list_command, ListCommandInput}, run::{run_command, RunCommandInput}}, workspace::load::load_projects};
+use commands::clean::{clean_command, CleanCommandInput};
+use commands::list::{list_command, ListCommandInput};
+use commands::run::{run_command, RunCommandInput};
+use workspace::config::get_workspace_config;
+use workspace::load::load_projects;
 
 #[derive(Parser)]
 struct Cli {
-
     #[command(subcommand)]
-    command: Option<Command>
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
 enum Command {
     List {
         /// If provided, display only the matched tasks
-        tasks: Vec<String>
+        tasks: Vec<String>,
     },
     Run {
         /// If not provided, run all tasks in the project
@@ -41,19 +41,22 @@ enum Command {
 
         /// Run tasks even if they are up-to-date
         #[arg(short, long)]
-        force_run_tasks: bool
+        force_run_tasks: bool,
     },
     Clean {
         /// If not provided, cleans all default tasks, (dependencies are excluded)
         tasks: Vec<String>,
-    }
+    },
 }
-
 
 fn run_from_dir(path: &Path) -> anyhow::Result<()> {
     let config = get_workspace_config(path, &Default::default()).unwrap();
 
-    let projects = load_projects(config.workspace_dir.as_path(), config.root_projects.iter().map(|s| s.as_str())).unwrap();
+    let projects = load_projects(
+        config.workspace_dir.as_path(),
+        config.root_projects.iter().map(|s| s.as_str()),
+    )
+    .unwrap();
 
     println!("Projects:");
     for (name, proj) in projects.iter() {
@@ -65,36 +68,34 @@ fn run_from_dir(path: &Path) -> anyhow::Result<()> {
 
 fn main() -> ExitCode {
     let args = Cli::parse();
-    
+
     let cwd = std::env::current_dir().expect("was run from a directory");
 
     let result = match args.command {
-        Some(cmd) =>     match cmd {
-            Command::List{tasks} => {
+        Some(cmd) => match cmd {
+            Command::List { tasks } => {
                 let input = ListCommandInput {
                     cwd: cwd.as_path(),
-                    tasks: tasks.iter().map(|s| s.as_str()).collect()
+                    tasks: tasks.iter().map(|s| s.as_str()).collect(),
                 };
                 list_command(input)
-            },
-            Command::Run{tasks, var, force_run_tasks} => {
-                run_command(RunCommandInput {
-                    cwd: cwd.as_path(),
-                    tasks: tasks.iter().map(|s| s.as_str()).collect(),
-                    vars: var,
-                    force_run_tasks
-                })
-            },
-            Command::Clean{tasks} => {
-                clean_command(CleanCommandInput {
-                    cwd: cwd.as_path(),
-                    tasks: tasks.iter().map(|s| s.as_str()).collect()
-                })
             }
+            Command::Run {
+                tasks,
+                var,
+                force_run_tasks,
+            } => run_command(RunCommandInput {
+                cwd: cwd.as_path(),
+                tasks: tasks.iter().map(|s| s.as_str()).collect(),
+                vars: var,
+                force_run_tasks,
+            }),
+            Command::Clean { tasks } => clean_command(CleanCommandInput {
+                cwd: cwd.as_path(),
+                tasks: tasks.iter().map(|s| s.as_str()).collect(),
+            }),
         },
-        None => {
-            run_from_dir(cwd.as_path())
-        }
+        None => run_from_dir(cwd.as_path()),
     };
 
     match result {

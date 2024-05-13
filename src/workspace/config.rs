@@ -16,22 +16,22 @@ pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
     pub root_projects: Vec<String>,
     pub vars: HashMap<String, TaskVar>,
-    pub force_run_tasks: bool
+    pub force_run_tasks: bool,
 }
 
 #[derive(Default)]
 pub struct WorkspaceConfigArgs {
     pub vars: Vec<String>,
-    pub force_run_tasks: Option<bool>
+    pub force_run_tasks: Option<bool>,
 }
 
 #[derive(Debug)]
 pub enum WorkspaceConfigError {
     IOError(io::Error),
-    FileError{path: PathBuf, error: io::Error},
+    FileError { path: PathBuf, error: io::Error },
     ParseError(String),
     ValueError(String),
-    SetVarError(VarLookupError)
+    SetVarError(VarLookupError),
 }
 
 impl Error for WorkspaceConfigError {}
@@ -40,29 +40,43 @@ impl Display for WorkspaceConfigError {
         use WorkspaceConfigError::*;
         match self {
             IOError(e) => write!(f, "{}", e),
-            FileError{path, error} => write!(f, "Error reading file at {}: {}", path.display(), error),
+            FileError { path, error } => {
+                write!(f, "Error reading file at {}: {}", path.display(), error)
+            }
             ParseError(msg) => write!(f, "Error parsing config file: {}", msg),
             ValueError(msg) => write!(f, "Error reading config values: {}", msg),
-            SetVarError(e) => write!(f, "Error setting variable: {}", e)
+            SetVarError(e) => write!(f, "Error setting variable: {}", e),
         }
     }
 }
 
-pub fn parse_workspace_config(config_str: &str, config_path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
-    let mut config: toml::Table = config_str.parse().map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
+pub fn parse_workspace_config(
+    config_str: &str,
+    config_path: &Path,
+) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+    let mut config: toml::Table = config_str
+        .parse()
+        .map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
 
     let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
     let root_projects: Vec<String> = match root_projects_opt {
         None => vec![String::from(".")],
-        Some(val) => val.try_into()
-            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'root_projects': {}", e)))?
+        Some(val) => val
+            .try_into()
+            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'root_projects': {}", e)))?,
     };
 
     let mut vars: HashMap<String, TaskVar> = HashMap::new();
-    let vars_val: toml::Value = config.remove("vars").unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
+    let vars_val: toml::Value = config
+        .remove("vars")
+        .unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
     let vars_table = match vars_val {
         toml::Value::Table(t) => t,
-        _ => { return Err(WorkspaceConfigError::ValueError(String::from("vars config variable must be a table"))); }
+        _ => {
+            return Err(WorkspaceConfigError::ValueError(String::from(
+                "vars config variable must be a table",
+            )));
+        }
     };
     for (k, v) in vars_table {
         vars.insert(k, v.into());
@@ -70,24 +84,33 @@ pub fn parse_workspace_config(config_str: &str, config_path: &Path) -> Result<Wo
 
     // Raise an error if there are unrecognized keys in the config table
     if let Some((key, _)) = config.iter().next() {
-        return Err(WorkspaceConfigError::ValueError(format!("Unrecognized field '{}'", key)));
+        return Err(WorkspaceConfigError::ValueError(format!(
+            "Unrecognized field '{}'",
+            key
+        )));
     }
 
-    Ok(WorkspaceConfig{
+    Ok(WorkspaceConfig {
         workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
         root_projects,
         vars,
-        force_run_tasks: false
+        force_run_tasks: false,
     })
 }
 
 pub fn parse_workspace_config_file(path: &Path) -> Result<WorkspaceConfig, WorkspaceConfigError> {
-    let mut config_file = File::open(path).map_err(|e| WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e})?;
+    let mut config_file = File::open(path).map_err(|e| WorkspaceConfigError::FileError {
+        path: PathBuf::from(path),
+        error: e,
+    })?;
 
     let mut config_toml_str = String::new();
     let file_read_res = config_file.read_to_string(&mut config_toml_str);
     if let Err(e) = file_read_res {
-        return Err(WorkspaceConfigError::FileError{path: PathBuf::from(path), error: e});
+        return Err(WorkspaceConfigError::FileError {
+            path: PathBuf::from(path),
+            error: e,
+        });
     }
 
     parse_workspace_config(config_toml_str.as_str(), path)
@@ -103,8 +126,12 @@ pub fn find_nearest_workspace_config_file_from(path: &Path) -> Result<PathBuf, i
 
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        format!("Did not find '{}' file in any ancestor directory from {}", WORKSPACE_CONFIG_FILE_NAME, path.display()))
-    )
+        format!(
+            "Did not find '{}' file in any ancestor directory from {}",
+            WORKSPACE_CONFIG_FILE_NAME,
+            path.display()
+        ),
+    ))
 }
 
 /// Returns the closest project directory to the given path in the workspace at workspace_dir.
@@ -118,28 +145,41 @@ pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<Pat
         let project_file_path = ancestor.join(PROJECT_FILE_NAME);
         if project_file_path.exists() {
             let project_path = PathBuf::from(ancestor);
-            let rel_project_path = project_path.strip_prefix(workspace_dir).expect("project path starts with workspace path");
-            return Ok(PathBuf::from_iter(Path::new(".").join(rel_project_path).components()))
+            let rel_project_path = project_path
+                .strip_prefix(workspace_dir)
+                .expect("project path starts with workspace path");
+            return Ok(PathBuf::from_iter(
+                Path::new(".").join(rel_project_path).components(),
+            ));
         }
     }
 
     Ok(PathBuf::from("."))
 }
 
-pub fn get_workspace_config(path: &Path, args: &WorkspaceConfigArgs) -> Result<WorkspaceConfig, WorkspaceConfigError>
-{
-    let config_path = find_nearest_workspace_config_file_from(path).map_err(|e| WorkspaceConfigError::IOError(e))?;
+pub fn get_workspace_config(
+    path: &Path,
+    args: &WorkspaceConfigArgs,
+) -> Result<WorkspaceConfig, WorkspaceConfigError> {
+    let config_path = find_nearest_workspace_config_file_from(path)
+        .map_err(|e| WorkspaceConfigError::IOError(e))?;
     let mut config = parse_workspace_config_file(config_path.as_path())?;
 
-    if let Some(force_run_tasks) = args.force_run_tasks { config.force_run_tasks = force_run_tasks; }
+    if let Some(force_run_tasks) = args.force_run_tasks {
+        config.force_run_tasks = force_run_tasks;
+    }
 
     add_cli_vars_to_workspace_config(args.vars.iter().map(String::as_str), &mut config)?;
 
     Ok(config)
 }
 
-fn add_cli_vars_to_workspace_config<'a, I>(vars: I, config: &mut WorkspaceConfig) -> Result<(), WorkspaceConfigError>
-where I: Iterator<Item = &'a str>
+fn add_cli_vars_to_workspace_config<'a, I>(
+    vars: I,
+    config: &mut WorkspaceConfig,
+) -> Result<(), WorkspaceConfigError>
+where
+    I: Iterator<Item = &'a str>,
 {
     for var in vars {
         let eq_idx = match var.find("=") {
@@ -150,12 +190,16 @@ where I: Iterator<Item = &'a str>
                 ));
             }
         };
-    
-        let var_name = &var[..eq_idx];
-        let var_val = &var[eq_idx+1..];
 
-        set_var(var_name, TaskVar::String(var_val.to_owned()), &mut config.vars)
-            .map_err(|e| WorkspaceConfigError::SetVarError(e))?;
+        let var_name = &var[..eq_idx];
+        let var_val = &var[eq_idx + 1..];
+
+        set_var(
+            var_name,
+            TaskVar::String(var_val.to_owned()),
+            &mut config.vars,
+        )
+        .map_err(|e| WorkspaceConfigError::SetVarError(e))?;
     }
 
     Ok(())
@@ -165,14 +209,14 @@ where I: Iterator<Item = &'a str>
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_parse_workspace_config() {
         let config_toml = r#"
             root_projects = ["proj1", "proj2", "proj3"]
         "#;
 
-        let config = parse_workspace_config(config_toml, Path::new("/home/test/proj/cobble.toml")).unwrap();
+        let config =
+            parse_workspace_config(config_toml, Path::new("/home/test/proj/cobble.toml")).unwrap();
         assert_eq!(config.workspace_dir, PathBuf::from("/home/test/proj"));
         assert_eq!(config.root_projects, vec!["proj1", "proj2", "proj3"]);
     }

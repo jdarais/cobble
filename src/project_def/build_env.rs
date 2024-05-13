@@ -3,7 +3,9 @@ use std::{fmt, sync::Arc};
 
 use crate::project_def::action::{validate_action, validate_action_list};
 use crate::project_def::dependency::{validate_dep_list, Dependencies};
-use crate::project_def::validate::{key_validation_error, validate_is_string, validate_required_key};
+use crate::project_def::validate::{
+    key_validation_error, validate_is_string, validate_required_key,
+};
 use crate::project_def::Action;
 
 #[derive(Clone, Debug)]
@@ -14,7 +16,6 @@ pub struct BuildEnv {
     pub deps: Dependencies,
     pub action: Action,
 }
-
 
 pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     let mut prop_path: Vec<Cow<str>> = Vec::new();
@@ -28,18 +29,36 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                 let (k, v): (mlua::Value, mlua::Value) = pair?;
                 let k_str = validate_is_string(&k, None, &mut prop_path)?;
                 match k_str.to_str()? {
-                    "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(())),
-                    "install" => validate_action_list(lua, &v, Some(Cow::Borrowed("install")), &mut prop_path),
-                    "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), &mut prop_path),
-                    "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path),
-                    "action" => validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path),
-                    s_str => key_validation_error(s_str, vec!["name", "install", "deps"], &mut prop_path)
+                    "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path)
+                        .and(Ok(())),
+                    "install" => validate_action_list(
+                        lua,
+                        &v,
+                        Some(Cow::Borrowed("install")),
+                        &mut prop_path,
+                    ),
+                    "clean" => {
+                        validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), &mut prop_path)
+                    }
+                    "deps" => {
+                        validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path)
+                    }
+                    "action" => {
+                        validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path)
+                    }
+                    s_str => {
+                        key_validation_error(s_str, vec!["name", "install", "deps"], &mut prop_path)
+                    }
                 }?;
             }
 
             Ok(())
-        },
-        _ => Err(mlua::Error::runtime(format!("Expected a table, but got a {}: {:?}", value.type_name(), value)))
+        }
+        _ => Err(mlua::Error::runtime(format!(
+            "Expected a table, but got a {}: {:?}",
+            value.type_name(),
+            value
+        ))),
     }
 }
 
@@ -50,11 +69,12 @@ impl fmt::Display for BuildEnv {
 
         f.write_str("install=[")?;
         for (i, action) in self.install.iter().enumerate() {
-            if i > 0 { f.write_str(",")?; }
+            if i > 0 {
+                f.write_str(",")?;
+            }
             write!(f, "{}", action)?;
         }
         f.write_str("], ")?;
-
 
         write!(f, "deps={}", self.deps)?;
 
@@ -62,7 +82,7 @@ impl fmt::Display for BuildEnv {
     }
 }
 
-impl <'lua> mlua::FromLua<'lua> for BuildEnv {
+impl<'lua> mlua::FromLua<'lua> for BuildEnv {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(tbl) => {
@@ -75,10 +95,21 @@ impl <'lua> mlua::FromLua<'lua> for BuildEnv {
                 let deps_opt: Option<Dependencies> = tbl.get("deps")?;
                 let deps: Dependencies = deps_opt.unwrap_or_default();
                 let action: Action = tbl.get("action")?;
-        
-                Ok(BuildEnv { name, install, clean, deps, action })
-            },
-            val => { return Err(mlua::Error::runtime(format!("Unable to convert value to a BuildEnvDef: {:?}", val))); }
+
+                Ok(BuildEnv {
+                    name,
+                    install,
+                    clean,
+                    deps,
+                    action,
+                })
+            }
+            val => {
+                return Err(mlua::Error::runtime(format!(
+                    "Unable to convert value to a BuildEnvDef: {:?}",
+                    val
+                )));
+            }
         }
     }
 }
@@ -95,19 +126,24 @@ mod tests {
     fn test_build_env_def_from_lua_table() {
         let lua = create_lua_env(Path::new(".")).unwrap();
 
-        let build_env_table: mlua::Table = lua.load(r#"
-            {
-                name = "poetry",
-                install = {
-                    {"poetry", "lock"},
-                    {"poetry", "install"}
-                },
-                deps = {
-                    files = {"pyproject.toml", "poetry.lock"}
-                },
-                action = function (args) cmd("poetry", table.unpack(args)) end
-            }
-        "#).eval().unwrap();
+        let build_env_table: mlua::Table = lua
+            .load(
+                r#"
+                    {
+                        name = "poetry",
+                        install = {
+                            {"poetry", "lock"},
+                            {"poetry", "install"}
+                        },
+                        deps = {
+                            files = {"pyproject.toml", "poetry.lock"}
+                        },
+                        action = function (args) cmd("poetry", table.unpack(args)) end
+                    }
+                "#,
+            )
+            .eval()
+            .unwrap();
 
         let build_env: BuildEnv = lua.unpack(mlua::Value::Table(build_env_table)).unwrap();
         assert_eq!(build_env.name, Arc::<str>::from("poetry"));

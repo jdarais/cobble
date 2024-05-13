@@ -5,14 +5,17 @@ use std::fs::remove_file;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::project_def::validate::{key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence};
-use crate::lua::serialized::{FunctionDump, dump_function};
+use crate::lua::serialized::{dump_function, FunctionDump};
+use crate::project_def::validate::{
+    key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string,
+    validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+};
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
     Func(FunctionDump),
-    DeleteFiles(Vec<Arc<str>>)
+    DeleteFiles(Vec<Arc<str>>),
 }
 
 impl fmt::Display for ActionCmd {
@@ -21,7 +24,7 @@ impl fmt::Display for ActionCmd {
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
             Func(func) => write!(f, "Func({})", func),
-            DeleteFiles(artifacts) => write!(f, "DeleteFiles({:?})", artifacts)
+            DeleteFiles(artifacts) => write!(f, "DeleteFiles({:?})", artifacts),
         }
     }
 }
@@ -30,33 +33,59 @@ impl fmt::Display for ActionCmd {
 pub struct Action {
     pub tools: HashMap<Arc<str>, Arc<str>>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
-    pub cmd: ActionCmd
+    pub cmd: ActionCmd,
 }
 
-fn validate_name_alias_table<'lua>(_lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+fn validate_name_alias_table<'lua>(
+    _lua: &'lua mlua::Lua,
+    value: &mlua::Value<'lua>,
+    prop_name: Option<Cow<'static, str>>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-    
+
     match value {
-        mlua::Value::Table(tbl_val) => validate_table_has_only_string_or_sequence_keys(tbl_val, None, prop_path.as_mut()),
+        mlua::Value::Table(tbl_val) => {
+            validate_table_has_only_string_or_sequence_keys(tbl_val, None, prop_path.as_mut())
+        }
         mlua::Value::String(_) => Ok(()),
-        _ => Err(mlua::Error::runtime(format!("In {}: Expected a table or string, but got a {}: {:?}", prop_path_string(prop_path.as_mut()), value.type_name(), value)))
+        _ => Err(mlua::Error::runtime(format!(
+            "In {}: Expected a table or string, but got a {}: {:?}",
+            prop_path_string(prop_path.as_mut()),
+            value.type_name(),
+            value
+        ))),
     }
 }
 
-pub fn validate_action_list<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+pub fn validate_action_list<'lua>(
+    lua: &'lua mlua::Lua,
+    value: &mlua::Value<'lua>,
+    prop_name: Option<Cow<'static, str>>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-    
+
     let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
     validate_table_is_sequence(tbl_val, None, prop_path.as_mut())?;
     for (i, action_tbl_res) in tbl_val.clone().sequence_values().into_iter().enumerate() {
         let action_tbl: mlua::Value = action_tbl_res?;
-        validate_action(lua, &action_tbl, Some(Cow::Owned(format!("[{}]", i))), prop_path.as_mut())?;
+        validate_action(
+            lua,
+            &action_tbl,
+            Some(Cow::Owned(format!("[{}]", i))),
+            prop_path.as_mut(),
+        )?;
     }
     Ok(())
 }
 
-
-pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, prop_name: Option<Cow<'static, str>>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+pub fn validate_action<'lua>(
+    lua: &'lua mlua::Lua,
+    value: &mlua::Value<'lua>,
+    prop_name: Option<Cow<'static, str>>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
 
     match value {
@@ -69,15 +98,33 @@ pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, pr
                 let (k, v): (mlua::Value, mlua::Value) = pair?;
                 match k {
                     mlua::Value::Integer(i) => {
-                            sequence_values[i as usize - 1] = v;
-                            Ok(())
-                    },
+                        sequence_values[i as usize - 1] = v;
+                        Ok(())
+                    }
                     mlua::Value::String(ks) => match ks.to_str()? {
-                        "tool" => validate_name_alias_table(lua, &v, Some(Cow::Borrowed("tool")), prop_path.as_mut()),
-                        "env" => validate_name_alias_table(lua, &v, Some(Cow::Borrowed("env")), prop_path.as_mut()),
-                        unknown_key => key_validation_error(unknown_key, vec!["tool", "env"], prop_path.as_mut())
+                        "tool" => validate_name_alias_table(
+                            lua,
+                            &v,
+                            Some(Cow::Borrowed("tool")),
+                            prop_path.as_mut(),
+                        ),
+                        "env" => validate_name_alias_table(
+                            lua,
+                            &v,
+                            Some(Cow::Borrowed("env")),
+                            prop_path.as_mut(),
+                        ),
+                        unknown_key => key_validation_error(
+                            unknown_key,
+                            vec!["tool", "env"],
+                            prop_path.as_mut(),
+                        ),
                     },
-                    _ => Err(mlua::Error::runtime(format!("Expected a string or integer index, but got a {}: {:?}", k.type_name(), k)))
+                    _ => Err(mlua::Error::runtime(format!(
+                        "Expected a string or integer index, but got a {}: {:?}",
+                        k.type_name(),
+                        k
+                    ))),
                 }?;
             }
 
@@ -96,16 +143,23 @@ pub fn validate_action<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>, pr
             }?;
 
             for (i, val) in sequence_values.into_iter().enumerate() {
-                validate_is_string(&val, Some(Cow::Owned(format!("[{}]", i + 2))), prop_path.as_mut())?;
+                validate_is_string(
+                    &val,
+                    Some(Cow::Owned(format!("[{}]", i + 2))),
+                    prop_path.as_mut(),
+                )?;
             }
 
             Ok(())
-        },
-        mlua::Value::Function(_) => { Ok(()) },
-        _ => Err(mlua::Error::runtime(format!("Expected table or function, but got a {}:, {:?}", value.type_name(), value)))
+        }
+        mlua::Value::Function(_) => Ok(()),
+        _ => Err(mlua::Error::runtime(format!(
+            "Expected table or function, but got a {}:, {:?}",
+            value.type_name(),
+            value
+        ))),
     }
 }
-
 
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -114,7 +168,9 @@ impl fmt::Display for Action {
         if self.build_envs.len() > 0 {
             f.write_str("build_envs={")?;
             for (i, (env_alias, env_name)) in self.build_envs.iter().enumerate() {
-                if i > 0 { f.write_str(", ")?; }
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
                 write!(f, "{}: {}", env_alias, env_name)?;
             }
             f.write_str("}, ")?;
@@ -123,7 +179,9 @@ impl fmt::Display for Action {
         if self.tools.len() > 0 {
             f.write_str("tools={")?;
             for (i, (tool_alias, tool_name)) in self.tools.iter().enumerate() {
-                if i > 0 { f.write_str(", ")?; }
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
                 write!(f, "{}: {}", tool_alias, tool_name)?;
             }
             f.write_str("}, ")?;
@@ -133,8 +191,11 @@ impl fmt::Display for Action {
     }
 }
 
-impl <'lua> mlua::FromLua<'lua> for Action {
-    fn from_lua(value: mlua::prelude::LuaValue<'lua>, lua: &'lua mlua::prelude::Lua) -> mlua::prelude::LuaResult<Self> {
+impl<'lua> mlua::FromLua<'lua> for Action {
+    fn from_lua(
+        value: mlua::prelude::LuaValue<'lua>,
+        lua: &'lua mlua::prelude::Lua,
+    ) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
                 let build_env_val: mlua::Value = tbl.get("build_env")?;
@@ -143,20 +204,25 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                     mlua::Value::String(s) => {
                         let build_env_name = Arc::<str>::from(s.to_str()?);
                         build_envs.insert(build_env_name.clone(), build_env_name);
-                    },
+                    }
                     mlua::Value::Table(build_env_tbl) => {
                         for pair in build_env_tbl.pairs() {
                             let (k_val, v_str): (mlua::Value, String) = pair?;
                             let v = Arc::<str>::from(v_str);
                             let k = match k_val {
                                 mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
-                                _ => v.clone()
+                                _ => v.clone(),
                             };
                             build_envs.insert(k, v);
                         }
-                    },
-                    mlua::Value::Nil => { /* no build envs to add */},
-                    _ => { return Err(mlua::Error::runtime(format!("Invalid value for 'build_env' property: {:?}", build_env_val))); }
+                    }
+                    mlua::Value::Nil => { /* no build envs to add */ }
+                    _ => {
+                        return Err(mlua::Error::runtime(format!(
+                            "Invalid value for 'build_env' property: {:?}",
+                            build_env_val
+                        )));
+                    }
                 }
 
                 let tool_val: mlua::Value = tbl.get("tool")?;
@@ -165,22 +231,27 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                     mlua::Value::String(s) => {
                         let tool_name = Arc::<str>::from(s.to_str()?);
                         tools.insert(tool_name.clone(), tool_name);
-                    },
+                    }
                     mlua::Value::Table(tool_tbl) => {
                         for pair in tool_tbl.pairs() {
                             let (k_val, v_str): (mlua::Value, String) = pair?;
                             let v = Arc::<str>::from(v_str);
                             let k = match k_val {
                                 mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
-                                _ => v.clone()
+                                _ => v.clone(),
                             };
                             tools.insert(k, v);
                         }
-                    },
-                    mlua::Value::Nil => { /* no tools to add */},
-                    _ => { return Err(mlua::Error::runtime(format!("Invalid value for 'tool' property: {:?}", tool_val)))}
+                    }
+                    mlua::Value::Nil => { /* no tools to add */ }
+                    _ => {
+                        return Err(mlua::Error::runtime(format!(
+                            "Invalid value for 'tool' property: {:?}",
+                            tool_val
+                        )))
+                    }
                 }
-                
+
                 let cmd_tool_name = Arc::<str>::from("cmd");
 
                 // Check if we are a table with a single positional element, which could mean that
@@ -197,21 +268,21 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                             return Ok(Action {
                                 build_envs,
                                 tools,
-                                cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
+                                cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?),
                             });
-                        },
+                        }
                         mlua::Value::UserData(user_data) => {
-                            if let Ok(clean_files_action) = user_data.borrow::<DeleteFilesAction>() {
+                            if let Ok(clean_files_action) = user_data.borrow::<DeleteFilesAction>()
+                            {
                                 return Ok(Action {
                                     build_envs,
                                     tools,
-                                    cmd: ActionCmd::DeleteFiles(clean_files_action.files.clone())
+                                    cmd: ActionCmd::DeleteFiles(clean_files_action.files.clone()),
                                 });
                             }
-                        },
+                        }
                         _ => { /* not a function or userdata action */ }
                     }
-
                 }
 
                 // Otherwise, interpret the contents of the table as an args list, in which case only one
@@ -219,9 +290,13 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 match build_envs.len() + tools.len() {
                     0 => {
                         tools.insert(cmd_tool_name.clone(), cmd_tool_name);
-                    },
-                    1 => { /* no action needed */},
-                    _ => { return Err(mlua::Error::runtime("Can only use one build_env or tool with argument list action")); }
+                    }
+                    1 => { /* no action needed */ }
+                    _ => {
+                        return Err(mlua::Error::runtime(
+                            "Can only use one build_env or tool with argument list action",
+                        ));
+                    }
                 };
 
                 let args_res: mlua::Result<Vec<String>> = tbl.clone().sequence_values().collect();
@@ -230,50 +305,66 @@ impl <'lua> mlua::FromLua<'lua> for Action {
                 Ok(Action {
                     build_envs,
                     tools,
-                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect())
+                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect()),
                 })
-            },
+            }
             mlua::Value::Function(func) => {
                 // We are a function action without a tool or build env
                 // Function actions should always have the cmd tool available
                 let cmd_tool_name = Arc::<str>::from("cmd");
                 Ok(Action {
                     build_envs: HashMap::new(),
-                    tools: vec![(cmd_tool_name.clone(), cmd_tool_name)].into_iter().collect(),
-                    cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?)
+                    tools: vec![(cmd_tool_name.clone(), cmd_tool_name)]
+                        .into_iter()
+                        .collect(),
+                    cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?),
                 })
-            },
-            _ => Err(mlua::Error::runtime("Expected a lua table to convert to Action"))
+            }
+            _ => Err(mlua::Error::runtime(
+                "Expected a lua table to convert to Action",
+            )),
         }
     }
 }
 
-impl <'lua> mlua::IntoLua<'lua> for Action {
+impl<'lua> mlua::IntoLua<'lua> for Action {
     fn into_lua(self, lua: &'lua mlua::prelude::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        let Action {build_envs, tools, cmd} = self;
+        let Action {
+            build_envs,
+            tools,
+            cmd,
+        } = self;
 
         let action_table = lua.create_table()?;
 
         match cmd {
             ActionCmd::Cmd(args) => {
                 if build_envs.len() + tools.len() > 1 {
-                    return Err(mlua::Error::runtime("Can only use one build_env or tool with an argument list action"));
+                    return Err(mlua::Error::runtime(
+                        "Can only use one build_env or tool with an argument list action",
+                    ));
                 }
 
                 for arg in args {
                     action_table.push(arg.as_ref())?;
                 }
-            },
+            }
             ActionCmd::Func(f) => {
                 action_table.push(f)?;
-            },
+            }
             ActionCmd::DeleteFiles(files) => {
                 action_table.push(DeleteFilesAction { files })?;
             }
         }
 
-        let tools_str: HashMap<&str, &str> = tools.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
-        let build_envs_str: HashMap<&str, &str> = build_envs.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
+        let tools_str: HashMap<&str, &str> = tools
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        let build_envs_str: HashMap<&str, &str> = build_envs
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
 
         action_table.set("tool", tools_str)?;
         action_table.set("build_env", build_envs_str)?;
@@ -282,9 +373,8 @@ impl <'lua> mlua::IntoLua<'lua> for Action {
     }
 }
 
-
 struct DeleteFilesAction {
-    pub files: Vec<Arc<str>>
+    pub files: Vec<Arc<str>>,
 }
 
 impl mlua::UserData for DeleteFilesAction {
@@ -297,8 +387,13 @@ impl mlua::UserData for DeleteFilesAction {
             for file in this.files.iter() {
                 let file_path = Path::new(workspace_dir.as_str()).join(Path::new(file.as_ref()));
                 if file_path.is_file() {
-                    remove_file(&file_path)
-                        .map_err(|e| mlua::Error::runtime(format!("Error deleting file '{}': {}", file_path.display(), e)))?;
+                    remove_file(&file_path).map_err(|e| {
+                        mlua::Error::runtime(format!(
+                            "Error deleting file '{}': {}",
+                            file_path.display(),
+                            e
+                        ))
+                    })?;
                 }
             }
             Ok(())
@@ -315,46 +410,64 @@ mod tests {
     #[test]
     fn test_validate_and_convert_arg_list_action() {
         let lua = create_lua_env(Path::new(".")).unwrap();
-        let action_val: mlua::Value = lua.load(r#"{ tool = "cmd", "echo", "hi", "there" }"#).eval().unwrap();
+        let action_val: mlua::Value = lua
+            .load(r#"{ tool = "cmd", "echo", "hi", "there" }"#)
+            .eval()
+            .unwrap();
         validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
-            ActionCmd::Cmd(_) => { /* OK */ },
-            cmd => { panic!("Expected an ActionCmd::Cmd, but got {:?}", cmd); }
+            ActionCmd::Cmd(_) => { /* OK */ }
+            cmd => {
+                panic!("Expected an ActionCmd::Cmd, but got {:?}", cmd);
+            }
         };
     }
 
     #[test]
     fn test_validate_and_convert_function_action() {
         let lua = create_lua_env(Path::new(".")).unwrap();
-        let action_val: mlua::Value = lua.load(r#"
+        let action_val: mlua::Value = lua
+            .load(
+                r#"
             {
                 tool = "cmd",
                 function (c) print("hello!") end
             }
-        "#).eval().unwrap();
+        "#,
+            )
+            .eval()
+            .unwrap();
         validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
-            ActionCmd::Func(_) => { /* OK */ },
-            cmd => { panic!("Expected an ActionCmd::Func, but got {:?}", cmd); }
+            ActionCmd::Func(_) => { /* OK */ }
+            cmd => {
+                panic!("Expected an ActionCmd::Func, but got {:?}", cmd);
+            }
         };
     }
 
     #[test]
     fn test_mixed_function_and_string_sequence_fails_validation() {
         let lua = create_lua_env(Path::new(".")).unwrap();
-        let action_val: mlua::Value = lua.load(r#"
-            {
-                tool = "cmd",
-                function (c) print("hello!") end,
-                "wait",
-                "what",
-                "but why"
-            }
-        "#).eval().unwrap();
-        validate_action(&lua, &action_val, None, &mut Vec::new())
-            .expect_err("Validation of action with mixed function and string sequence values should fail");
+        let action_val: mlua::Value = lua
+            .load(
+                r#"
+                {
+                    tool = "cmd",
+                    function (c) print("hello!") end,
+                    "wait",
+                    "what",
+                    "but why"
+                }
+                "#,
+            )
+            .eval()
+            .unwrap();
+        validate_action(&lua, &action_val, None, &mut Vec::new()).expect_err(
+            "Validation of action with mixed function and string sequence values should fail",
+        );
 
         lua.unpack::<Action>(action_val)
             .expect_err("Conversion of action that failed validation should also fail conversion to an Action object");
