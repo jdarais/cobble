@@ -12,7 +12,7 @@ use crate::project_def::tool::validate_tool;
 use crate::project_def::{
     Action, ActionCmd, ExternalTool, Project
 };
-use crate::lua::detached_value::dump_function;
+use crate::lua::serialized::dump_function;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::resolve::resolve_names_in_project;
 use crate::workspace::config::PROJECT_FILE_NAME;

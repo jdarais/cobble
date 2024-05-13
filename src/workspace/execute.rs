@@ -6,22 +6,18 @@ extern crate serde_json;
 use std::collections::{hash_map, HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
-use std::fmt::Write as FmtWrite;
-use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
-
-use sha2::{Digest, Sha256};
 
 use crate::project_def::types::json_to_lua;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::workspace::config::WorkspaceConfig;
 use crate::workspace::graph::{Workspace, Task};
-use crate::lua::detached_value::DetachedLuaValue;
+use crate::lua::serialized::SerializedLuaValue;
 use crate::lua::lua_env::create_lua_env;
 use crate::workspace::db::{get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskOutput, TaskRecord};
 use crate::workspace::vars::{get_var, VarLookupError};
@@ -872,7 +868,7 @@ fn execute_task_actions_and_store_result(
     current_task_input: TaskInput
 ) -> Result<(), TaskExecutionError> {
     let result = execute_task_actions(lua, task, &current_task_input, &task_result_sender)?;
-    let detached_result: DetachedLuaValue = lua.unpack(result).map_err(|e| TaskExecutionError::LuaError(e))?;
+    let detached_result: SerializedLuaValue = lua.unpack(result).map_err(|e| TaskExecutionError::LuaError(e))?;
 
     let mut artifact_file_hashes: HashMap<String, String> = HashMap::with_capacity(task.task.artifacts.len());
     for artifact in task.task.artifacts.iter() {
@@ -948,7 +944,7 @@ mod tests {
 
     use std::{collections::HashSet, sync::mpsc, time::Duration, path::PathBuf};
 
-    use crate::{project_def::{Action, ActionCmd}, lua::detached_value::dump_function, workspace::graph::TaskType};
+    use crate::{project_def::{Action, ActionCmd}, lua::serialized::dump_function, workspace::graph::TaskType};
 
     use super::*;
 
