@@ -1,4 +1,4 @@
-function (cond, true_val, false_val)
+function if_else(cond, true_val, false_val)
     if cond then
         return true_val
     else

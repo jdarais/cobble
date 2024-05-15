@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
 use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
 use crate::resolve::resolve_names_in_project;
+use crate::util::onscopeexit::OnScopeExit;
 
 fn process_project(
     lua: &mlua::Lua,
@@ -20,11 +22,22 @@ fn process_project(
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
 
+    let prev_cwd = current_dir()
+        .map_err(|e| mlua::Error::runtime(format!("Unable to get current working directory: {}", e)))?;
+
+    set_current_dir(project_dir)
+        .map_err(|e| mlua::Error::runtime(format!("Unable to set the current working directory: {}", e)))?;
+
+    let _restore_cwd = OnScopeExit::new(Box::new(|| {
+        set_current_dir(prev_cwd).expect("expected to be able to set current working directory to previous value");
+    }));
+
     start_project.call((project_name, project_dir))?;
 
     lua.load(chunk).exec()?;
 
     end_project.call(())?;
+
 
     Ok(())
 }
@@ -202,9 +215,9 @@ mod tests {
     #[test]
     fn test_load_subproject_def() {
         let tmpdir = mktemp::Temp::new_dir().unwrap();
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(tmpdir.as_path()).unwrap();
 
-        init_lua_for_project_config(&lua, Path::new("testproject")).unwrap();
+        init_lua_for_project_config(&lua, tmpdir.as_path()).unwrap();
 
         let temp_proj_file_path = tmpdir.as_path().join("project.lua");
         {
@@ -228,17 +241,17 @@ mod tests {
         process_project(
             &lua,
             temp_proj_file_path.as_path(),
-            "testproject",
-            "testproject",
+            "",
+            ".",
         )
         .unwrap();
 
         let projects = extract_project_defs(&lua).unwrap();
         assert_eq!(projects.len(), 2);
 
-        let project = projects.get("/testproject").unwrap();
+        let project = projects.get("/").unwrap();
         assert_eq!(project.build_envs.len(), 1);
         assert_eq!(project.tasks.len(), 0);
-        assert_eq!(project.path.as_ref(), Path::new("testproject"))
+        assert_eq!(project.path.as_ref(), Path::new("."))
     }
 }

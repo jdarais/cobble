@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.83"
 clap = { version = "4.5.4", features = ["derive"] }
+glob = "0.3.1"
 lmdb = "0.8.0"
 mlua = { version = "0.9.7", features = ["lua54", "vendored"] }
 serde = { version = "1.0.197", features = ["derive"] }

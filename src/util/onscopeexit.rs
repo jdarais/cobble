@@ -1,3 +1,21 @@
+pub struct OnScopeExit {
+    on_scope_exit: Option<Box<dyn FnOnce() -> ()>>
+}
+
+impl OnScopeExit {
+    pub fn new(on_scope_exit: Box<dyn FnOnce() -> ()>) -> OnScopeExit {
+        OnScopeExit { on_scope_exit: Some(on_scope_exit) }
+    }
+}
+
+impl Drop for OnScopeExit {
+    fn drop(&mut self) {
+        let func = self.on_scope_exit.take().unwrap();
+        func();
+    }
+}
+
+
 pub struct OnScopeExitMut<'a, T> {
     inner: &'a mut T,
     on_scope_exit: Option<Box<dyn FnOnce(&mut T) -> ()>>,
