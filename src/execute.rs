@@ -7,18 +7,18 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 
-use crate::lua::lua_env::create_lua_env;
-use crate::lua::serialized::SerializedLuaValue;
-use crate::project_def::types::json_to_lua;
-use crate::project_def::ExternalTool;
-use crate::util::hash::compute_file_hash;
 use crate::config::WorkspaceConfig;
 use crate::db::{
     get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskOutput,
     TaskRecord,
 };
-use crate::workspace::{Task, Workspace};
+use crate::lua::lua_env::create_lua_env;
+use crate::lua::serialized::SerializedLuaValue;
+use crate::project_def::types::json_to_lua;
+use crate::project_def::ExternalTool;
+use crate::util::hash::compute_file_hash;
 use crate::vars::{get_var, VarLookupError};
+use crate::workspace::{Task, Workspace};
 
 #[derive(Debug)]
 pub struct TaskJob {
@@ -49,7 +49,7 @@ pub enum TaskExecutionError {
     EnvLookupError(Arc<str>),
     TaskResultError { task: Arc<str>, message: String },
     UnresolvedCalcDependencyError(Arc<str>),
-    IOError(io::Error),
+    IOError { message: String, cause: io::Error },
     ExecutorError(String),
     DBGetError(GetError),
     DBPutError(PutError),
@@ -78,7 +78,7 @@ impl fmt::Display for TaskExecutionError {
                 t
             ),
             ExecutorError(e) => write!(f, "Error running task executors: {}", e),
-            IOError(e) => write!(f, "I/O Error: {}", e),
+            IOError { message, cause } => write!(f, "{}: {}", message, cause),
             DBGetError(e) => write!(f, "Error reading value from the database: {}", e),
             DBPutError(e) => write!(f, "Error writing value to the database: {}", e),
             LuaError(e) => write!(f, "Lua error: {}", e),
@@ -275,12 +275,19 @@ impl TaskExecutor {
 
         let frozen_workspace = Arc::new(workspace.clone());
         let mut remaining_jobs = create_jobs_for_tasks(&frozen_workspace, tasks)?;
+        println!("{:?}", remaining_jobs);
 
         let total_jobs = remaining_jobs.len();
 
         let mut jobs_without_dependencies: Vec<Arc<str>> = Vec::new();
         for (task_name, task_job) in remaining_jobs.iter() {
-            if task_job.task.task_deps.len() == 0 {
+            if get_task_job_dependencies(&task_job.task).len() == 0
+                && !task_job
+                    .task
+                    .execute_after
+                    .iter()
+                    .any(|t| remaining_jobs.contains_key(t))
+            {
                 jobs_without_dependencies.push(task_name.clone());
             }
         }
@@ -434,6 +441,7 @@ impl TaskExecutor {
         task_job: TaskJob,
         in_progress_jobs: &mut HashSet<Arc<str>>,
     ) -> Result<(), TaskExecutionError> {
+        println!("Queueing task {}", task_job.task_name);
         let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
         {
             in_progress_jobs.insert(task_job.task_name.clone());
@@ -781,13 +789,15 @@ fn get_current_task_input(
         let current_hash = match cached_hash {
             Some(hash) => hash,
             None => {
-                let file_hash = compute_file_hash(
-                    &workspace_config
-                        .workspace_dir
-                        .join(Path::new(project_source.as_ref()))
-                        .as_path(),
-                )
-                .map_err(|e| TaskExecutionError::IOError(e))?;
+                let file_path = workspace_config
+                    .workspace_dir
+                    .join(Path::new(project_source.as_ref()));
+                let file_hash = compute_file_hash(&file_path.as_path()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: format!("Error reading file {}", file_path.display()),
+                        cause: e,
+                    }
+                })?;
                 cache
                     .project_source_hashes
                     .write()
@@ -811,13 +821,15 @@ fn get_current_task_input(
         let current_hash = match cached_hash {
             Some(hash) => hash,
             None => {
-                let file_hash = compute_file_hash(
-                    workspace_config
-                        .workspace_dir
-                        .join(Path::new(file_dep.path.as_ref()))
-                        .as_path(),
-                )
-                .map_err(|e| TaskExecutionError::IOError(e))?;
+                let file_path = workspace_config
+                    .workspace_dir
+                    .join(Path::new(file_dep.path.as_ref()));
+                let file_hash = compute_file_hash(file_path.as_path()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: format!("Error reading file {}", file_path.display()),
+                        cause: e,
+                    }
+                })?;
                 cache
                     .file_hashes
                     .write()

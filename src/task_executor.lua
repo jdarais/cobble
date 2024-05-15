@@ -63,12 +63,13 @@ invoke_action = function(action, action_context)
     else
         local tool_alias = next(action.tool)
         local env_alias = next(action.build_env)
+        -- Automatically append args if any, if we are a simple cmd-list-style action
         if tool_alias then
-            return action_context.tool[tool_alias](table.move(action, 1, #action, 1, {}))
+            return action_context.tool[tool_alias]({table.unpack(action), table.unpack(action_context.args or {})})
         elseif env_alias then
-            return action_context.env[env_alias](table.move(action, 1, #action, 1, {}))
+            return action_context.env[env_alias]({table.unpack(action), table.unpack(action_context.args or {})})
         else
-            return action_context.tool["cmd"](table.move(action, 1, #action, 1, {}))
+            return action_context.tool["cmd"]({table.unpack(action)})
         end
     end   
 end

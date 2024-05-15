@@ -75,6 +75,8 @@ pub fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Resu
     if cmd_with_args.len() < 1 {
         return Err(Error::runtime("No command given"));
     }
+    println!("Executing command {:?}", cmd_with_args);
+
     let cmd_cmd = &cmd_with_args[0];
     let cmd_args = &cmd_with_args[1..];
 
