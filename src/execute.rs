@@ -275,7 +275,6 @@ impl TaskExecutor {
 
         let frozen_workspace = Arc::new(workspace.clone());
         let mut remaining_jobs = create_jobs_for_tasks(&frozen_workspace, tasks)?;
-        println!("{:?}", remaining_jobs);
 
         let total_jobs = remaining_jobs.len();
 

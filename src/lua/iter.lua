@@ -14,10 +14,10 @@ function iter(it_func, state, init_ctrl_var, close)
         reduce = function(self, init_accum, reduce_func)
             return reduce(init_accum, reduce_func, self.it_func, self.state, self.init_ctrl_var, self.close)
         end,
-        iterate = function(self)
+        iterator = function(self)
             return self.it_func, self.state, self.init_ctrl_var, self.close
         end,
-        to_list = function(self)
+        to_table = function(self)
             return self:reduce({}, function(accum, k, v) table.insert(accum, k, v) return accum end)
         end
     }
@@ -43,14 +43,15 @@ function filter (filter_func, ...)
     
     local filter_it_func = function (st, ctrl_var)
         local inner_next = { ctrl_var }
-        repeat
+        while true do
             inner_next = {it_func(st, inner_next[1])}
+            if inner_next[1] == nil then
+                return nil
+            end
             if filter_func(table.unpack(inner_next)) then
                 return table.unpack(inner_next)
             end
-        until inner_next[1] == nil
-        -- We reached the end of the iterator
-        return table.unpack(inner_next)
+        end
     end
 
     return filter_it_func, state, init_ctrl_var, close
