@@ -16,7 +16,7 @@ task {
 
 build_env {
     name = "poetry_env",
-    install = {
+    init = {
         { tool = "poetry", "install" }
     },
     deps = {

@@ -139,7 +139,7 @@ fn add_build_env_to_workspace(
         &mut install_task,
     );
 
-    for install_action in build_env.install.iter() {
+    for install_action in build_env.init.iter() {
         add_action_to_task(install_action, &mut install_task);
     }
 

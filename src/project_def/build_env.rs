@@ -11,7 +11,7 @@ use crate::project_def::Action;
 #[derive(Clone, Debug)]
 pub struct BuildEnv {
     pub name: Arc<str>,
-    pub install: Vec<Action>,
+    pub init: Vec<Action>,
     pub clean: Vec<Action>,
     pub deps: Dependencies,
     pub action: Action,
@@ -22,7 +22,7 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
     match value {
         mlua::Value::Table(tbl_val) => {
             validate_required_key(tbl_val, "name", None, &mut prop_path)?;
-            validate_required_key(tbl_val, "install", None, &mut prop_path)?;
+            validate_required_key(tbl_val, "init", None, &mut prop_path)?;
             validate_required_key(tbl_val, "action", None, &mut prop_path)?;
 
             for pair in tbl_val.clone().pairs() {
@@ -31,10 +31,10 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                 match k_str.to_str()? {
                     "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path)
                         .and(Ok(())),
-                    "install" => validate_action_list(
+                    "init" => validate_action_list(
                         lua,
                         &v,
-                        Some(Cow::Borrowed("install")),
+                        Some(Cow::Borrowed("init")),
                         &mut prop_path,
                     ),
                     "clean" => {
@@ -47,7 +47,7 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                         validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path)
                     }
                     s_str => {
-                        key_validation_error(s_str, vec!["name", "install", "deps"], &mut prop_path)
+                        key_validation_error(s_str, vec!["name", "init", "deps"], &mut prop_path)
                     }
                 }?;
             }
@@ -68,7 +68,7 @@ impl fmt::Display for BuildEnv {
         write!(f, "name={}, ", &self.name)?;
 
         f.write_str("install=[")?;
-        for (i, action) in self.install.iter().enumerate() {
+        for (i, action) in self.init.iter().enumerate() {
             if i > 0 {
                 f.write_str(",")?;
             }
@@ -89,7 +89,7 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnv {
                 let name_str: String = tbl.get("name")?;
                 let name = Arc::<str>::from(name_str);
 
-                let install: Vec<Action> = tbl.get("install")?;
+                let init: Vec<Action> = tbl.get("init")?;
                 let clean_opt: Option<Vec<Action>> = tbl.get("clean")?;
                 let clean = clean_opt.unwrap_or_default();
                 let deps_opt: Option<Dependencies> = tbl.get("deps")?;
@@ -98,7 +98,7 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnv {
 
                 Ok(BuildEnv {
                     name,
-                    install,
+                    init,
                     clean,
                     deps,
                     action,
@@ -131,7 +131,7 @@ mod tests {
                 r#"
                     {
                         name = "poetry",
-                        install = {
+                        init = {
                             {"poetry", "lock"},
                             {"poetry", "install"}
                         },
