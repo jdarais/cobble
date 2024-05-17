@@ -1,6 +1,28 @@
+use std::{fs::File, io::Read, path::Path};
+
 use mlua::{Lua, UserData};
 
-pub fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Value<'lua>> {
+pub struct TomlLib;
+
+impl UserData for TomlLib {
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_function("loads", toml_loads);
+        methods.add_function("read", toml_read);
+    }
+}
+
+fn toml_read<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lua>> {
+    let mut f = File::open(Path::new(path.as_str()))
+        .map_err(|e| mlua::Error::runtime(format!("Error reading file {}: {}", path, e)))?;
+
+    let mut buf = String::new();
+    f.read_to_string(&mut buf)
+        .map_err(|e| mlua::Error::runtime(format!("Error reading file {}: {}", path, e)))?;
+
+    toml_loads(lua, buf)
+}
+
+fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Value<'lua>> {
     let toml_tbl = toml_str
         .parse::<toml::Table>()
         .map_err(|e| mlua::Error::runtime(format!("Error parsing toml: {}", e)))?;

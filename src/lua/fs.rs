@@ -4,9 +4,36 @@ use std::path::{Path, MAIN_SEPARATOR};
 
 use glob::glob;
 
-use mlua::{Error, Lua, MultiValue, Table};
+use mlua::{AnyUserData, Error, Lua, MultiValue, Table, UserData};
 
-pub fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Table<'lua>> {
+pub struct FsLib;
+
+impl UserData for FsLib {
+    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+        fields.add_field_function_get("SEPARATOR", get_path_separator);
+    }
+
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_function("glob", glob_files);
+        methods.add_function("is_dir", is_dir);
+        methods.add_function("is_file", is_file);
+    }
+}
+
+fn get_path_separator<'lua>(_lua: &'lua Lua, _: AnyUserData<'lua>) -> mlua::Result<String> {
+    Ok(String::from(MAIN_SEPARATOR))
+}
+
+
+fn is_dir<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
+    Ok(Path::new(path_str.as_str()).is_dir())
+}
+
+fn is_file<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
+    Ok(Path::new(path_str.as_str()).is_file())
+}
+
+fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Table<'lua>> {
     let (path_or_base, mut path_opt): (String, Option<String>) = lua.unpack_multi(args)?;
     let mut path_or_base_opt = Some(path_or_base);
     let path = path_opt.take().or_else(|| path_or_base_opt.take()).unwrap();

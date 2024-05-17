@@ -4,7 +4,16 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use std::thread;
 
-use mlua::{Error, Function, Lua, Table, Value};
+use mlua::{Error, Function, Lua, Table, UserData, Value};
+
+
+pub struct CmdLib;
+
+impl UserData for CmdLib {
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_function("cmd", exec_shell_command);
+    }
+}
 
 enum ChildMessage {
     Stdout(String),
@@ -13,7 +22,7 @@ enum ChildMessage {
     StderrDone,
 }
 
-pub fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<Table<'lua>> {
+fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<Table<'lua>> {
     let args_len_int = args.len()?;
     let args_len: usize = args_len_int
         .try_into()

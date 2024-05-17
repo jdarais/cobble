@@ -226,7 +226,7 @@ mod tests {
                 br#"
                 build_env({
                     name = "test",
-                    install = {
+                    init = {
                         function () print("hi!") end
                     },
                     deps = {},

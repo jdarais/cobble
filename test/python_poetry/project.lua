@@ -19,10 +19,7 @@ task {
     deps = { files = { "pyproject.toml" } },
     actions = {
         function (c)
-            local f = io.open("pyproject.toml")
-            local toml_str = f:read("a")
-            f:close()
-            local pyproject_toml = toml.loads(toml_str)
+            local pyproject_toml = toml.read("pyproject.toml")
             local patterns = maybe(pyproject_toml)["tool"]["poetry"]["packages"]
                 :or_else(function ()
                     return maybe(pyproject_toml)["tool"]["poetry"]["name"]
@@ -35,8 +32,8 @@ task {
             local exclude_files_set = {}
             for i, v in ipairs(patterns) do
                 if v.include then
-                    local pattern = if_else(is_dir(v.include), v.include .. "/**/*", v.include)
-                    local files = iter(ipairs(glob(pattern)))
+                    local pattern = if_else(fs.is_dir(v.include), v.include .. "/**/*", v.include)
+                    local files = iter(ipairs(fs.glob(pattern)))
                         :filter(function(_, f) return not f:match("%.pyc$") end)
                         :filter(function(_, f) return not f:match("[/\\]__pycache__[/\\]") end)
                     for i, f in files:iterator() do

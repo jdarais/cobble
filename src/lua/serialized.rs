@@ -5,6 +5,8 @@ use std::fmt;
 use std::hash::Hash;
 use std::os::raw::c_void;
 
+use crate::lua::userdata::CobbleUserData;
+
 #[derive(Clone, Debug)]
 pub enum SerializedLuaValue {
     Nil,
@@ -14,6 +16,7 @@ pub enum SerializedLuaValue {
     String(String),
     Table(HashMap<SerializedLuaValue, SerializedLuaValue>),
     Function(FunctionDump),
+    UserData(CobbleUserData)
 }
 
 impl SerializedLuaValue {
@@ -42,6 +45,7 @@ impl SerializedLuaValue {
                 serde_json::Value::Object(map)
             }
             Function(f) => serde_json::Value::String(format!("{}", f)),
+            UserData(d) => serde_json::Value::String(format!("{}", d))
         }
     }
 }
@@ -66,6 +70,7 @@ impl fmt::Display for SerializedLuaValue {
                 f.write_str("}")
             }
             Function(val) => write!(f, "{}", val),
+            UserData(val) => write!(f, "{}", val)
         }
     }
 }
@@ -103,6 +108,10 @@ impl PartialEq for SerializedLuaValue {
                 Function(other_val) => this_val == other_val,
                 _ => false,
             },
+            UserData(this_val) => match other {
+                UserData(other_val) => this_val == other_val,
+                _ => false,
+            }
         }
     }
 }
@@ -140,10 +149,15 @@ impl Hash for SerializedLuaValue {
                 }
             }
             Function(f) => {
+                state.write(b"fun");
                 state.write(&f.source[..]);
                 for upval in f.upvalues.iter() {
                     upval.hash(state);
                 }
+            },
+            UserData(d) => {
+                state.write(b"usr");
+                d.hash(state);
             }
         }
     }
@@ -274,10 +288,7 @@ pub fn detach_value<'lua>(
         mlua::Value::Function(f) => Ok(SerializedLuaValue::Function(dump_function(
             f, lua, &history,
         )?)),
-        mlua::Value::UserData(d) => Err(mlua::Error::runtime(format!(
-            "Cannot serialize a user data object: {:?}",
-            d
-        ))),
+        mlua::Value::UserData(d) => Ok(SerializedLuaValue::UserData(CobbleUserData::from_userdata(lua, d)?)),
         mlua::Value::LightUserData(d) => Err(mlua::Error::runtime(format!(
             "Cannot serialize a light user data object: {:?}",
             d
@@ -310,6 +321,7 @@ impl<'lua> mlua::IntoLua<'lua> for SerializedLuaValue {
             String(val) => Ok(mlua::Value::String(lua.create_string(val.as_str())?)),
             Table(val) => val.into_lua(lua),
             Function(val) => Ok(mlua::Value::Function(hydrate_function(val, lua)?)),
+            UserData(val) => Ok(mlua::Value::UserData(val.to_userdata(lua)?))
         }
     }
 }
@@ -355,6 +367,8 @@ impl<'lua> mlua::IntoLua<'lua> for FunctionDump {
         hydrate_function(self, lua).map(|f| mlua::Value::Function(f))
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {

@@ -1,8 +1,16 @@
 use std::path::PathBuf;
 
-use mlua::{Error, Lua, MultiValue, Value};
+use mlua::{Error, Lua, MultiValue, UserData, Value};
 
-pub fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lua>> {
+pub struct ScriptDirLib;
+
+impl UserData for ScriptDirLib {
+    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_function("script_dir", script_dir);
+    }
+}
+
+fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lua>> {
     let info = lua
         .inspect_stack(1)
         .ok_or_else(|| Error::runtime("Error retrieving stack information"))?;
