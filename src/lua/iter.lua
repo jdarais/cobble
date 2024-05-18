@@ -8,14 +8,22 @@ function iter(it_func, state, init_ctrl_var, close)
         map = function(self, map_func)
             return iter(map(map_func, self.it_func, self.state, self.init_ctrl_var, self.close))
         end,
+        enumerate = function(self)
+            return iter(enumerate(self.it_func, self.state, self.init_ctrl_var, self.close))
+        end,
         filter = function(self, filter_func)
             return iter(filter(filter_func, self.it_func, self.state, self.init_ctrl_var, self.close))
         end,
         reduce = function(self, init_accum, reduce_func)
             return reduce(init_accum, reduce_func, self.it_func, self.state, self.init_ctrl_var, self.close)
         end,
-        iterator = function(self)
+        iterate = function(self)
             return self.it_func, self.state, self.init_ctrl_var, self.close
+        end,
+        for_each = function(self, func)
+            for v1, v2, v3, v4, v5, v6, v7, v8, v9 in self:iterate() do
+                func(v1, v2, v3, v4, v5, v6, v7, v8, v9)
+            end
         end,
         to_table = function(self)
             return self:reduce({}, function(accum, k, v) table.insert(accum, k, v) return accum end)
@@ -23,33 +31,48 @@ function iter(it_func, state, init_ctrl_var, close)
     }
 end
 
-function map (map_func, ...)
-    local it_func, state, init_ctrl_var, close = ...
-    
-    local map_it_func = function (st, ctrl_var)
-        local inner_next = {it_func(st, ctrl_var)}
-        if inner_next[1] == nil then
+function map (map_func, it_func, state, init_ctrl_var, close)
+    local inner_ctrl_var = init_ctrl_var  
+    local map_it_func = function (st, _v)
+        local v1, v2, v3, v4, v5, v6, v7, v8, v9 = it_func(st, inner_ctrl_var)
+        if v1 == nil then
             return nil
         end
-        local mapped_next = {map_func(table.unpack(inner_next))}
-        return inner_next[1], table.unpack(mapped_next)
+
+        inner_ctrl_var = v1
+
+        return map_func(v1, v2, v3, v4, v5, v6, v7, v8, v9)
     end
 
     return map_it_func, state, init_ctrl_var, close
 end
 
-function filter (filter_func, ...)
-    local it_func, state, init_ctrl_var, close = ...
-    
+function enumerate (it_func, inner_state, init_ctrl_var, close)
+    local inner_ctrl_var = init_ctrl_var
+
+    local enumerate_it_func = function (_st, i)
+        local v1, v2, v3, v4, v5, v6, v7, v8, v9 = it_func(inner_state, inner_ctrl_var)
+        if v1 == nil then
+            return nil
+        end
+
+        inner_ctrl_var = v1
+        return i + 1, v1, v2, v3, v4, v5, v6, v7, v8, v9
+    end
+
+    return enumerate_it_func, state, 0, close
+end
+
+function filter (filter_func, it_func, state, init_ctrl_var, close)
     local filter_it_func = function (st, ctrl_var)
-        local inner_next = { ctrl_var }
+        local v1, v2, v3, v4, v5, v6, v7, v8, v9 = (ctrl_var)
         while true do
-            inner_next = {it_func(st, inner_next[1])}
-            if inner_next[1] == nil then
+            v1, v2, v3, v4, v5, v6, v7, v8, v9 = it_func(st, v1)
+            if v1 == nil then
                 return nil
             end
-            if filter_func(table.unpack(inner_next)) then
-                return table.unpack(inner_next)
+            if filter_func(v1, v2, v3, v4, v5, v6, v7, v8, v9) then
+                return v1, v2, v3, v4, v5, v6, v7, v8, v9
             end
         end
     end
@@ -57,14 +80,10 @@ function filter (filter_func, ...)
     return filter_it_func, state, init_ctrl_var, close
 end
 
-function reduce (init_accum, reduce_func, ...)
-    local it_func, state, init_ctrl_var, close = ...
-
+function reduce (init_accum, reduce_func, it_func, state, init_ctrl_var, close)
     local accum = init_accum
-    local next_val = {it_func(state, init_ctrl_var)}
-    while next_val[1] ~= nil do
-        accum = reduce_func(accum, table.unpack(next_val))
-        next_val = {it_func(state, next_val[1])}
+    for v1, v2, v3, v4, v5, v6, v7, v8, v9 in it_func, state, init_ctrl_var, close do
+        accum = reduce_func(accum, v1, v2, v3, v4, v5, v6, v7, v8, v9)
     end
 
     return accum

@@ -153,7 +153,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, table.unpack(c.args) }
 
             if result.status ~= 0 then
-                error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
+                error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status)
             end
 
             return result
@@ -224,7 +224,7 @@ mod tests {
             let mut f = File::create(&temp_proj_file_path).unwrap();
             f.write_all(
                 br#"
-                build_env({
+                env({
                     name = "test",
                     init = {
                         function () print("hi!") end

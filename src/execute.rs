@@ -108,6 +108,7 @@ fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<Arc<str>> {
                 .values()
                 .filter_map(|f| f.provided_by_task.iter().next().cloned()),
         )
+        .chain(task.build_envs.values().cloned())
         .collect()
 }
 

@@ -1,17 +1,44 @@
-
-
-external_tool {
+tool {
     name = "poetry",
     action = { tool = "cmd", "poetry" }
+}
+
+env {
+    name = "poetry_env",
+    init = { { tool = "poetry", "install" } },
+    deps = { files = { "poetry.lock" } },
+    action = { tool = "poetry", "run" }
 }
 
 task {
     name = "poetry_lock",
     deps = { files = { "pyproject.toml" } },
     artifacts = { "poetry.lock" },
-    actions = {
-        { tool = "poetry", "lock" }
-    },
+    actions = { { tool = "poetry", "lock" } },
+}
+
+task {
+    name = "lint",
+    actions = { { env = "poetry_env", "python", "-m", "pylint", "python_poetry/" } },
+    deps = { calc = { "find_poetry_source_files" } }
+}
+
+task {
+    name = "typecheck",
+    actions = { { env = "poetry_env", "python", "-m", "mypy", "-p", "python_poetry" } },
+    deps = { calc = { "find_poetry_source_files" } }
+}
+
+task {
+    name = "format.check",
+    actions = { { env = "poetry_env", "python", "-m", "black", "--check", "." } },
+    deps = { calc = { "find_poetry_source_files" } }
+}
+
+task {
+    name = "format",
+    always_run = true,
+    actions = { { env = "poetry_env", "python", "-m", "black", "." } }
 }
 
 task {
@@ -28,47 +55,29 @@ task {
                         .value
                 end)
                 .value
-            local include_files_set = {}
-            local exclude_files_set = {}
+
+            local include_files = {}
+            local exclude_files = {}
             for i, v in ipairs(patterns) do
                 if v.include then
-                    local pattern = if_else(fs.is_dir(v.include), v.include .. "/**/*", v.include)
-                    local files = iter(ipairs(fs.glob(pattern)))
+                    local pattern = fs.is_dir(v.include) and (v.include .. "/**/*") or v.include
+                    iter(ipairs(fs.glob(pattern)))
                         :filter(function(_, f) return not f:match("%.pyc$") end)
                         :filter(function(_, f) return not f:match("[/\\]__pycache__[/\\]") end)
-                    for i, f in files:iterator() do
-                        include_files_set[f] = true
-                    end
+                        :for_each(function(_, f) include_files[f] = f end)
                 end
-                -- TODO: v.exclude
-            end
-            local include_files = {}
-            for k, v in pairs(include_files_set) do
-                if not exclude_files_set[k] then
-                    table.insert(include_files, k)
+                if v.exclude then
+                    local pattern = fs.is_dir(v.exclude) and (v.exclude .. "/**/*") or v.exclude
+                    for i, f in ipairs(fs.glob(pattern)) do
+                        exclude_files[f] = true
+                    end 
                 end
             end
-            return include_files
+            for f, _ in pairs(exclude_files) do
+                include_files[f] = nil
+            end
+            return { files = include_files }
         end
     }
 }
-
-build_env {
-    name = "poetry_env",
-    init = {
-        { tool = "poetry", "install" }
-    },
-    deps = {
-        files = { "poetry.lock" }
-    },
-    action = { tool = "poetry", "run" }
-}
-
-task {
-    name = "lint",
-    actions = {
-        { env = "poetry_env", "python", "-m", "pylint", "python_poetry/" }
-    }
-}
-
 

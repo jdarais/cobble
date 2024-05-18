@@ -31,24 +31,24 @@ create_action_context = function (
     }
 
     for tool_alias, tool_name in pairs(extra_tools) do
-        action_context.tool[tool_alias] = function (args)
-            return cobble.invoke_tool(tool_name, project_dir, out, err, args)
+        action_context.tool[tool_alias] = function (tool_args)
+            return cobble.invoke_tool(tool_name, project_dir, out, err, tool_args)
         end
     end
     for tool_alias, tool_name in pairs(action.tool) do
-        action_context.tool[tool_alias] = function (args)
-            return cobble.invoke_tool(tool_name, project_dir, out, err, args)
+        action_context.tool[tool_alias] = function (tool_args)
+            return cobble.invoke_tool(tool_name, project_dir, out, err, tool_args)
         end
     end
 
     for env_alias, env_name in pairs(extra_build_envs) do
-        action_context.env[env_alias] = function (args)
-            return cobble.invoke_build_env(env_name, project_dir, out, err, args)
+        action_context.env[env_alias] = function (env_args)
+            return cobble.invoke_build_env(env_name, project_dir, out, err, env_args)
         end
     end
-    for env_alias, env_name in pairs(action.build_env) do
-        action_context.env[env_alias] = function (args)
-            return cobble.invoke_build_env(env_name, project_dir, out, err, args)
+    for env_alias, env_name in pairs(action.env) do
+        action_context.env[env_alias] = function (env_args)
+            return cobble.invoke_build_env(env_name, project_dir, out, err, env_args)
         end
     end
 
@@ -62,14 +62,26 @@ invoke_action = function(action, action_context)
         return action[1]:invoke(action_context)
     else
         local tool_alias = next(action.tool)
-        local env_alias = next(action.build_env)
+        local env_alias = next(action.env)
         -- Automatically append args if any, if we are a simple cmd-list-style action
         if tool_alias then
-            return action_context.tool[tool_alias]({table.unpack(action), table.unpack(action_context.args or {})})
+            local args = {table.unpack(action)}
+            if action_context.args ~= nil then
+                table.move(action_context.args, 1, #action_context.args, #args+1, args)
+            end
+            action_context.tool[tool_alias](args)
         elseif env_alias then
-            return action_context.env[env_alias]({table.unpack(action), table.unpack(action_context.args or {})})
+            local args = {table.unpack(action)}
+            if action_context.args ~= nil then
+                table.move(action_context.args, 1, #action_context.args, #args+1, args)
+            end
+            action_context.env[env_alias](args)
         else
-            return action_context.tool["cmd"]({table.unpack(action)})
+            local args = {table.unpack(action)}
+            if action_context.args ~= nil then
+                table.move(action_context.args, 1, #action_context.args, #args+1, args)
+            end
+            action_context.tool["cmd"](args)
         end
     end   
 end

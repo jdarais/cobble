@@ -166,7 +166,7 @@ impl fmt::Display for Action {
         write!(f, "Action(")?;
 
         if self.build_envs.len() > 0 {
-            f.write_str("build_envs={")?;
+            f.write_str("envs={")?;
             for (i, (env_alias, env_name)) in self.build_envs.iter().enumerate() {
                 if i > 0 {
                     f.write_str(", ")?;
@@ -198,7 +198,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
     ) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
-                let build_env_val: mlua::Value = tbl.get("build_env")?;
+                let build_env_val: mlua::Value = tbl.get("env")?;
                 let mut build_envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
                 match build_env_val {
                     mlua::Value::String(s) => {
@@ -219,7 +219,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                     mlua::Value::Nil => { /* no build envs to add */ }
                     _ => {
                         return Err(mlua::Error::runtime(format!(
-                            "Invalid value for 'build_env' property: {:?}",
+                            "Invalid value for 'env' property: {:?}",
                             build_env_val
                         )));
                     }
@@ -367,7 +367,7 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
             .collect();
 
         action_table.set("tool", tools_str)?;
-        action_table.set("build_env", build_envs_str)?;
+        action_table.set("env", build_envs_str)?;
 
         Ok(mlua::Value::Table(action_table))
     }

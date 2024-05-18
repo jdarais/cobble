@@ -1,7 +1,14 @@
+"""
+This is a module docstring
+"""
 
-def sum(a, b):
+
+def do_sum(a, b):
+    """
+    Add two numbers together
+    """
     return a + b
 
 
-if __name__ = "__main__":
-    print(f"Hello! 1 + 1 = {sum(1, 1)}")
+if __name__ == "__main__":
+    print(f"Hello there! 1 + 1 = {do_sum(1, 1)}")

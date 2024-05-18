@@ -80,15 +80,15 @@ function project_dir (dir)
     cxt.process_project_dir(dir)
 end
 
-function build_env (env)
-    local status, err = pcall(cxt.validate_build_env, env)
+function env (en)
+    local status, err = pcall(cxt.validate_build_env, en)
     if not status then error(err, 1) end
-    table.insert(PROJECT.build_envs, env)
+    table.insert(PROJECT.build_envs, en)
 end
 
-function external_tool (tool)
-    cxt.validate_tool(tool)
-    table.insert(PROJECT.tools, tool)
+function tool (tl)
+    cxt.validate_tool(tl)
+    table.insert(PROJECT.tools, tl)
 end
 
 function task (tsk)
