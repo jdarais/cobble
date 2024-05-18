@@ -15,11 +15,11 @@ use crate::commands::run::{run_command, RunCommandInput};
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Option<CoblCommand>,
 }
 
 #[derive(Subcommand)]
-enum Command {
+enum CoblCommand {
     List {
         /// If provided, display only the matched tasks
         tasks: Vec<String>,
@@ -39,6 +39,18 @@ enum Command {
     Clean {
         /// If not provided, cleans all default tasks, (dependencies are excluded)
         tasks: Vec<String>,
+    },
+    Tool {
+        #[command(subcommand)]
+        tool_cmd: ToolCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ToolCommand {
+    Check {
+        /// Tool names
+        names: Vec<String>,
     },
 }
 
@@ -66,27 +78,27 @@ fn main() -> ExitCode {
 
     let result = match args.command {
         Some(cmd) => match cmd {
-            Command::List { tasks } => {
-                let input = ListCommandInput {
-                    cwd: cwd.as_path(),
-                    tasks: tasks.iter().map(|s| s.as_str()).collect(),
-                };
-                list_command(input)
-            }
-            Command::Run {
+            CoblCommand::List { tasks } => list_command(ListCommandInput {
+                cwd: cwd,
+                tasks: tasks,
+            }),
+            CoblCommand::Run {
                 tasks,
                 var,
                 force_run_tasks,
             } => run_command(RunCommandInput {
-                cwd: cwd.as_path(),
-                tasks: tasks.iter().map(|s| s.as_str()).collect(),
+                cwd,
+                tasks,
                 vars: var,
                 force_run_tasks,
             }),
-            Command::Clean { tasks } => clean_command(CleanCommandInput {
-                cwd: cwd.as_path(),
-                tasks: tasks.iter().map(|s| s.as_str()).collect(),
-            }),
+            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks }),
+            CoblCommand::Tool { tool_cmd } => match tool_cmd {
+                ToolCommand::Check { names } => {
+                    println!("{names:?}");
+                    Ok(())
+                }
+            },
         },
         None => run_from_dir(cwd.as_path()),
     };

@@ -1,21 +1,21 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use cobble::config::{get_workspace_config, WorkspaceConfigArgs};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::TaskExecutor;
-use cobble::workspace::create_workspace;
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
+use cobble::workspace::create_workspace;
 
-pub struct RunCommandInput<'a> {
-    pub cwd: &'a Path,
-    pub tasks: Vec<&'a str>,
+pub struct RunCommandInput {
+    pub cwd: PathBuf,
+    pub tasks: Vec<String>,
     pub vars: Vec<String>,
     pub force_run_tasks: bool,
 }
 
-pub fn run_command<'a>(input: RunCommandInput<'a>) -> anyhow::Result<()> {
+pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
     let RunCommandInput {
         cwd,
         tasks,
@@ -27,7 +27,7 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> anyhow::Result<()> {
         vars,
         force_run_tasks: Some(force_run_tasks),
     };
-    let config = Arc::new(get_workspace_config(cwd, &ws_config_args)?);
+    let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
@@ -35,7 +35,12 @@ pub fn run_command<'a>(input: RunCommandInput<'a>) -> anyhow::Result<()> {
     )?;
     let mut workspace = create_workspace(projects.values());
 
-    let selected_tasks = compute_selected_tasks(&tasks, &workspace, cwd, &config.workspace_dir)?;
+    let selected_tasks = compute_selected_tasks(
+        &tasks.iter().map(|s| s.as_str()).collect(),
+        &workspace,
+        cwd.as_path(),
+        &config.workspace_dir,
+    )?;
 
     // Resolve calculated dependencies
     let mut executor = TaskExecutor::new(

@@ -1,4 +1,5 @@
-use std::path::Path;
+
+use std::path::PathBuf;
 
 use cobble::config::{find_nearest_project_dir, get_workspace_config};
 use cobble::workspace::create_workspace;
@@ -6,13 +7,13 @@ use cobble::load::load_projects;
 use cobble::query::{find_tasks_for_dir, find_tasks_for_query};
 use cobble::resolve::project_path_to_project_name;
 
-pub struct ListCommandInput<'a> {
-    pub cwd: &'a Path,
-    pub tasks: Vec<&'a str>,
+pub struct ListCommandInput {
+    pub cwd: PathBuf,
+    pub tasks: Vec<String>,
 }
 
-pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
-    let config = get_workspace_config(input.cwd, &Default::default()).unwrap();
+pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
+    let config = get_workspace_config(input.cwd.as_path(), &Default::default()).unwrap();
     let projects = load_projects(
         config.workspace_dir.as_path(),
         config.root_projects.iter().map(|s| s.as_str()),
@@ -20,7 +21,7 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
 
     let workspace = create_workspace(projects.values());
 
-    let project_dir = find_nearest_project_dir(input.cwd, &config.workspace_dir).unwrap();
+    let project_dir = find_nearest_project_dir(input.cwd.as_path(), &config.workspace_dir).unwrap();
     let project_name = project_path_to_project_name(project_dir.as_path()).unwrap();
 
     let mut tasks = match input.tasks.len() {
@@ -32,7 +33,7 @@ pub fn list_command<'a>(input: ListCommandInput<'a>) -> anyhow::Result<()> {
         _ => find_tasks_for_query(
             &workspace,
             project_name.as_str(),
-            input.tasks.iter().copied(),
+            input.tasks.iter().map(|s| s.as_str()),
         )
         .unwrap(),
     };

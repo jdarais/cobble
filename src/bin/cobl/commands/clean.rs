@@ -1,22 +1,22 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use cobble::config::get_workspace_config;
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::TaskExecutor;
-use cobble::workspace::{create_workspace, get_clean_task_name};
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
+use cobble::workspace::{create_workspace, get_clean_task_name};
 
-pub struct CleanCommandInput<'a> {
-    pub cwd: &'a Path,
-    pub tasks: Vec<&'a str>,
+pub struct CleanCommandInput {
+    pub cwd: PathBuf,
+    pub tasks: Vec<String>,
 }
 
-pub fn clean_command<'a>(input: CleanCommandInput<'a>) -> anyhow::Result<()> {
+pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
     let CleanCommandInput { cwd, tasks } = input;
 
-    let config = Arc::new(get_workspace_config(cwd, &Default::default())?);
+    let config = Arc::new(get_workspace_config(cwd.as_path(), &Default::default())?);
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
@@ -24,7 +24,12 @@ pub fn clean_command<'a>(input: CleanCommandInput<'a>) -> anyhow::Result<()> {
     )?;
     let mut workspace = create_workspace(projects.values());
 
-    let selected_tasks = compute_selected_tasks(&tasks, &workspace, cwd, &config.workspace_dir)?;
+    let selected_tasks = compute_selected_tasks(
+        &tasks.iter().map(|s| s.as_str()).collect(),
+        &workspace,
+        cwd.as_path(),
+        &config.workspace_dir,
+    )?;
     let clean_tasks: Vec<Arc<str>> = selected_tasks
         .iter()
         .map(|s| s.as_ref())
