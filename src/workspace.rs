@@ -125,7 +125,7 @@ fn add_build_env_to_workspace(
     project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
-    let mut install_task = Task {
+    let mut setup_task = Task {
         task_type: TaskType::BuildEnv,
         dir: dir.clone(),
         project_name: project_name.clone(),
@@ -136,16 +136,16 @@ fn add_build_env_to_workspace(
     add_dependency_list_to_task(
         &build_env.deps,
         &workspace.file_providers,
-        &mut install_task,
+        &mut setup_task,
     );
 
-    for install_action in build_env.init.iter() {
-        add_action_to_task(install_action, &mut install_task);
+    for setup_action in build_env.install.iter() {
+        add_action_to_task(setup_action, &mut setup_task);
     }
 
     workspace
         .tasks
-        .insert(build_env.name.clone(), Arc::new(install_task));
+        .insert(build_env.name.clone(), Arc::new(setup_task));
     workspace
         .build_envs
         .insert(build_env.name.clone(), Arc::new(build_env.clone()));

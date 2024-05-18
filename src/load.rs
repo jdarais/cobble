@@ -226,7 +226,7 @@ mod tests {
                 br#"
                 env({
                     name = "test",
-                    init = {
+                    install = {
                         function () print("hi!") end
                     },
                     deps = {},

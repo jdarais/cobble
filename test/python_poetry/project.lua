@@ -5,7 +5,7 @@ tool {
 
 env {
     name = "poetry_env",
-    init = { { tool = "poetry", "install" } },
+    install = { { tool = "poetry", "install" } },
     deps = { files = { "poetry.lock" } },
     action = { tool = "poetry", "run" }
 }

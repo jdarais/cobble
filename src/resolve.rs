@@ -160,7 +160,7 @@ fn resolve_names_in_build_env(
 ) -> Result<(), NameResolutionError> {
     build_env.name = resolve_name(project_name, &build_env.name)?;
 
-    for action in build_env.init.iter_mut() {
+    for action in build_env.install.iter_mut() {
         resolve_names_in_action(project_name, action)?;
     }
 
