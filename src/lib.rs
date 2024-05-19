@@ -12,3 +12,4 @@ pub mod resolve;
 pub mod task_selection;
 pub mod vars;
 pub mod workspace;
+pub mod concurrent_io;

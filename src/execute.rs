@@ -7,6 +7,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 
+use crate::concurrent_io::ConcurrentIO;
 use crate::config::WorkspaceConfig;
 use crate::db::{
     get_task_record, new_db_env, put_task_record, GetError, PutError, TaskInput, TaskOutput,
@@ -269,8 +270,7 @@ impl TaskExecutor {
 
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
-        let mut task_output_buffers: HashMap<Arc<str>, Vec<TaskConsoleOutput>> = HashMap::new();
-        let mut current_output_task: Option<Arc<str>> = None;
+        let mut concurrent_io = ConcurrentIO::new();
 
         let forward_edges = compute_task_job_forward_edges(workspace);
 
@@ -296,7 +296,7 @@ impl TaskExecutor {
             let job = remaining_jobs.remove(task_name).expect(
                 "indexing into HashMap using a key just read from the HashMap should not fail",
             );
-            self.push_task_job(job, &mut in_progress_jobs)?;
+            self.push_task_job(job, &mut in_progress_jobs, &mut concurrent_io)?;
         }
 
         while completed_jobs.len() < total_jobs {
@@ -308,100 +308,28 @@ impl TaskExecutor {
 
             match message {
                 TaskJobMessage::Stdout { task, s } => {
-                    let is_current_output_task = match current_output_task.as_ref() {
-                        Some(cur_out_task) => &task == cur_out_task,
-                        None => {
-                            current_output_task = Some(task.clone());
-                            true
-                        }
-                    };
-
-                    if is_current_output_task {
-                        print!("{}", s);
-                    } else {
-                        match task_output_buffers.entry(task.clone()) {
-                            hash_map::Entry::Occupied(mut ent) => {
-                                ent.get_mut().push(TaskConsoleOutput::Out(s));
-                            }
-                            hash_map::Entry::Vacant(ent) => {
-                                ent.insert(vec![TaskConsoleOutput::Out(s)]);
-                            }
-                        }
-                    }
+                    concurrent_io.print_stdout(&task, s);
                 }
                 TaskJobMessage::Stderr { task, s } => {
-                    let is_current_output_task = match current_output_task.as_ref() {
-                        Some(cur_out_task) => &task == cur_out_task,
-                        None => {
-                            current_output_task = Some(task.clone());
-                            true
-                        }
-                    };
-
-                    if is_current_output_task {
-                        let _ = write!(io::stderr(), "{}", s);
-                    } else {
-                        match task_output_buffers.entry(task.clone()) {
-                            hash_map::Entry::Occupied(mut ent) => {
-                                ent.get_mut().push(TaskConsoleOutput::Err(s));
-                            }
-                            hash_map::Entry::Vacant(ent) => {
-                                ent.insert(vec![TaskConsoleOutput::Err(s)]);
-                            }
-                        }
-                    }
+                    concurrent_io.print_stderr(&task, s);
                 }
                 TaskJobMessage::Complete { task, result } => {
                     completed_jobs.insert(task.clone());
                     in_progress_jobs.remove(task.as_ref());
                     match result {
                         TaskResult::UpToDate => {
-                            println!("{} is up to date", task);
+                            concurrent_io.print_stdout(&task, format!("{} is up to date\n", task));
                         }
                         TaskResult::Success => {
-                            println!("{} succeeded", task);
+                            concurrent_io.print_stdout(&task, format!("{} succeeded\n", task));
                         }
                         TaskResult::Error(e) => {
+                            concurrent_io.print_stdout(&task, format!("{} failed\n", task));
                             return Err(e);
                         }
                     }
 
-                    let is_current_output_task =
-                        current_output_task.as_ref().map_or(false, |t| t == &task);
-                    if is_current_output_task {
-                        for completed_job in completed_jobs.iter() {
-                            if let Some(buffered_output) = task_output_buffers.remove(completed_job)
-                            {
-                                for task_output in buffered_output {
-                                    match task_output {
-                                        TaskConsoleOutput::Out(s) => {
-                                            print!("{}", s);
-                                        }
-                                        TaskConsoleOutput::Err(s) => {
-                                            let _ = write!(io::stderr(), "{}", s);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        current_output_task = task_output_buffers.keys().cloned().next();
-                        if let Some(cur_out_task) = current_output_task.as_ref() {
-                            let cur_out_buffer = task_output_buffers.remove(cur_out_task).expect(
-                                "cur_out_task should always exist in the task_output_buffers list",
-                            );
-                            for task_output in cur_out_buffer {
-                                match task_output {
-                                    TaskConsoleOutput::Out(s) => {
-                                        print!("{}", s);
-                                    }
-                                    TaskConsoleOutput::Err(s) => {
-                                        let _ = write!(io::stderr(), "{}", s);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    concurrent_io.finish_key(&task);
 
                     let forward_edges_from_task = forward_edges.get(&task);
                     if let Some(fwd_edges) = forward_edges_from_task {
@@ -425,7 +353,7 @@ impl TaskExecutor {
                             if fwd_job_is_available {
                                 let job = remaining_jobs.remove(fwd_edge)
                                     .expect("indexing into HashMap using a key just read from the HashMap should not fail");
-                                self.push_task_job(job, &mut in_progress_jobs)?;
+                                self.push_task_job(job, &mut in_progress_jobs, &mut concurrent_io)?;
                             }
                         }
                     }
@@ -440,8 +368,9 @@ impl TaskExecutor {
         &mut self,
         task_job: TaskJob,
         in_progress_jobs: &mut HashSet<Arc<str>>,
+        concurrent_io: &mut ConcurrentIO
     ) -> Result<(), TaskExecutionError> {
-        println!("Queueing task {}", task_job.task_name);
+        concurrent_io.print_stdout(&task_job.task_name, format!("Starting task {}\n", task_job.task_name));
         let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
         {
             in_progress_jobs.insert(task_job.task_name.clone());
