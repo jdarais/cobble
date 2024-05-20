@@ -11,6 +11,7 @@ use cobble::load::load_projects;
 use crate::commands::clean::{clean_command, CleanCommandInput};
 use crate::commands::list::{list_command, ListCommandInput};
 use crate::commands::run::{run_command, RunCommandInput};
+use crate::commands::tool::{check_tool_command, CheckToolInput};
 
 #[derive(Parser)]
 struct Cli {
@@ -95,8 +96,7 @@ fn main() -> ExitCode {
             CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
                 ToolCommand::Check { names } => {
-                    println!("{names:?}");
-                    Ok(())
+                    check_tool_command(CheckToolInput { cwd, tools: names })
                 }
             },
         },

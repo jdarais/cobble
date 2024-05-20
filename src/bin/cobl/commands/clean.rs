@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use cobble::config::get_workspace_config;
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
-use cobble::execute::TaskExecutor;
+use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
 use cobble::workspace::{create_workspace, get_clean_task_name};

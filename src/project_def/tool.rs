@@ -79,7 +79,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                     }
                 }
 
-                let check: Option<Action> = tbl.get("install")?;
+                let check: Option<Action> = tbl.get("check")?;
                 if let Some(chk) = &check {
                     if chk.build_envs.len() > 0 {
                         return Err(mlua::Error::runtime(

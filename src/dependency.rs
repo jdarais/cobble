@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::project_def::dependency::Dependencies;
 use crate::project_def::{DependencyListByType, Project};
-use crate::execute::{TaskExecutionError, TaskExecutor};
+use crate::execute::execute::{TaskExecutionError, TaskExecutor};
 use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
 use crate::resolve::{resolve_names_in_dependency_list, NameResolutionError};
 
