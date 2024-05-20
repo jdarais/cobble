@@ -1,7 +1,7 @@
-use std::collections::{hash_map, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
-use std::io::{self, Write};
+use std::io;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
@@ -21,11 +21,23 @@ use crate::util::hash::compute_file_hash;
 use crate::vars::{get_var, VarLookupError};
 use crate::workspace::{Task, Workspace};
 
+pub enum ExecutorJob {
+    Task(TaskJob),
+    ToolCheck(ToolCheckJob)
+}
+
 #[derive(Debug)]
 pub struct TaskJob {
     pub task_name: Arc<str>,
     pub task: Arc<Task>,
     pub workspace: Arc<Workspace>,
+}
+
+#[derive(Debug)]
+pub struct ToolCheckJob {
+    pub tool_name: Arc<str>,
+    pub tool: Arc<ExternalTool>,
+    pub workspace: Arc<Workspace>
 }
 
 #[derive(Debug)]
@@ -57,6 +69,7 @@ pub enum TaskExecutionError {
     LuaError(mlua::Error),
     ActionFailed(String),
     SerializeError(serde_json::Error),
+    GraphError(String)
 }
 
 impl Error for TaskExecutionError {}
@@ -85,23 +98,19 @@ impl fmt::Display for TaskExecutionError {
             LuaError(e) => write!(f, "Lua error: {}", e),
             ActionFailed(s) => write!(f, "Action failed: {}", s),
             SerializeError(e) => write!(f, "(De)serialization of value failed: {}", e),
+            GraphError(s) => write!(f, "{}", s)
         }
     }
 }
 
-pub fn strip_error_context(error: &mlua::Error) -> mlua::Error {
-    match error {
-        mlua::Error::WithContext { context: _, cause } => strip_error_context(&*cause),
-        mlua::Error::CallbackError {
-            traceback: _,
-            cause,
-        } => strip_error_context(&*cause),
-        _ => error.clone(),
-    }
+fn get_tool_check_job_id(tool_name: &Arc<str>) -> Arc<str> {
+    let mut job_name = String::from("tool_check:");
+    job_name.push_str(tool_name.as_ref());
+    Arc::<str>::from(job_name)
 }
 
 fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<Arc<str>> {
-    task.task_deps
+    let deps_set: HashSet<Arc<str>> = task.task_deps
         .values()
         .cloned()
         .chain(
@@ -110,54 +119,15 @@ fn get_task_job_dependencies<'a>(task: &'a Task) -> Vec<Arc<str>> {
                 .filter_map(|f| f.provided_by_task.iter().next().cloned()),
         )
         .chain(task.build_envs.values().cloned())
-        .collect()
+        .collect();
+
+    deps_set.into_iter().collect()
 }
 
-fn compute_task_job_forward_edges(workspace: &Workspace) -> HashMap<Arc<str>, Vec<Arc<str>>> {
-    let mut forward_edges: HashMap<Arc<str>, HashSet<Arc<str>>> = HashMap::new();
-
-    for (task_name, task) in workspace.tasks.iter() {
-        for task_dep in get_task_job_dependencies(task.as_ref()) {
-            forward_edges
-                .entry(task_dep.clone())
-                .or_default()
-                .insert(task_name.clone());
-        }
-
-        for execute_after in task.execute_after.iter() {
-            forward_edges
-                .entry(execute_after.clone())
-                .or_default()
-                .insert(task_name.clone());
-        }
-    }
-
-    forward_edges
-        .into_iter()
-        .map(|(k, v)| (k, v.into_iter().collect()))
-        .collect()
-}
-
-pub fn create_jobs_for_tasks<'a, T>(
-    workspace: &Arc<Workspace>,
-    tasks: T,
-) -> Result<HashMap<Arc<str>, TaskJob>, TaskExecutionError>
-where
-    T: Iterator<Item = &'a Arc<str>>,
-{
-    let mut jobs: HashMap<Arc<str>, TaskJob> = HashMap::new();
-
-    for task in tasks {
-        add_jobs_for_task(task, workspace, &mut jobs)?;
-    }
-
-    Ok(jobs)
-}
-
-fn add_jobs_for_task(
+fn add_task_jobs(
     task_name: &Arc<str>,
     workspace: &Arc<Workspace>,
-    jobs: &mut HashMap<Arc<str>, TaskJob>,
+    jobs: &mut HashMap<Arc<str>, ExecutorJob>,
 ) -> Result<(), TaskExecutionError> {
     if jobs.contains_key(task_name) {
         return Ok(());
@@ -174,19 +144,142 @@ fn add_jobs_for_task(
         ));
     }
 
-    let job = TaskJob {
+    let job = ExecutorJob::Task(TaskJob {
         task_name: task_name.to_owned(),
         task: task.clone(),
         workspace: workspace.clone(),
-    };
+    });
 
     jobs.insert(task_name.to_owned(), job);
 
     for dep in get_task_job_dependencies(&*task) {
-        add_jobs_for_task(&dep, workspace, jobs)?;
+        add_task_jobs(&dep, workspace, jobs)?;
     }
 
     Ok(())
+}
+
+fn add_tool_check_jobs(tool_name: &Arc<str>, workspace: &Arc<Workspace>, jobs: &mut HashMap<Arc<str>, ExecutorJob>) -> Result<(), TaskExecutionError> {
+    let tool_check_job_id = get_tool_check_job_id(tool_name);
+    if jobs.contains_key(&tool_check_job_id) {
+        return Ok(())
+    }
+
+    let tool = workspace.tools.get(tool_name)
+        .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
+
+    let tool_check_job = ExecutorJob::ToolCheck(ToolCheckJob {
+        tool_name: tool_name.clone(),
+        tool: tool.clone(),
+        workspace: workspace.clone()
+    });
+
+    jobs.insert(tool_check_job_id, tool_check_job);
+
+    for tool_dep in tool.action.tools.values() {
+        add_tool_check_jobs(tool_dep, workspace, jobs)?;
+    }
+
+    if let Some(tool_check) = tool.check.as_ref() {
+        for tool_dep in tool_check.tools.values() {
+            add_tool_check_jobs(tool_dep, workspace, jobs)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn compute_dependency_edges(jobs: &HashMap<Arc<str>, ExecutorJob>) -> HashMap<Arc<str>, Vec<Arc<str>>> {
+    let mut dep_edges: HashMap<Arc<str>, Vec<Arc<str>>> = HashMap::new();
+
+    for (id, job) in jobs {
+        let job_deps = match job {
+            ExecutorJob::Task(task_job) => {
+                let mut task_deps = get_task_job_dependencies(&task_job.task);
+                // If an "execute_after" task is in the graph, add that as a dependency, too
+                for after_job in task_job.task.execute_after.iter() {
+                    if jobs.contains_key(after_job) {
+                        task_deps.push(after_job.clone());
+                    }
+                }
+                task_deps
+            }
+            ExecutorJob::ToolCheck(tool_check_job) => {
+                match &tool_check_job.tool.check {
+                    Some(check_action) => {
+                        let deps: Vec<Arc<str>> = check_action.tools.values().map(|t| get_tool_check_job_id(t)).collect();
+                        deps
+                    }
+                    None => Vec::new()
+                }
+            }
+        };
+        dep_edges.insert(id.clone(), job_deps);
+    }
+
+    dep_edges
+}
+
+fn compute_reverse_dependency_edges(dep_edges: &HashMap<Arc<str>, Vec<Arc<str>>>) -> HashMap<Arc<str>, Vec<Arc<str>>> {
+    let mut rev_dep_edges: HashMap<Arc<str>, Vec<Arc<str>>> = HashMap::new();
+
+    for (job_id, job_deps) in dep_edges {
+        for job_dep in job_deps {
+            rev_dep_edges.entry(job_dep.clone()).or_default().push(job_id.clone());
+        }
+    }
+
+    rev_dep_edges
+}
+
+fn has_cycle(dep_edges: &HashMap<Arc<str>, Vec<Arc<str>>>) -> Option<Arc<str>> {
+    let mut visited: HashSet<Arc<str>> = HashSet::new();
+    let mut cleared: HashSet<Arc<str>> = HashSet::new();
+    for node in dep_edges.keys() {
+        let cyclic_node = find_cyclic_node(node, dep_edges, &mut visited, &mut cleared);
+        if cyclic_node.is_some() {
+            return cyclic_node;
+        }
+    }
+
+    None
+}
+
+fn find_cyclic_node(node_id: &Arc<str>, dep_edges: &HashMap<Arc<str>, Vec<Arc<str>>>, visited: &mut HashSet<Arc<str>>, cleared: &mut HashSet<Arc<str>>) -> Option<Arc<str>> {
+    if cleared.contains(node_id) {
+        return None;
+    }
+
+    if visited.contains(node_id) {
+        return Some(node_id.clone());
+    }
+
+    visited.insert(node_id.clone());
+
+    if let Some(deps) = dep_edges.get(node_id) {
+        for dep in deps {
+            let cyclic_node = find_cyclic_node(dep, dep_edges, visited, cleared);
+            if cyclic_node.is_some() {
+                return cyclic_node;
+            }
+        }
+    }
+
+    visited.remove(node_id);
+    cleared.insert(node_id.clone());
+    None
+}
+
+fn has_missing_dependencies(nodes: &HashMap<Arc<str>, ExecutorJob>, dep_edges: &HashMap<Arc<str>, Vec<Arc<str>>>) -> Option<(Arc<str>, Arc<str>)> {
+    for (job_id, job_deps) in dep_edges {
+        for job_dep in job_deps {
+            if !nodes.contains_key(job_dep) {
+                return Some((job_id.clone(), job_dep.clone()));
+            }
+        }
+    }
+
+    None
 }
 
 pub struct TaskExecutorCache {
@@ -205,7 +298,7 @@ pub struct TaskExecutor {
     workspace_config: Arc<WorkspaceConfig>,
     db_env: Arc<lmdb::Environment>,
     db: lmdb::Database,
-    task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
+    job_queue: Arc<(Mutex<Option<VecDeque<ExecutorJob>>>, Condvar)>,
     message_channel: (Sender<TaskJobMessage>, Receiver<TaskJobMessage>),
     cache: Arc<TaskExecutorCache>,
 }
@@ -219,7 +312,7 @@ impl TaskExecutor {
             workspace_config: config,
             db_env: Arc::new(db_env),
             db: db,
-            task_queue: Arc::new((Mutex::new(Some(VecDeque::new())), Condvar::new())),
+            job_queue: Arc::new((Mutex::new(Some(VecDeque::new())), Condvar::new())),
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
                 project_source_hashes: RwLock::new(HashMap::new()),
@@ -246,7 +339,7 @@ impl TaskExecutor {
                     workspace_config: self.workspace_config.clone(),
                     db_env: self.db_env.clone(),
                     db: self.db.clone(),
-                    task_queue: self.task_queue.clone(),
+                    task_queue: self.job_queue.clone(),
                     task_result_sender: self.message_channel.0.clone(),
                     cache: self.cache.clone(),
                 };
@@ -256,6 +349,20 @@ impl TaskExecutor {
                 self.worker_threads.push(worker_thread);
             }
         }
+    }
+
+    pub fn check_tools<'a, T>(&mut self, workspace: &Workspace, tools: T) -> Result<(), TaskExecutionError>
+    where T: Iterator <Item = &'a Arc<str>> {
+        self.ensure_worker_threads();
+
+        let frozen_workspace = Arc::new(workspace.clone());
+        let mut jobs: HashMap<Arc<str>, ExecutorJob> = HashMap::new();
+
+        for tool in tools {
+            add_tool_check_jobs(tool, &frozen_workspace, &mut jobs)?;
+        }
+
+        self.execute_graph(jobs)
     }
 
     pub fn execute_tasks<'a, T>(
@@ -268,27 +375,41 @@ impl TaskExecutor {
     {
         self.ensure_worker_threads();
 
+        let frozen_workspace = Arc::new(workspace.clone());
+        let mut jobs: HashMap<Arc<str>, ExecutorJob> = HashMap::new();
+
+        for task in tasks {
+            add_task_jobs(task, &frozen_workspace, &mut jobs)?;
+        }
+
+        self.execute_graph(jobs)
+    }
+
+    fn execute_graph(&mut self, nodes: HashMap<Arc<str>, ExecutorJob>) -> Result<(), TaskExecutionError> {
+        let dep_edges = &compute_dependency_edges(&nodes);
+
+        if let Some(cyclic_node) = has_cycle(dep_edges) {
+            return Err(TaskExecutionError::GraphError(format!("Encountered cycle in dependency graph at {}", cyclic_node)));
+        }
+        if let Some((job_id, missing_dep)) = has_missing_dependencies(&nodes, dep_edges) {
+            return Err(TaskExecutionError::GraphError(format!("{} dependency {} was not found", job_id, missing_dep)));
+        }
+
+        let rev_dep_edges = compute_reverse_dependency_edges(dep_edges);
+
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut concurrent_io = ConcurrentIO::new();
 
-        let forward_edges = compute_task_job_forward_edges(workspace);
-
-        let frozen_workspace = Arc::new(workspace.clone());
-        let mut remaining_jobs = create_jobs_for_tasks(&frozen_workspace, tasks)?;
+        // let frozen_workspace = Arc::new(workspace.clone());
+        let mut remaining_jobs = nodes;
 
         let total_jobs = remaining_jobs.len();
 
         let mut jobs_without_dependencies: Vec<Arc<str>> = Vec::new();
-        for (task_name, task_job) in remaining_jobs.iter() {
-            if get_task_job_dependencies(&task_job.task).len() == 0
-                && !task_job
-                    .task
-                    .execute_after
-                    .iter()
-                    .any(|t| remaining_jobs.contains_key(t))
-            {
-                jobs_without_dependencies.push(task_name.clone());
+        for (job_id, job_deps) in dep_edges.iter() {
+            if job_deps.len() == 0 {
+                jobs_without_dependencies.push(job_id.clone());
             }
         }
 
@@ -296,7 +417,7 @@ impl TaskExecutor {
             let job = remaining_jobs.remove(task_name).expect(
                 "indexing into HashMap using a key just read from the HashMap should not fail",
             );
-            self.push_task_job(job, &mut in_progress_jobs, &mut concurrent_io)?;
+            self.push_task_job(task_name, job, &mut in_progress_jobs, &mut concurrent_io)?;
         }
 
         while completed_jobs.len() < total_jobs {
@@ -331,29 +452,23 @@ impl TaskExecutor {
 
                     concurrent_io.finish_key(&task);
 
-                    let forward_edges_from_task = forward_edges.get(&task);
-                    if let Some(fwd_edges) = forward_edges_from_task {
-                        for fwd_edge in fwd_edges.iter() {
-                            let fwd_job_is_available = match remaining_jobs.get(fwd_edge) {
-                                Some(fwd_job) => {
-                                    let deps_satisfied = fwd_job
-                                        .task
-                                        .task_deps
+                    let node_rev_dep_edges_opt = rev_dep_edges.get(&task);
+                    if let Some(node_rev_dep_edges) = node_rev_dep_edges_opt {
+                        for fwd_job_id in node_rev_dep_edges.iter() {
+                            let fwd_job_is_available = match remaining_jobs.get(fwd_job_id) {
+                                Some(_fwd_job) => {
+                                    dep_edges
+                                        .get(fwd_job_id)
+                                        .unwrap()
                                         .iter()
-                                        .all(|(_, t_dep)| completed_jobs.contains(t_dep));
-                                    let execute_after_satisfied =
-                                        fwd_job.task.execute_after.iter().all(|ex_after| {
-                                            !remaining_jobs.contains_key(ex_after)
-                                                && !in_progress_jobs.contains(ex_after)
-                                        });
-                                    deps_satisfied && execute_after_satisfied
+                                        .all(|t_dep| completed_jobs.contains(t_dep))
                                 }
                                 None => false,
                             };
                             if fwd_job_is_available {
-                                let job = remaining_jobs.remove(fwd_edge)
+                                let job = remaining_jobs.remove(fwd_job_id)
                                     .expect("indexing into HashMap using a key just read from the HashMap should not fail");
-                                self.push_task_job(job, &mut in_progress_jobs, &mut concurrent_io)?;
+                                self.push_task_job(fwd_job_id, job, &mut in_progress_jobs, &mut concurrent_io)?;
                             }
                         }
                     }
@@ -366,14 +481,15 @@ impl TaskExecutor {
 
     fn push_task_job(
         &mut self,
-        task_job: TaskJob,
+        task_id: &Arc<str>,
+        task_job: ExecutorJob,
         in_progress_jobs: &mut HashSet<Arc<str>>,
         concurrent_io: &mut ConcurrentIO
     ) -> Result<(), TaskExecutionError> {
-        concurrent_io.print_stdout(&task_job.task_name, format!("Starting task {}\n", task_job.task_name));
-        let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
+        concurrent_io.print_stdout(task_id, format!("Starting {}\n", task_id));
+        let (task_queue_mutex, task_queue_cvar) = &*self.job_queue;
         {
-            in_progress_jobs.insert(task_job.task_name.clone());
+            in_progress_jobs.insert(task_id.clone());
             let mut task_queue_opt = task_queue_mutex.lock().unwrap();
             if let Some(task_queue) = task_queue_opt.as_mut() {
                 task_queue.push_back(task_job);
@@ -387,7 +503,7 @@ impl TaskExecutor {
 impl Drop for TaskExecutor {
     fn drop(&mut self) {
         {
-            let (task_queue_mutex, task_queue_cvar) = &*self.task_queue;
+            let (task_queue_mutex, task_queue_cvar) = &*self.job_queue;
             let mut task_queue = task_queue_mutex.lock().unwrap();
             *task_queue = None;
 
@@ -409,12 +525,12 @@ struct TaskExecutorWorkerArgs {
     pub workspace_config: Arc<WorkspaceConfig>,
     pub db_env: Arc<lmdb::Environment>,
     pub db: lmdb::Database,
-    pub task_queue: Arc<(Mutex<Option<VecDeque<TaskJob>>>, Condvar)>,
+    pub task_queue: Arc<(Mutex<Option<VecDeque<ExecutorJob>>>, Condvar)>,
     pub task_result_sender: Sender<TaskJobMessage>,
     pub cache: Arc<TaskExecutorCache>,
 }
 
-fn poll_next_task(task_queue: &(Mutex<Option<VecDeque<TaskJob>>>, Condvar)) -> Option<TaskJob> {
+fn poll_next_task(task_queue: &(Mutex<Option<VecDeque<ExecutorJob>>>, Condvar)) -> Option<ExecutorJob> {
     let (task_queue_mutex, task_queue_cvar) = task_queue;
     let mut task_queue_locked = task_queue_mutex.lock().unwrap();
 
@@ -451,20 +567,25 @@ fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
     loop {
         let next_task_opt = poll_next_task(&args.task_queue);
 
-        match next_task_opt {
-            Some(next_task) => {
-                execute_task_job(
+        let next_task = match next_task_opt {
+            Some(next_task) => next_task,
+            None => { return; }
+        };
+
+        match next_task {
+            ExecutorJob::Task(task) => {
+                    execute_task_job(
                     &args.workspace_config,
                     &lua,
                     args.db_env.as_ref(),
                     &args.db,
-                    &next_task,
+                    &task,
                     args.task_result_sender.clone(),
                     args.cache.clone(),
                 );
-            }
-            None => {
-                return;
+            },
+            ExecutorJob::ToolCheck(tool_check) => {
+                println!("Hi ToolCheck!");
             }
         };
     }

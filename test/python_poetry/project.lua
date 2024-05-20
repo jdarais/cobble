@@ -14,7 +14,7 @@ task {
     name = "poetry_lock",
     deps = { files = { "pyproject.toml" } },
     artifacts = { "poetry.lock" },
-    actions = { { tool = "poetry", "lock" } },
+    actions = { { tool = "poetry", "lock", "--no-update" } },
 }
 
 task {
