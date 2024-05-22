@@ -8,8 +8,7 @@ use crate::db::{
     get_task_record, put_task_record, GetError, PutError, TaskInput, TaskOutput, TaskRecord,
 };
 use crate::execute::action::{
-    ensure_build_env_is_cached, ensure_tool_is_cached, execute_action, ActionContextArgs,
-    ActionContextFile,
+    create_task_action_context, ensure_build_env_is_cached, ensure_tool_is_cached, invoke_action, invoke_action_protected, ActionContextArgs, ActionContextFile
 };
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
@@ -17,89 +16,24 @@ use crate::execute::execute::{
 use crate::lua::serialized::SerializedLuaValue;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
+use crate::workspace::{Task, Workspace};
 
 fn execute_task_actions<'lua>(
     lua: &'lua mlua::Lua,
     task: &TaskJob,
     task_inputs: &TaskInput,
+    workspace: &Arc<Workspace>,
+    db_env: &Arc<lmdb::Environment>,
+    db: &lmdb::Database,
+    cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
-    // Make sure build envs and tools we need are
-    for (_, t_name) in task.task.tools.iter() {
-        ensure_tool_is_cached(lua, t_name.as_ref(), task.workspace.as_ref())
-            .map_err(|e| TaskExecutionError::LuaError(e))?;
-    }
-
-    for (_, e_name) in task.task.build_envs.iter() {
-        ensure_build_env_is_cached(lua, e_name.as_ref(), task.workspace.as_ref())
-            .map_err(|e| TaskExecutionError::LuaError(e))?;
-    }
-
-    let extra_tools: HashMap<String, String> = task
-        .task
-        .tools
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-    let extra_build_envs: HashMap<String, String> = task
-        .task
-        .build_envs
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-
-    let mut files: HashMap<String, ActionContextFile> = HashMap::new();
-    for (k, v) in task_inputs.file_hashes.iter() {
-        let file_dep = task
-            .task
-            .file_deps
-            .get(&Arc::<str>::from(k.clone()))
-            .ok_or_else(|| {
-                TaskExecutionError::GraphError(format!(
-                    "Internal error: File path missing from task definition: {}",
-                    k
-                ))
-            })?;
-        files.insert(
-            k.clone(),
-            ActionContextFile {
-                hash: v.clone(),
-                path: file_dep.path.to_string(),
-            },
-        );
-    }
-
-    let vars = task_inputs.vars.clone();
-
-    let project_dir = task
-        .task
-        .dir
-        .to_str()
-        .ok_or_else(|| {
-            mlua::Error::runtime(format!(
-                "Unable to convert path to a UTF-8 string: {}",
-                task.task.dir.display()
-            ))
-        })
-        .map_err(|e| TaskExecutionError::LuaError(e))?;
-
     let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
-        args = execute_action(
-            lua,
-            &task.task_name,
-            action,
-            ActionContextArgs {
-                extra_tools: extra_tools.clone(),
-                extra_envs: extra_build_envs.clone(),
-                files: files.clone(),
-                vars: vars.clone(),
-                task_outputs: task_inputs.task_outputs.clone(),
-                project_dir: project_dir.to_owned(),
-                args: args,
-                sender: sender.clone(),
-            },
-        )?;
+        let action_context_res = create_task_action_context(lua, action, &task.task, task_inputs, args, workspace, db_env, db, cache, sender);
+        let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
+
+        args = invoke_action_protected(lua, action, action_context)?;
     }
 
     Ok(args)
@@ -107,7 +41,7 @@ fn execute_task_actions<'lua>(
 
 fn get_current_task_input(
     workspace_config: &WorkspaceConfig,
-    task: &TaskJob,
+    task: &Arc<Task>,
     db_env: &lmdb::Environment,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
@@ -119,7 +53,7 @@ fn get_current_task_input(
         vars: HashMap::new(),
     };
 
-    for project_source in task.task.project_source_deps.iter() {
+    for project_source in task.project_source_deps.iter() {
         let cached_hash = cache
             .project_source_hashes
             .read()
@@ -151,7 +85,7 @@ fn get_current_task_input(
             .insert(String::from(project_source.as_ref()), current_hash);
     }
 
-    for (file_alias, file_dep) in task.task.file_deps.iter() {
+    for (file_alias, file_dep) in task.file_deps.iter() {
         let cached_hash = cache
             .file_hashes
             .read()
@@ -183,7 +117,7 @@ fn get_current_task_input(
             .insert(String::from(file_alias.as_ref()), current_hash);
     }
 
-    for (task_alias, task_dep) in task.task.task_deps.iter() {
+    for (task_alias, task_dep) in task.task_deps.iter() {
         let cached_task_output = cache.task_outputs.read().unwrap().get(task_dep).cloned();
         let current_task_output = match cached_task_output {
             Some(output) => output,
@@ -203,7 +137,7 @@ fn get_current_task_input(
             .insert(String::from(task_alias.as_ref()), current_task_output);
     }
 
-    for (var_alias, var_name) in task.task.var_deps.iter() {
+    for (var_alias, var_name) in task.var_deps.iter() {
         let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
             .map_err(|e| TaskExecutionError::VarLookupError(e))?;
         current_task_input
@@ -354,14 +288,14 @@ fn get_up_to_date_task_record(
 fn execute_task_actions_and_store_result(
     workspace_dir: &Path,
     lua: &mlua::Lua,
-    db_env: &lmdb::Environment,
+    db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     task: &TaskJob,
     task_result_sender: &Sender<TaskJobMessage>,
     cache: &Arc<TaskExecutorCache>,
     current_task_input: TaskInput,
 ) -> Result<(), TaskExecutionError> {
-    let result = execute_task_actions(lua, task, &current_task_input, &task_result_sender)?;
+    let result = execute_task_actions(lua, task, &current_task_input, &task.workspace, db_env, db, cache,&task_result_sender)?;
     let detached_result: SerializedLuaValue = lua
         .unpack(result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
@@ -405,7 +339,7 @@ fn execute_task_actions_and_store_result(
 pub fn execute_task_job(
     workspace_config: &Arc<WorkspaceConfig>,
     lua: &mlua::Lua,
-    db_env: &lmdb::Environment,
+    db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     task: &TaskJob,
     task_result_sender: Sender<TaskJobMessage>,
@@ -426,7 +360,7 @@ pub fn execute_task_job(
         return;
     }
 
-    let current_task_input_res = get_current_task_input(workspace_config, task, db_env, db, &cache);
+    let current_task_input_res = get_current_task_input(workspace_config, &task.task, db_env, db, &cache);
     let current_task_input = match current_task_input_res {
         Ok(task_input) => task_input,
         Err(e) => {
@@ -524,7 +458,7 @@ mod tests {
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
         init_lua_for_task_executor(&lua).unwrap();
 
-        let db_env = new_db_env(tmpdir.as_path().join(".cobble.db").as_path()).unwrap();
+        let db_env = Arc::new(new_db_env(tmpdir.as_path().join(".cobble.db").as_path()).unwrap());
         let db = db_env.open_db(None).unwrap();
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
@@ -551,7 +485,10 @@ mod tests {
             },
         });
 
+        let test_task_name = Arc::<str>::from("test");
+
         let task = Arc::new(Task {
+            name: test_task_name.clone(),
             task_type: TaskType::Task,
             dir: workspace_dir.clone(),
             project_name: Arc::<str>::from("/"),
@@ -568,7 +505,6 @@ mod tests {
             ..Default::default()
         });
 
-        let test_task_name = Arc::<str>::from("test");
 
         let workspace = Arc::new(Workspace {
             tasks: vec![(test_task_name.clone(), task.clone())]

@@ -1,18 +1,25 @@
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::{collections::HashMap, path::Path};
 
+use crate::execute::action::{create_tool_action_context, invoke_action, invoke_action_protected};
+use crate::execute::execute::TaskExecutorCache;
 use crate::execute::{
-    action::{ensure_tool_is_cached, execute_action, ActionContextArgs},
+    action::{ensure_tool_is_cached, ActionContextArgs},
     execute::{TaskExecutionError, TaskJobMessage, TaskResult, ToolCheckJob},
 };
+use crate::workspace::Workspace;
 
 pub fn execute_tool_check_job(
     workspace_dir: &Path,
     lua: &mlua::Lua,
     job: &ToolCheckJob,
+    db_env: &Arc<lmdb::Environment>,
+    db: &lmdb::Database,
+    cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) {
-    let result = execute_tool_check_action(workspace_dir, lua, job, sender);
+    let result = execute_tool_check_action(workspace_dir, lua, job, db_env, db, cache, sender);
 
     match result {
         Ok(_) => {
@@ -38,6 +45,9 @@ fn execute_tool_check_action(
     workspace_dir: &Path,
     lua: &mlua::Lua,
     job: &ToolCheckJob,
+    db_env: &Arc<lmdb::Environment>,
+    db: &lmdb::Database,
+    cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<(), TaskExecutionError> {
     let check_action = match &job.tool.check {
@@ -47,32 +57,25 @@ fn execute_tool_check_action(
         }
     };
 
-    ensure_tool_is_cached(lua, job.tool_name.as_ref(), &job.workspace)
-        .map_err(|e| TaskExecutionError::LuaError(e))?;
+    let project_dir = workspace_dir.to_str().map(|s| s.to_owned())
+        .ok_or_else(|| TaskExecutionError::ExecutorError(format!("Error converting path to string: {}", workspace_dir.display())))?;
 
-    for tool_name in check_action.tools.values() {
-        ensure_tool_is_cached(lua, tool_name.as_ref(), &job.workspace)
-            .map_err(|e| TaskExecutionError::LuaError(e))?;
-    }
-
-    execute_action(
+    let action_context_res = create_tool_action_context(
         lua,
+        check_action,
+        &job.tool,
         &job.job_id,
-        &check_action,
-        ActionContextArgs {
-            extra_envs: HashMap::new(),
-            extra_tools: HashMap::new(),
-            files: HashMap::new(),
-            vars: HashMap::new(),
-            task_outputs: HashMap::new(),
-            // TODO: Tools should be global, so it shouldn't matter what directory
-            // this is set to, but it would be nicer to set it to the project that
-            // the tool was defined in
-            project_dir: String::from(workspace_dir.to_str().unwrap()),
-            args: mlua::Value::Nil,
-            sender: sender.clone(),
-        },
-    )?;
+        project_dir,
+        mlua::Value::Nil,
+        &job.workspace,
+        db_env,
+        db,
+        cache,
+        &sender
+    );
+    let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
+
+    invoke_action_protected(lua, &check_action, action_context)?;
 
     Ok(())
 }

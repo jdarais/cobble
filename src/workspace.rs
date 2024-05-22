@@ -2,10 +2,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::dependency::compute_file_providers;
 use crate::project_def::{
     Action, ActionCmd, Artifact, BuildEnv, Dependencies, ExternalTool, Project, TaskDef,
 };
-use crate::dependency::compute_file_providers;
 
 #[derive(Clone, Debug)]
 pub enum TaskType {
@@ -26,6 +26,7 @@ pub struct FileDependency {
 #[derive(Clone, Debug)]
 pub struct Task {
     pub task_type: TaskType,
+    pub name: Arc<str>,
     pub project_name: Arc<str>,
     pub dir: Arc<Path>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
@@ -44,6 +45,7 @@ pub struct Task {
 impl Default for Task {
     fn default() -> Self {
         Self {
+            name: String::new().into(),
             task_type: TaskType::Task,
             project_name: String::new().into(),
             dir: PathBuf::from(".").into(),
@@ -125,7 +127,8 @@ fn add_build_env_to_workspace(
     project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
-    let mut setup_task = Task {
+    let mut install_task = Task {
+        name: build_env.name.clone(),
         task_type: TaskType::BuildEnv,
         dir: dir.clone(),
         project_name: project_name.clone(),
@@ -136,16 +139,16 @@ fn add_build_env_to_workspace(
     add_dependency_list_to_task(
         &build_env.deps,
         &workspace.file_providers,
-        &mut setup_task,
+        &mut install_task,
     );
 
     for setup_action in build_env.install.iter() {
-        add_action_to_task(setup_action, &mut setup_task);
+        add_action_to_task(setup_action, &mut install_task);
     }
 
     workspace
         .tasks
-        .insert(build_env.name.clone(), Arc::new(setup_task));
+        .insert(build_env.name.clone(), Arc::new(install_task));
     workspace
         .build_envs
         .insert(build_env.name.clone(), Arc::new(build_env.clone()));
@@ -166,7 +169,9 @@ fn add_build_env_clean_task_to_workspace(
     project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
+    let clean_task_name = get_clean_task_name(build_env.name.as_ref());
     let mut clean_task = Task {
+        name: clean_task_name.clone(),
         task_type: TaskType::CleanBuildEnv,
         dir: dir.clone(),
         project_name: project_name.clone(),
@@ -183,10 +188,9 @@ fn add_build_env_clean_task_to_workspace(
         add_action_to_task(clean_action, &mut clean_task);
     }
 
-    workspace.tasks.insert(
-        get_clean_task_name(build_env.name.as_ref()),
-        Arc::new(clean_task),
-    );
+    workspace
+        .tasks
+        .insert(clean_task_name, Arc::new(clean_task));
 }
 
 fn add_task_to_workspace(
@@ -197,6 +201,7 @@ fn add_task_to_workspace(
     workspace: &mut Workspace,
 ) {
     let mut task = Task {
+        name: task_def.name.clone(),
         task_type: TaskType::Task,
         dir: dir.clone(),
         project_name: project_name.clone(),
@@ -227,7 +232,9 @@ fn add_task_clean_task_to_workspace(
     project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
+    let clean_task_name = get_clean_task_name(task_def.name.as_ref());
     let mut clean_task = Task {
+        name: clean_task_name.clone(),
         task_type: TaskType::CleanTask,
         dir: dir.clone(),
         project_name: project_name.clone(),
@@ -252,15 +259,15 @@ fn add_task_clean_task_to_workspace(
         add_action_to_task(clean_action, &mut clean_task);
     }
 
-    workspace.tasks.insert(
-        get_clean_task_name(task_def.name.as_ref()),
-        Arc::new(clean_task),
-    );
+    workspace
+        .tasks
+        .insert(clean_task_name, Arc::new(clean_task));
 }
 
 fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     if project.name.as_ref() != "/__COBBLE_INTERNAL__" {
         let mut project_task = Task {
+            name: project.name.clone(),
             task_type: TaskType::Project,
             dir: project.path.clone(),
             project_name: project.name.clone(),
@@ -323,7 +330,9 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
 }
 
 fn add_clean_project_task_to_workspace(project: &Project, workspace: &mut Workspace) {
+    let clean_task_name = get_clean_task_name(project.name.as_ref());
     let mut project_clean_task = Task {
+        name: clean_task_name.clone(),
         task_type: TaskType::CleanProject,
         dir: project.path.clone(),
         project_name: project.name.clone(),
@@ -357,7 +366,7 @@ fn add_clean_project_task_to_workspace(project: &Project, workspace: &mut Worksp
     }
 
     workspace.tasks.insert(
-        get_clean_task_name(project.name.as_ref()),
+        clean_task_name,
         Arc::new(project_clean_task),
     );
 }

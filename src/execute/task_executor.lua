@@ -42,13 +42,15 @@ create_action_context = function (
     end
 
     for env_alias, env_name in pairs(extra_build_envs) do
+        local env_task_outputs = { install = task_outputs[env_alias] }
         action_context.env[env_alias] = function (env_args)
-            return cobble.invoke_build_env(env_name, project_dir, out, err, env_args)
+            return cobble.invoke_build_env(env_name, env_task_outputs, project_dir, out, err, env_args)
         end
     end
     for env_alias, env_name in pairs(action.env) do
+        local env_task_outputs = { install = task_outputs[env_alias] }
         action_context.env[env_alias] = function (env_args)
-            return cobble.invoke_build_env(env_name, project_dir, out, err, env_args)
+            return cobble.invoke_build_env(env_name, env_task_outputs, project_dir, out, err, env_args)
         end
     end
 
@@ -92,9 +94,9 @@ invoke_tool = function (name, project_dir, out, err, args)
     return invoke_action(action, action_context)
 end
 
-invoke_build_env = function (name, project_dir, out, err, args)
+invoke_build_env = function (name, task_outputs, project_dir, out, err, args)
     local action = cobble._build_env_cache[name].action
-    local action_context = create_action_context(action, {}, {}, {}, {}, {}, project_dir, out, err, args)
+    local action_context = create_action_context(action, {}, {}, {}, {}, task_outputs, project_dir, out, err, args)
     return invoke_action(action, action_context)
 end
 

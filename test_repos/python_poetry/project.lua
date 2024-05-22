@@ -1,13 +1,12 @@
+require("tool_check_tests")
+
 tool {
     name = "poetry",
     check = function (c)
-        result = cmd { "poetry", "--version" }
-        if result.status ~= 0 then
-            error ("poetry command exited with status " .. result.status)
-        end
-        if not result.stdout:match("Poetry %(version [^%s]+%)") then
-            error ("poetry version did not match: " .. result.stdout)
-        end
+        local res = cmd { "poetry", "--version" }
+        assert(res.status == 0, "poetry command exited with status " .. res.status)
+        assert(res.stdout:match("Poetry %(version [^%s]+%)"),
+            "poetry version did not match: " .. res.stdout)
     end,
     action = { tool = "cmd", "poetry" }
 }

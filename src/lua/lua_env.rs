@@ -18,6 +18,9 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let if_else_source = include_bytes!("if_else.lua");
     lua.load(&if_else_source[..]).exec()?;
 
+    let on_scope_exit_source = include_bytes!("on_scope_exit.lua");
+    lua.load(&on_scope_exit_source[..]).exec()?;
+
     let cmd_lib = lua.create_userdata(CmdLib)?;
     let cmd_source = include_bytes!("cmd.lua");
     lua.load(&cmd_source[..]).call(cmd_lib)?;
