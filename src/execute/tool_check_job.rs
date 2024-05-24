@@ -2,13 +2,9 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::{collections::HashMap, path::Path};
 
-use crate::execute::action::{create_tool_action_context, invoke_action, invoke_action_protected};
+use crate::execute::action::{create_tool_action_context, invoke_action_protected};
 use crate::execute::execute::TaskExecutorCache;
-use crate::execute::{
-    action::{ensure_tool_is_cached, ActionContextArgs},
-    execute::{TaskExecutionError, TaskJobMessage, TaskResult, ToolCheckJob},
-};
-use crate::workspace::Workspace;
+use crate::execute::execute::{TaskExecutionError, TaskJobMessage, TaskResult, ToolCheckJob};
 
 pub fn execute_tool_check_job(
     workspace_dir: &Path,
@@ -63,8 +59,10 @@ fn execute_tool_check_action(
     let action_context_res = create_tool_action_context(
         lua,
         check_action,
-        &job.tool,
         &job.job_id,
+        HashMap::new(),
+        HashMap::new(),
+        HashMap::new(),
         project_dir,
         mlua::Value::Nil,
         &job.workspace,

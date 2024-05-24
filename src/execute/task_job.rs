@@ -7,9 +7,7 @@ use crate::config::WorkspaceConfig;
 use crate::db::{
     get_task_record, put_task_record, GetError, PutError, TaskInput, TaskOutput, TaskRecord,
 };
-use crate::execute::action::{
-    create_task_action_context, ensure_build_env_is_cached, ensure_tool_is_cached, invoke_action, invoke_action_protected, ActionContextArgs, ActionContextFile
-};
+use crate::execute::action::{create_task_action_context, invoke_action_protected};
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
@@ -30,7 +28,18 @@ fn execute_task_actions<'lua>(
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
     let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
-        let action_context_res = create_task_action_context(lua, action, &task.task, task_inputs, args, workspace, db_env, db, cache, sender);
+        let action_context_res = create_task_action_context(
+            lua,
+            action,
+            &task.task,
+            task_inputs,
+            args,
+            workspace,
+            db_env,
+            db,
+            cache,
+            sender,
+        );
         let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 
         args = invoke_action_protected(lua, action, action_context)?;
@@ -295,7 +304,16 @@ fn execute_task_actions_and_store_result(
     cache: &Arc<TaskExecutorCache>,
     current_task_input: TaskInput,
 ) -> Result<(), TaskExecutionError> {
-    let result = execute_task_actions(lua, task, &current_task_input, &task.workspace, db_env, db, cache,&task_result_sender)?;
+    let result = execute_task_actions(
+        lua,
+        task,
+        &current_task_input,
+        &task.workspace,
+        db_env,
+        db,
+        cache,
+        &task_result_sender,
+    )?;
     let detached_result: SerializedLuaValue = lua
         .unpack(result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
@@ -360,7 +378,8 @@ pub fn execute_task_job(
         return;
     }
 
-    let current_task_input_res = get_current_task_input(workspace_config, &task.task, db_env, db, &cache);
+    let current_task_input_res =
+        get_current_task_input(workspace_config, &task.task, db_env, db, &cache);
     let current_task_input = match current_task_input_res {
         Ok(task_input) => task_input,
         Err(e) => {
@@ -504,7 +523,6 @@ mod tests {
             }],
             ..Default::default()
         });
-
 
         let workspace = Arc::new(Workspace {
             tasks: vec![(test_task_name.clone(), task.clone())]

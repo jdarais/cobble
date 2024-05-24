@@ -26,7 +26,7 @@ function iter(it_func, state, init_ctrl_var, close)
             end
         end,
         to_table = function(self)
-            return self:reduce({}, function(accum, k, v) table.insert(accum, k, v) return accum end)
+            return self:reduce({}, function(accum, k, v) accum[k] = v ; return accum end)
         end
     }
 end

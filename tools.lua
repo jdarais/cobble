@@ -6,7 +6,15 @@ tool {
         assert(res.stdout:match("Docker version [^%s]+, build [^%s]+"),
             "docker version did not match: " .. res.stdout)
     end,
-    action = { tool = "cmd", function (c)
-        return c.tool.cmd { "docker", table.unpack(c.args) }
-    end}
+    action = function (c) return c.tool.cmd(extend({"docker"}, c.args)) end
+}
+
+tool {
+    name = "cargo",
+    action = function (c) return c.tool.cmd(extend({"cargo"}, c.args)) end
+}
+
+tool {
+    name = "git",
+    action = function (c) return c.tool.cmd(extend({"git"}, c.args)) end
 }

@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{config::{get_workspace_config, WorkspaceConfigArgs}, execute::execute::TaskExecutor, load::load_projects, workspace::create_workspace};
 
@@ -18,6 +18,8 @@ pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+    set_current_dir(&config.workspace_dir)
+        .expect("found the workspace directory, so we should be able to set that as the cwd");
 
     let projects = load_projects(
         config.workspace_dir.as_path(),

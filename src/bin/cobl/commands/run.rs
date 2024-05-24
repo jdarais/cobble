@@ -1,3 +1,4 @@
+use std::env::set_current_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,6 +29,8 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         force_run_tasks: Some(force_run_tasks),
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+    set_current_dir(&config.workspace_dir)
+        .expect("found the workspace directory, so we should be able to set that as the cwd");
 
     let projects = load_projects(
         config.workspace_dir.as_path(),

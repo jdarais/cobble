@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::db::{get_task_record, TaskInput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
 use crate::project_def::types::{json_to_lua, TaskVar};
-use crate::project_def::{Action, BuildEnv, ExternalTool};
+use crate::project_def::{Action, BuildEnv};
 use crate::workspace::{Task, Workspace};
 
 #[derive(Clone)]
@@ -39,7 +39,7 @@ pub fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
 pub fn invoke_action<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
-    action_context: mlua::Table<'lua>
+    action_context: mlua::Table<'lua>,
 ) -> mlua::Result<mlua::Value<'lua>> {
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
@@ -49,7 +49,7 @@ pub fn invoke_action<'lua>(
 pub fn invoke_action_protected<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
-    action_context: mlua::Table<'lua>
+    action_context: mlua::Table<'lua>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
     let (success, result) = execute_action_xpcall(lua, action, action_context)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
@@ -66,81 +66,123 @@ pub fn invoke_action_protected<'lua>(
     }
 }
 
-pub enum ActionOwner {
-    Task(Arc<Task>),
-    BuildEnv(Arc<BuildEnv>),
-    Tool(Arc<ExternalTool>)
-}
-
 fn invoke_tool_by_name<'lua>(
     lua: &'lua mlua::Lua,
     tool_name: &Arc<str>,
     task_name: &Arc<str>,
+    files: HashMap<Arc<str>, ActionContextFile>,
+    vars: HashMap<String, TaskVar>,
+    task_outputs: HashMap<String, serde_json::Value>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
-    task_event_sender: &Sender<TaskJobMessage>
+    task_event_sender: &Sender<TaskJobMessage>,
 ) -> mlua::Result<mlua::Value<'lua>> {
-    let tool = workspace.tools.get(tool_name)
-        .ok_or_else(|| mlua::Error::runtime(format!("Tried to invoke tool '{}', but no tool with that name exists.", tool_name)))?;
+    let tool = workspace.tools.get(tool_name).ok_or_else(|| {
+        mlua::Error::runtime(format!(
+            "Tried to invoke tool '{}', but no tool with that name exists.",
+            tool_name
+        ))
+    })?;
 
     let tool_action = &tool.action;
-    let action_context = create_tool_action_context(lua, tool_action, tool, task_name, project_dir, args, workspace, db_env, db, cache, task_event_sender)?;
+    let action_context = create_tool_action_context(
+        lua,
+        tool_action,
+        task_name,
+        files,
+        vars,
+        task_outputs,
+        project_dir,
+        args,
+        workspace,
+        db_env,
+        db,
+        cache,
+        task_event_sender,
+    )?;
     invoke_action(lua, tool_action, action_context)
 }
 
 fn invoke_env_by_name<'lua>(
-    lua:&'lua mlua::Lua,
+    lua: &'lua mlua::Lua,
     env_name: &Arc<str>,
     task_name: &Arc<str>,
+    files: HashMap<Arc<str>, ActionContextFile>,
+    vars: HashMap<String, TaskVar>,
+    task_outputs: HashMap<String, serde_json::Value>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
-    task_event_sender: &Sender<TaskJobMessage>
+    task_event_sender: &Sender<TaskJobMessage>,
 ) -> mlua::Result<mlua::Value<'lua>> {
-    let env = workspace.build_envs.get(env_name)
-        .ok_or_else(|| mlua::Error::runtime(format!("Tried to invoke env '{}', but no env with that name exists.", env_name)))?;
+    let env = workspace.build_envs.get(env_name).ok_or_else(|| {
+        mlua::Error::runtime(format!(
+            "Tried to invoke env '{}', but no env with that name exists.",
+            env_name
+        ))
+    })?;
 
     let env_action = &env.action;
-    let action_context = create_env_action_context(lua, env_action, env, task_name, project_dir, args, workspace, db_env, db, cache, task_event_sender)?;
+    let action_context = create_env_action_context(
+        lua,
+        env_action,
+        env,
+        task_name,
+        files,
+        vars,
+        task_outputs,
+        project_dir,
+        args,
+        workspace,
+        db_env,
+        db,
+        cache,
+        task_event_sender,
+    )?;
     invoke_action(lua, env_action, action_context)
 }
 
 pub fn create_tool_action_context<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
-    tool: &Arc<ExternalTool>,
     task_name: &Arc<str>,
+    files: HashMap<Arc<str>, ActionContextFile>,
+    vars: HashMap<String, TaskVar>,
+    task_outputs: HashMap<String, serde_json::Value>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
-    task_event_sender: &Sender<TaskJobMessage>
+    task_event_sender: &Sender<TaskJobMessage>,
 ) -> mlua::Result<mlua::Table<'lua>> {
-    create_action_context(lua, ActionContextArgs {
-        task_name: task_name.clone(),
-        action: action.clone(),
-        extra_tools: HashMap::new(),
-        extra_envs: HashMap::new(),
-        files: HashMap::new(),
-        vars: HashMap::new(),
-        task_outputs: HashMap::new(),
-        project_dir,
-        args,
-        workspace: workspace.clone(),
-        db_env: db_env.clone(),
-        db: db.clone(),
-        cache: cache.clone(),
-        sender: task_event_sender.clone()
-    })
+    create_action_context(
+        lua,
+        ActionContextArgs {
+            task_name: task_name.clone(),
+            action: action.clone(),
+            extra_tools: HashMap::new(),
+            extra_envs: HashMap::new(),
+            files: files,
+            vars: vars,
+            task_outputs: task_outputs,
+            project_dir,
+            args,
+            workspace: workspace.clone(),
+            db_env: db_env.clone(),
+            db: db.clone(),
+            cache: cache.clone(),
+            sender: task_event_sender.clone(),
+        },
+    )
 }
 
 pub fn create_env_action_context<'lua>(
@@ -148,43 +190,67 @@ pub fn create_env_action_context<'lua>(
     action: &Action,
     env: &Arc<BuildEnv>,
     task_name: &Arc<str>,
+    files: HashMap<Arc<str>, ActionContextFile>,
+    vars: HashMap<String, TaskVar>,
+    task_outputs: HashMap<String, serde_json::Value>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
-    task_event_sender: &Sender<TaskJobMessage>
+    task_event_sender: &Sender<TaskJobMessage>,
 ) -> mlua::Result<mlua::Table<'lua>> {
-
-    let env_install_task_output_opt = cache.task_outputs.read().unwrap().get(&env.name).map(|v| v.clone());
+    let env_install_task_output_opt = cache
+        .task_outputs
+        .read()
+        .unwrap()
+        .get(&env.name)
+        .map(|v| v.clone());
     let env_install_task_output = match env_install_task_output_opt {
         Some(output) => output,
         None => match get_task_record(db_env, db.clone(), &env.name) {
             Ok(record) => record.output.task_output,
-            Err(e) => { return Err(mlua::Error::runtime(format!("Unable to retrieve output for env install task {}: {}", env.name, e))); }
-        }
+            Err(e) => {
+                return Err(mlua::Error::runtime(format!(
+                    "Unable to retrieve output for env install task {}: {}",
+                    env.name, e
+                )));
+            }
+        },
     };
 
-    let mut task_outputs: HashMap<String, serde_json::Value> = HashMap::new();
-    task_outputs.insert(String::from("install"), env_install_task_output);
+    let mut task_outputs_with_install: HashMap<String, serde_json::Value> = task_outputs;
+    let mut existing_opt =
+        task_outputs_with_install.insert(String::from("install"), env_install_task_output);
 
-    create_action_context(lua, ActionContextArgs {
-        task_name: task_name.clone(),
-        action: action.clone(),
-        extra_tools: HashMap::new(),
-        extra_envs: HashMap::new(),
-        files: HashMap::new(),
-        vars: HashMap::new(),
-        task_outputs,
-        project_dir,
-        args,
-        workspace: workspace.clone(),
-        db_env: db_env.clone(),
-        db: db.clone(),
-        cache: cache.clone(),
-        sender: task_event_sender.clone()
-    })
+    let mut existing_install_prefix = String::from("_");
+    while let Some(existing) = existing_opt.take() {
+        let mut prefixed_key = existing_install_prefix.clone();
+        prefixed_key.push_str("install");
+        existing_opt = task_outputs_with_install.insert(prefixed_key, existing);
+        existing_install_prefix.push_str("_");
+    }
+
+    create_action_context(
+        lua,
+        ActionContextArgs {
+            task_name: task_name.clone(),
+            action: action.clone(),
+            extra_tools: HashMap::new(),
+            extra_envs: HashMap::new(),
+            files: files,
+            vars: vars,
+            task_outputs: task_outputs_with_install,
+            project_dir,
+            args,
+            workspace: workspace.clone(),
+            db_env: db_env.clone(),
+            db: db.clone(),
+            cache: cache.clone(),
+            sender: task_event_sender.clone(),
+        },
+    )
 }
 
 pub fn create_task_action_context<'lua>(
@@ -201,34 +267,57 @@ pub fn create_task_action_context<'lua>(
 ) -> mlua::Result<mlua::Table<'lua>> {
     let mut files: HashMap<Arc<str>, ActionContextFile> = HashMap::new();
     for (file_alias, file_dep) in &task.file_deps {
-        let hash = task_input.file_hashes.get(file_alias.as_ref())
-            .ok_or_else(|| mlua::Error::runtime(format!("Expected file hash to be available for {}: {}, but it is missing", file_alias, file_dep.path)))?;
+        let hash = task_input
+            .file_hashes
+            .get(file_alias.as_ref())
+            .ok_or_else(|| {
+                mlua::Error::runtime(format!(
+                    "Expected file hash to be available for {}: {}, but it is missing",
+                    file_alias, file_dep.path
+                ))
+            })?;
 
-        files.insert(file_alias.clone(), ActionContextFile { hash: hash.clone(), path: file_dep.path.to_string() });
+        files.insert(
+            file_alias.clone(),
+            ActionContextFile {
+                hash: hash.clone(),
+                path: file_dep.path.to_string(),
+            },
+        );
     }
 
-    let project_dir = task.dir.to_str().map(|s| s.to_owned())
-        .ok_or_else(|| mlua::Error::runtime(format!("Error converting path to s a string: {}", task.dir.display())))?;
-    
-    create_action_context(lua, ActionContextArgs {
-        task_name: task.name.clone(),
-        action: action.clone(),
-        extra_tools: task.tools.clone(),
-        extra_envs: task.build_envs.clone(),
-        files,
-        vars: task_input.vars.clone(),
-        task_outputs: task_input.task_outputs.clone(),
-        project_dir,
-        args,
-        workspace: workspace.clone(),
-        db_env: db_env.clone(),
-        db: db.clone(),
-        cache: cache.clone(),
-        sender: task_event_sender.clone()
-    })
+    let project_dir = task.dir.to_str().map(|s| s.to_owned()).ok_or_else(|| {
+        mlua::Error::runtime(format!(
+            "Error converting path to s a string: {}",
+            task.dir.display()
+        ))
+    })?;
+
+    create_action_context(
+        lua,
+        ActionContextArgs {
+            task_name: task.name.clone(),
+            action: action.clone(),
+            extra_tools: task.tools.clone(),
+            extra_envs: task.build_envs.clone(),
+            files,
+            vars: task_input.vars.clone(),
+            task_outputs: task_input.task_outputs.clone(),
+            project_dir,
+            args,
+            workspace: workspace.clone(),
+            db_env: db_env.clone(),
+            db: db.clone(),
+            cache: cache.clone(),
+            sender: task_event_sender.clone(),
+        },
+    )
 }
 
-fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContextArgs) -> mlua::Result<mlua::Table<'lua>> {
+fn create_action_context<'lua>(
+    lua: &'lua mlua::Lua,
+    context_args: ActionContextArgs,
+) -> mlua::Result<mlua::Table<'lua>> {
     let ActionContextArgs {
         task_name,
         action,
@@ -280,6 +369,9 @@ fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContext
     for (tool_alias, tool_name) in extra_tools.iter().chain(action.tools.iter()) {
         let tool_name_clone = tool_name.clone();
         let task_name_clone = task_name.clone();
+        let files_clone = files.clone();
+        let vars_clone = vars.clone();
+        let task_outputs_clone = task_outputs.clone();
         let project_dir_clone = project_dir.clone();
         let workspace_clone = workspace.clone();
         let db_env_clone = db_env.clone();
@@ -287,7 +379,21 @@ fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContext
         let cache_clone = cache.clone();
         let sender_clone = sender.clone();
         let invoke_tool_fn = lua.create_function(move |fn_lua, args: mlua::Value| {
-            invoke_tool_by_name(fn_lua, &tool_name_clone, &task_name_clone, project_dir_clone.clone(), args, &workspace_clone, &db_env_clone, &db_clone, &cache_clone, &sender_clone)
+            invoke_tool_by_name(
+                fn_lua,
+                &tool_name_clone,
+                &task_name_clone,
+                files_clone.clone(),
+                vars_clone.clone(),
+                task_outputs_clone.clone(),
+                project_dir_clone.clone(),
+                args,
+                &workspace_clone,
+                &db_env_clone,
+                &db_clone,
+                &cache_clone,
+                &sender_clone,
+            )
         })?;
         tool_table.set(tool_alias.to_string(), invoke_tool_fn)?;
     }
@@ -297,6 +403,9 @@ fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContext
     for (env_alias, env_name) in extra_envs.iter().chain(action.build_envs.iter()) {
         let env_name_clone = env_name.clone();
         let task_name_clone = task_name.clone();
+        let files_clone = files.clone();
+        let vars_clone = vars.clone();
+        let task_outputs_clone = task_outputs.clone();
         let project_dir_clone = project_dir.clone();
         let workspace_clone = workspace.clone();
         let db_env_clone = db_env.clone();
@@ -304,7 +413,22 @@ fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContext
         let cache_clone = cache.clone();
         let sender_clone = sender.clone();
         let invoke_env_fn = lua.create_function(move |fn_lua, args| {
-            invoke_env_by_name(fn_lua, &env_name_clone, &task_name_clone, project_dir_clone.clone(), args, &workspace_clone, &db_env_clone, &db_clone, &cache_clone, &sender_clone)
+            // TODO: Avoid the double-clone here
+            invoke_env_by_name(
+                fn_lua,
+                &env_name_clone,
+                &task_name_clone,
+                files_clone.clone(),
+                vars_clone.clone(),
+                task_outputs_clone.clone(),
+                project_dir_clone.clone(),
+                args,
+                &workspace_clone,
+                &db_env_clone,
+                &db_clone,
+                &cache_clone,
+                &sender_clone,
+            )
         })?;
         env_table.set(env_alias.to_string(), invoke_env_fn)?;
     }
@@ -346,7 +470,7 @@ fn create_action_context<'lua>(lua: &'lua mlua::Lua, context_args: ActionContext
 pub fn execute_action_xpcall<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
-    action_context: mlua::Table<'lua>
+    action_context: mlua::Table<'lua>,
 ) -> mlua::Result<(bool, mlua::Value<'lua>)> {
     let invoke_action_chunk = lua.load(
         r#"
@@ -358,7 +482,8 @@ pub fn execute_action_xpcall<'lua>(
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
 
-    let action_result: mlua::MultiValue = invoke_action_chunk.call((invoke_action_fn, action.clone(), action_context))?;
+    let action_result: mlua::MultiValue =
+        invoke_action_chunk.call((invoke_action_fn, action.clone(), action_context))?;
 
     let mut action_result_iter = action_result.into_iter();
     let success = action_result_iter.next().unwrap_or(mlua::Value::Nil);
@@ -366,55 +491,4 @@ pub fn execute_action_xpcall<'lua>(
 
     let success_bool: bool = lua.unpack(success)?;
     Ok((success_bool, result))
-}
-
-pub fn ensure_tool_is_cached(
-    lua: &mlua::Lua,
-    tool_name: &str,
-    workspace: &Workspace,
-) -> mlua::Result<()> {
-    let tool = workspace
-        .tools
-        .get(tool_name)
-        .ok_or_else(|| mlua::Error::runtime(format!("Tool lookup failed: {}", tool_name)))?;
-
-    let cobble_table: mlua::Table = lua.globals().get("cobble")?;
-    let cached_tools: mlua::Table = cobble_table.get("_tool_cache")?;
-    if !cached_tools.contains_key(tool.name.as_ref())? {
-        cached_tools.set(tool.name.as_ref(), ExternalTool::clone(tool))?;
-    }
-
-    for (_, t_name) in tool.action.tools.iter() {
-        ensure_tool_is_cached(lua, t_name.as_ref(), workspace)?;
-    }
-
-    Ok(())
-}
-
-pub fn ensure_build_env_is_cached(
-    lua: &mlua::Lua,
-    build_env_name: &str,
-    workspace: &Workspace,
-) -> mlua::Result<()> {
-    let build_env = workspace.build_envs.get(build_env_name).ok_or_else(|| {
-        mlua::Error::runtime(format!("Build env lookup failed: {}", build_env_name))
-    })?;
-
-    let cobble_table: mlua::Table = lua.globals().get("cobble")?;
-    let cached_build_envs: mlua::Table = cobble_table.get("_build_env_cache")?;
-    if !cached_build_envs.contains_key(build_env.name.as_ref())? {
-        let build_env_table = lua.create_table()?;
-        build_env_table.set("action", build_env.action.clone())?;
-        cached_build_envs.set(build_env.name.as_ref(), build_env_table)?;
-    }
-
-    for (_, t_name) in build_env.action.tools.iter() {
-        ensure_tool_is_cached(lua, t_name, workspace)?;
-    }
-
-    for (_, e_name) in build_env.action.build_envs.iter() {
-        ensure_build_env_is_cached(lua, e_name, workspace)?;
-    }
-
-    Ok(())
 }

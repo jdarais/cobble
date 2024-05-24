@@ -1,4 +1,5 @@
 
+use std::env::set_current_dir;
 use std::path::PathBuf;
 
 use cobble::config::{find_nearest_project_dir, get_workspace_config};
@@ -14,6 +15,9 @@ pub struct ListCommandInput {
 
 pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
     let config = get_workspace_config(input.cwd.as_path(), &Default::default()).unwrap();
+    set_current_dir(&config.workspace_dir)
+        .expect("found the workspace directory, so we should be able to set that as the cwd");
+
     let projects = load_projects(
         config.workspace_dir.as_path(),
         config.root_projects.iter().map(|s| s.as_str()),

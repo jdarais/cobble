@@ -100,7 +100,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     let child_res = cmd.spawn();
 
     match child_res {
-        Err(e) => Err(Error::runtime(format!("Error executing command: {}", e))),
+        Err(e) => Err(Error::runtime(format!("Error executing command '{} {}': {}", cmd_cmd, cmd_args.join(" "), e))),
         Ok(mut child) => {
             let (tx, rx) = channel();
 

@@ -15,11 +15,14 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     workspace_table.set("dir", workspace_dir.to_str())?;
     lua.globals().set("WORKSPACE", workspace_table)?;
 
-    let if_else_source = include_bytes!("if_else.lua");
-    lua.load(&if_else_source[..]).exec()?;
-
     let on_scope_exit_source = include_bytes!("on_scope_exit.lua");
     lua.load(&on_scope_exit_source[..]).exec()?;
+
+    let version_source = include_bytes!("version.lua");
+    lua.load(&version_source[..]).exec()?;
+
+    let table_util_source = include_bytes!("table_util.lua");
+    lua.load(&table_util_source[..]).exec()?;
 
     let cmd_lib = lua.create_userdata(CmdLib)?;
     let cmd_source = include_bytes!("cmd.lua");

@@ -17,19 +17,26 @@ fn process_project(
     lua: &mlua::Lua,
     chunk: &Path,
     project_name: &str,
-    project_dir: &str,
+    workspace_dir: &Path,
+    project_dir: &str
 ) -> mlua::Result<()> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
 
-    let prev_cwd = current_dir()
-        .map_err(|e| mlua::Error::runtime(format!("Unable to get current working directory: {}", e)))?;
+    let prev_cwd = current_dir().map_err(|e| {
+        mlua::Error::runtime(format!("Unable to get current working directory: {}", e))
+    })?;
 
-    set_current_dir(project_dir)
-        .map_err(|e| mlua::Error::runtime(format!("Unable to set the current working directory: {}", e)))?;
+    set_current_dir(&workspace_dir.join(project_dir)).map_err(|e| {
+        mlua::Error::runtime(format!(
+            "Unable to set the current working directory to {}: {}",
+            project_dir, e
+        ))
+    })?;
 
     let _restore_cwd = OnScopeExit::new(Box::new(|| {
-        set_current_dir(prev_cwd).expect("expected to be able to set current working directory to previous value");
+        set_current_dir(prev_cwd)
+            .expect("expected to be able to set current working directory to previous value");
     }));
 
     start_project.call((project_name, project_dir))?;
@@ -37,7 +44,6 @@ fn process_project(
     lua.load(chunk).exec()?;
 
     end_project.call(())?;
-
 
     Ok(())
 }
@@ -84,6 +90,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
         lua,
         project_file_path.as_path(),
         project_name.as_str(),
+        workspace_dir,
         project_dir_str,
     )?;
 
@@ -152,9 +159,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         function (c)
             local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, table.unpack(c.args) }
 
-            if result.status ~= 0 then
-                error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status)
-            end
+            assert(result.status == 0, "Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status)
 
             return result
         end
@@ -238,13 +243,7 @@ mod tests {
             f.flush().unwrap();
         }
 
-        process_project(
-            &lua,
-            temp_proj_file_path.as_path(),
-            "",
-            ".",
-        )
-        .unwrap();
+        process_project(&lua, temp_proj_file_path.as_path(), "", &tmpdir, ".").unwrap();
 
         let projects = extract_project_defs(&lua).unwrap();
         assert_eq!(projects.len(), 2);
