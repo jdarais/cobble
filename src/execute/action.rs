@@ -31,37 +31,41 @@ pub struct ActionContextArgs<'lua> {
     pub sender: Sender<TaskJobMessage>,
 }
 
+fn get_error_message(val: &mlua::Value) -> String {
+    match val {
+        mlua::Value::String(s) => s.to_str().unwrap_or("<error reading message>").to_owned(),
+        mlua::Value::Error(e) => e.to_string(),
+        _ => format!("{:?}", val),
+    }
+}
+
 pub fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
     let task_executor_env_source = include_bytes!("task_executor.lua");
     lua.load(&task_executor_env_source[..]).exec()
 }
 
-pub fn invoke_action<'lua>(
-    lua: &'lua mlua::Lua,
-    action: &Action,
-    action_context: mlua::Table<'lua>,
-) -> mlua::Result<mlua::Value<'lua>> {
-    let invoke_action_source = include_bytes!("invoke_action.lua");
-    let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
-    invoke_action_fn.call((action.clone(), action_context))
-}
+// pub fn invoke_action<'lua>(
+//     lua: &'lua mlua::Lua,
+//     action: &Action,
+//     action_context: mlua::Table<'lua>,
+// ) -> mlua::Result<mlua::Value<'lua>> {
+//     let invoke_action_source = include_bytes!("invoke_action.lua");
+//     let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
+//     invoke_action_fn.call((action.clone(), action_context))
+// }
 
 pub fn invoke_action_protected<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
-    let (success, result) = execute_action_xpcall(lua, action, action_context)
+    let (success, result) = execute_action_pcall(lua, action, action_context)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
     if success {
         return Ok(result);
     } else {
-        let message = match result {
-            mlua::Value::String(s) => s.to_str().unwrap_or("<error reading message>").to_owned(),
-            mlua::Value::Error(e) => e.to_string(),
-            _ => format!("{:?}", result),
-        };
+        let message = get_error_message(&result);
         return Err(TaskExecutionError::ActionFailed(message));
     }
 }
@@ -104,7 +108,14 @@ fn invoke_tool_by_name<'lua>(
         cache,
         task_event_sender,
     )?;
-    invoke_action(lua, tool_action, action_context)
+    let (success, result) = execute_action_pcall(lua, tool_action, action_context)?;
+
+    if success {
+        Ok(result)
+    } else {
+        Err(mlua::Error::external(get_error_message(&result)))
+    }
+
 }
 
 fn invoke_env_by_name<'lua>(
@@ -146,7 +157,13 @@ fn invoke_env_by_name<'lua>(
         cache,
         task_event_sender,
     )?;
-    invoke_action(lua, env_action, action_context)
+    let (success, result) = execute_action_pcall(lua, env_action, action_context)?;
+
+    if success {
+        Ok(result)
+    } else {
+        Err(mlua::Error::external(get_error_message(&result)))
+    }
 }
 
 pub fn create_tool_action_context<'lua>(
@@ -467,23 +484,15 @@ fn create_action_context<'lua>(
     Ok(action_context)
 }
 
-pub fn execute_action_xpcall<'lua>(
+pub fn execute_action_pcall<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
 ) -> mlua::Result<(bool, mlua::Value<'lua>)> {
-    let invoke_action_chunk = lua.load(
-        r#"
-        local invoke_action, action, action_context = ...
-        return xpcall(invoke_action, function (msg) return msg end, action, action_context)
-    "#,
-    );
-
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
 
-    let action_result: mlua::MultiValue =
-        invoke_action_chunk.call((invoke_action_fn, action.clone(), action_context))?;
+    let action_result: mlua::MultiValue = invoke_action_fn.call((action.clone(), action_context))?;
 
     let mut action_result_iter = action_result.into_iter();
     let success = action_result_iter.next().unwrap_or(mlua::Value::Nil);
