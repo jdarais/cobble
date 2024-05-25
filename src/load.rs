@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::config::PROJECT_FILE_NAME;
 use crate::lua::lua_env::create_lua_env;
-use crate::lua::serialized::dump_function;
+use crate::lua::detached::dump_function;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;

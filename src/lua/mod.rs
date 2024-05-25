@@ -1,4 +1,4 @@
-pub mod serialized;
+pub mod detached;
 pub mod lua_env;
 pub mod userdata;
 

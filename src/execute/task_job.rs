@@ -11,7 +11,7 @@ use crate::execute::action::{create_task_action_context, invoke_action_protected
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
-use crate::lua::serialized::DetachedLuaValue;
+use crate::lua::detached::DetachedLuaValue;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
 use crate::workspace::{Task, Workspace};
@@ -457,7 +457,7 @@ mod tests {
 
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
-    use crate::lua::{lua_env::create_lua_env, serialized::dump_function};
+    use crate::lua::{lua_env::create_lua_env, detached::dump_function};
     use crate::project_def::{Action, ActionCmd, ExternalTool};
     use crate::workspace::{Task, TaskType, Workspace};
 

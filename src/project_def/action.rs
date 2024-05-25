@@ -5,7 +5,7 @@ use std::fs::remove_file;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::lua::serialized::{dump_function, FunctionDump};
+use crate::lua::detached::{dump_function, FunctionDump};
 use crate::project_def::validate::{
     key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string,
     validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
