@@ -1,11 +1,11 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::remove_file;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
-use crate::lua::detached::{dump_function, FunctionDump};
+use crate::lua::detached::{dump_function, DetachedLuaValue, FunctionDump};
 use crate::project_def::validate::{
     key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string,
     validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
@@ -14,7 +14,7 @@ use crate::project_def::validate::{
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
-    Func(FunctionDump),
+    Func(Arc<RwLock<FunctionDump>>),
     DeleteFiles(Vec<Arc<str>>),
 }
 
@@ -23,7 +23,7 @@ impl fmt::Display for ActionCmd {
         use ActionCmd::*;
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
-            Func(func) => write!(f, "Func({})", func),
+            Func(func) => write!(f, "Func({})", func.read().unwrap()),
             DeleteFiles(artifacts) => write!(f, "DeleteFiles({:?})", artifacts),
         }
     }
@@ -268,7 +268,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                             return Ok(Action {
                                 build_envs,
                                 tools,
-                                cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?),
+                                cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new())?),
                             });
                         }
                         mlua::Value::UserData(user_data) => {
@@ -317,7 +317,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                     tools: vec![(cmd_tool_name.clone(), cmd_tool_name)]
                         .into_iter()
                         .collect(),
-                    cmd: ActionCmd::Func(dump_function(func, lua, &HashSet::new())?),
+                    cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new())?),
                 })
             }
             _ => Err(mlua::Error::runtime(
@@ -350,7 +350,7 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
                 }
             }
             ActionCmd::Func(f) => {
-                action_table.push(f)?;
+                action_table.push(DetachedLuaValue::Function(f))?;
             }
             ActionCmd::DeleteFiles(files) => {
                 action_table.push(DeleteFilesAction { files })?;

@@ -450,7 +450,6 @@ pub fn execute_task_job(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
     use std::path::PathBuf;
     use std::sync::{mpsc, RwLock};
     use std::time::Duration;
@@ -500,7 +499,7 @@ mod tests {
             action: Action {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
-                cmd: ActionCmd::Func(dump_function(tool_func, &lua, &HashSet::new()).unwrap()),
+                cmd: ActionCmd::Func(dump_function(&lua, tool_func, &mut HashMap::new()).unwrap()),
             },
         });
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -175,7 +175,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         action: Action {
             tools: HashMap::new(),
             build_envs: HashMap::new(),
-            cmd: ActionCmd::Func(dump_function(cmd_tool_action_func, lua, &HashSet::new())?),
+            cmd: ActionCmd::Func(dump_function(lua, cmd_tool_action_func, &mut HashMap::new())?),
         },
     };
 

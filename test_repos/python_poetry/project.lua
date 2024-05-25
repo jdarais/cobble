@@ -2,6 +2,7 @@ require("tool_check_tests")
 
 local fs = require("fs")
 local maybe = require("maybe")
+local iter = require("iter")
 
 tool {
     name = "poetry",

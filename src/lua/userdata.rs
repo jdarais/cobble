@@ -15,7 +15,7 @@ pub enum CobbleUserData {
 }
 
 impl CobbleUserData {
-    pub fn to_userdata<'lua>(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::AnyUserData<'lua>> {
+    pub fn to_userdata<'lua>(&self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::AnyUserData<'lua>> {
         match self {
             CobbleUserData::FsLib => lua.create_userdata(FsLib),
             CobbleUserData::CmdLib => lua.create_userdata(CmdLib),

@@ -56,6 +56,7 @@ local function reduce (init_accum, reduce_func, it_func, state, init_ctrl_var, c
     return accum
 end
 
+local iter;
 local iter_prototype = {
     map = function(self, map_func)
         return iter(map(map_func, self.it_func, self.state, self.init_ctrl_var, self.close))
@@ -86,7 +87,7 @@ local iter_metatable = {
     __index = iter_prototype
 }
 
-local function iter(it_func, state, init_ctrl_var, close)
+iter = function(it_func, state, init_ctrl_var, close)
     return setmetatable({
         it_func = it_func,
         state = state,
@@ -105,7 +106,7 @@ local iter_module_prototype = {
 
 local iter_module_metatable = {
     __index = iter_module_prototoype,
-    __call = iter
+    __call = function(mod, ...) return iter(...) end
 }
 
 return setmetatable({}, iter_module_metatable)

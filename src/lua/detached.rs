@@ -1,9 +1,10 @@
 extern crate serde_json;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::os::raw::c_void;
+use std::sync::{Arc, RwLock};
 
 use crate::lua::userdata::CobbleUserData;
 
@@ -14,8 +15,8 @@ pub enum DetachedLuaValue {
     Integer(mlua::Integer),
     Number(mlua::Number),
     String(String),
-    Table(HashMap<DetachedLuaValue, DetachedLuaValue>, Option<HashMap<DetachedLuaValue, DetachedLuaValue>>),
-    Function(FunctionDump),
+    Table(Arc<RwLock<(HashMap<DetachedLuaValue, DetachedLuaValue>, Option<DetachedLuaValue>)>>),
+    Function(Arc<RwLock<FunctionDump>>),
     UserData(CobbleUserData)
 }
 
@@ -32,7 +33,9 @@ impl DetachedLuaValue {
                 .map(|n| serde_json::Value::Number(n))
                 .unwrap_or(serde_json::Value::Null),
             String(s) => serde_json::Value::String(s.clone()),
-            Table(t, _meta) => {
+            Table(tbl) => {
+                let tbl_lock = tbl.read().unwrap();
+                let (t, _meta) = &*tbl_lock;
                 let mut map: serde_json::Map<std::string::String, serde_json::Value> =
                     serde_json::Map::with_capacity(t.len());
                 for (k, v) in t.iter() {
@@ -44,8 +47,8 @@ impl DetachedLuaValue {
                 }
                 serde_json::Value::Object(map)
             }
-            Function(f) => serde_json::Value::String(format!("{}", f)),
-            UserData(d) => serde_json::Value::String(format!("{}", d))
+            Function(f) => serde_json::Value::String(format!("{}", &*f.read().unwrap())),
+            UserData(d) => serde_json::Value::String(format!("{}", d)),
         }
     }
 }
@@ -59,9 +62,11 @@ impl fmt::Display for DetachedLuaValue {
             Integer(val) => write!(f, "{}", val),
             Number(val) => write!(f, "{}", val),
             String(val) => write!(f, "\"{}\"", val.as_str()),
-            Table(val, _meta) => {
+            Table(tbl) => {
+                let tbl_lock = tbl.read().unwrap();
+                let (t, _meta) = &*tbl_lock;
                 f.write_str("{")?;
-                for (i, (k, v)) in val.iter().enumerate() {
+                for (i, (k, v)) in t.iter().enumerate() {
                     if i > 0 {
                         f.write_str(", ")?;
                     }
@@ -69,8 +74,8 @@ impl fmt::Display for DetachedLuaValue {
                 }
                 f.write_str("}")
             }
-            Function(val) => write!(f, "{}", val),
-            UserData(val) => write!(f, "{}", val)
+            Function(val) => write!(f, "{}", val.read().unwrap()),
+            UserData(val) => write!(f, "{}", val),
         }
     }
 }
@@ -100,18 +105,18 @@ impl PartialEq for DetachedLuaValue {
                 String(other_val) => this_val == other_val,
                 _ => false,
             },
-            Table(this_val, _this_meta) => match other {
-                Table(other_val, _other_meta) => this_val == other_val,
+            Table(this_val) => match other {
+                Table(other_val) => Arc::as_ptr(&this_val) == Arc::as_ptr(other_val),
                 _ => false,
             },
             Function(this_val) => match other {
-                Function(other_val) => this_val == other_val,
+                Function(other_val) => Arc::as_ptr(this_val) == Arc::as_ptr(other_val),
                 _ => false,
             },
             UserData(this_val) => match other {
                 UserData(other_val) => this_val == other_val,
                 _ => false,
-            }
+            },
         }
     }
 }
@@ -139,22 +144,14 @@ impl Hash for DetachedLuaValue {
                 state.write(b"str");
                 val.hash(state);
             }
-            Table(tbl, _meta) => {
+            Table(tbl) => {
                 state.write(b"tbl");
-                for (k, v) in tbl.iter() {
-                    state.write(b"key");
-                    k.hash(state);
-                    state.write(b"val");
-                    v.hash(state);
-                }
+                Arc::as_ptr(tbl).hash(state);
             }
             Function(f) => {
                 state.write(b"fun");
-                state.write(&f.source[..]);
-                for upval in f.upvalues.iter() {
-                    upval.hash(state);
-                }
-            },
+                Arc::as_ptr(f).hash(state);
+            }
             UserData(d) => {
                 state.write(b"usr");
                 d.hash(state);
@@ -164,17 +161,10 @@ impl Hash for DetachedLuaValue {
 }
 
 pub fn dump_function<'lua>(
-    func: mlua::Function<'lua>,
     lua: &'lua mlua::Lua,
-    history: &HashSet<*const c_void>,
-) -> Result<FunctionDump, mlua::Error> {
-    if history.contains(&func.to_pointer()) {
-        return Err(mlua::Error::runtime(format!(
-            "Cycle encountered when extracting Function: {:?}",
-            &func
-        )));
-    }
-
+    func: mlua::Function<'lua>,
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>
+) -> mlua::Result<Arc<RwLock<FunctionDump>>> {
     if func.info().what != "Lua" {
         return Err(mlua::Error::runtime(format!(
             "Cannot serialize a function that is not a pure Lua function: {:?}",
@@ -182,10 +172,45 @@ pub fn dump_function<'lua>(
         )));
     }
 
-    let string_dump: mlua::Function = lua.load("function(fn) return string.dump(fn) end").eval()?;
-    let source_str: mlua::String = string_dump.call(func.clone())?;
-    let source = source_str.as_bytes().to_owned();
+    let source = dump_function_source(lua, func.clone())?;
+    
+    let function_dump = Arc::new(RwLock::new(FunctionDump {
+        source,
+        upvalues: Vec::new()
+    }));
 
+    val_map.insert(func.to_pointer(), DetachedLuaValue::Function(function_dump.clone()));
+
+    let upvalues = dump_function_upvalues(lua, func, val_map)?;
+
+    {
+        let mut function_dump_lock = function_dump.write().unwrap();
+        function_dump_lock.upvalues = upvalues;
+    }
+
+    Ok(function_dump)
+}
+
+pub fn dump_function_source<'lua>(
+    lua: &'lua mlua::Lua,
+    func: mlua::Function<'lua>
+) -> mlua::Result<Vec<u8>> {
+    if func.info().what != "Lua" {
+        return Err(mlua::Error::runtime(format!(
+            "Cannot serialize a function that is not a pure Lua function: {:?}",
+            &func
+        )));
+    }
+
+    let func_source_dump: mlua::String = lua.load("return string.dump(...)").call(func)?;
+    Ok(func_source_dump.as_bytes().to_owned())
+}
+
+pub fn dump_function_upvalues<'lua>(
+    lua: &'lua mlua::Lua,
+    func: mlua::Function<'lua>,
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
+) -> mlua::Result<Vec<DetachedLuaValue>> {
     let get_upvalues: mlua::Function = lua
         .load(
             r#"
@@ -207,30 +232,31 @@ pub fn dump_function<'lua>(
         .eval()?;
     let f_upvalues: Vec<mlua::Value> = get_upvalues.call(func.clone())?;
 
-    let mut history_with_f = history.clone();
-    history_with_f.insert(func.to_pointer());
-
     // let upvalues = detach_value(mlua::Value::Table(f_upvalues), lua, history_with_f)?;
-    let upvalues_res: Result<Vec<DetachedLuaValue>, mlua::Error> = f_upvalues
+    let upvalues_res: mlua::Result<Vec<DetachedLuaValue>> = f_upvalues
         .into_iter()
-        .map(|v| detach_value(v, lua, &history_with_f))
+        .map(|v| detach_value(lua, v, val_map))
         .collect();
     let upvalues = upvalues_res?;
 
-    Ok(FunctionDump { source, upvalues })
+    Ok(upvalues)
 }
 
-pub fn hydrate_function<'lua>(
-    func: FunctionDump,
+pub fn hydrate_function_upvalues<'lua>(
     lua: &'lua mlua::Lua,
-) -> mlua::Result<mlua::Function<'lua>> {
-    let (source, upvalues) = (func.source, func.upvalues);
+    func: mlua::Function<'lua>,
+    upvalues: &Vec<DetachedLuaValue>,
+    val_map: &mut HashMap<*const c_void, mlua::Value<'lua>>
+) -> mlua::Result<()> {
+    let upvalues_table = lua.create_table()?;
+    for upval in upvalues {
+        upvalues_table.push(hydrate_value(lua, upval, val_map)?)?;
+    }
 
     let hydrate: mlua::Function = lua
         .load(
             r#"
-        function (source, upvalues)
-            local fn = load(source);
+        function (fn, upvalues)
             for i, v in ipairs(upvalues) do
                 local up_name, up_value = table.unpack(v);
                 if up_name ~= "_ENV" then 
@@ -242,16 +268,48 @@ pub fn hydrate_function<'lua>(
     "#,
         )
         .eval()?;
-    let hydrated_func: mlua::Function =
-        hydrate.call((lua.create_string(&source[..])?, upvalues))?;
+    hydrate.call((func, upvalues_table))?;
 
-    Ok(hydrated_func)
+    Ok(())
+}
+
+pub fn dump_table<'lua>(
+    lua: &'lua mlua::Lua,
+    value: mlua::Table<'lua>,
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>
+) -> mlua::Result<HashMap<DetachedLuaValue, DetachedLuaValue>> {
+    let mut detached_map: HashMap<DetachedLuaValue, DetachedLuaValue> = HashMap::new();
+    for pair in value.pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+
+        let k_detached = detach_value(lua, k, val_map)?;
+        let v_detached = detach_value(lua, v, val_map)?;
+        detached_map.insert(k_detached, v_detached);
+    }
+
+    Ok(detached_map)
+}
+
+pub fn hydrate_table<'lua>(
+    lua: &'lua mlua::Lua,
+    table: &HashMap<DetachedLuaValue, DetachedLuaValue>,
+    dest_table: &mlua::Table,
+    val_map: &mut HashMap<*const c_void, mlua::Value<'lua>>
+) -> mlua::Result<()> {
+    for (k, v) in table {
+        let lua_k = hydrate_value(lua, k, val_map)?;
+        let lua_v = hydrate_value(lua, v, val_map)?;
+
+        dest_table.set(lua_k, lua_v)?;
+    }
+
+    Ok(())
 }
 
 pub fn detach_value<'lua>(
-    value: mlua::Value<'lua>,
     lua: &'lua mlua::Lua,
-    history: &HashSet<*const c_void>,
+    value: mlua::Value<'lua>,
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
 ) -> mlua::Result<DetachedLuaValue> {
     match value {
         mlua::Value::Nil => Ok(DetachedLuaValue::Nil),
@@ -260,49 +318,41 @@ pub fn detach_value<'lua>(
         mlua::Value::Number(v) => Ok(DetachedLuaValue::Number(v)),
         mlua::Value::String(v) => Ok(DetachedLuaValue::String(String::from(v.to_str()?))),
         mlua::Value::Table(t) => {
-            if history.contains(&t.to_pointer()) {
-                Err(mlua::Error::runtime(format!(
-                    "Cycle encountered when extracting Table: {:?}",
-                    t
-                )))
-            } else {
-                let mut history_with_t = history.clone();
-                history_with_t.insert(t.to_pointer());
-
-                let meta = match t.get_metatable() {
-                    Some(metatable) => {
-                        let mut history_with_meta = history_with_t.clone();
-                        history_with_meta.insert(metatable.to_pointer());
-    
-                        let mut m: HashMap<DetachedLuaValue, DetachedLuaValue> = HashMap::new();
-                        for pair in metatable.pairs() {
-                            let (k, v): (mlua::Value, mlua::Value) = pair?;
-                            let k_detached = detach_value(k, lua, &history_with_meta)?;
-                            let v_detached = detach_value(v, lua, &history_with_meta)?;
-                            m.insert(k_detached, v_detached);
-                        }
-                        Some(m)
+            let lua_val_ptr = t.to_pointer();
+            match val_map.get(&lua_val_ptr) {
+                Some(val) => Ok(val.clone()),
+                None => {
+                    let table = Arc::new(RwLock::new((HashMap::new(), None)));
+                    val_map.insert(lua_val_ptr, DetachedLuaValue::Table(table.clone()));
+        
+                    let meta = match t.get_metatable() {
+                        Some(metatable) => Some(detach_value(lua, mlua::Value::Table(metatable), val_map)?),
+                        None => None,
+                    };
+        
+                    let detached_map = dump_table(lua, t, val_map)?;
+        
+                    {
+                        let mut table_lock = table.write().unwrap();
+                        let (tbl, meta_tbl) = &mut *table_lock;
+                        *tbl = detached_map;
+                        *meta_tbl = meta;
                     }
-                    None => None
-                };
-
-                let mut detached_map: HashMap<DetachedLuaValue, DetachedLuaValue> =
-                    HashMap::new();
-                for pair in t.pairs() {
-                    let (k, v): (mlua::Value, mlua::Value) = pair?;
-
-                    let k_detached = detach_value(k, lua, &history_with_t)?;
-                    let v_detached = detach_value(v, lua, &history_with_t)?;
-                    detached_map.insert(k_detached, v_detached);
+        
+                    Ok(DetachedLuaValue::Table(table))
                 }
-
-                Ok(DetachedLuaValue::Table(detached_map, meta))
             }
         }
-        mlua::Value::Function(f) => Ok(DetachedLuaValue::Function(dump_function(
-            f, lua, &history,
+        mlua::Value::Function(f) => {
+            let lua_val_ptr = f.to_pointer();
+            match val_map.get(&lua_val_ptr) {
+                Some(val) => Ok(val.clone()),
+                None => Ok(DetachedLuaValue::Function(dump_function(lua, f, val_map)?))
+            }
+        }
+        mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(CobbleUserData::from_userdata(
+            lua, d,
         )?)),
-        mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(CobbleUserData::from_userdata(lua, d)?)),
         mlua::Value::LightUserData(d) => Err(mlua::Error::runtime(format!(
             "Cannot serialize a light user data object: {:?}",
             d
@@ -318,38 +368,70 @@ pub fn detach_value<'lua>(
     }
 }
 
+pub fn hydrate_value<'lua>(
+    lua: &'lua mlua::Lua,
+    value: &DetachedLuaValue,
+    val_map: &mut HashMap<*const c_void, mlua::Value<'lua>>
+) -> mlua::Result<mlua::Value<'lua>> {
+    match value {
+        DetachedLuaValue::Nil => Ok(mlua::Value::Nil),
+        DetachedLuaValue::Boolean(b) => Ok(mlua::Value::Boolean(*b)),
+        DetachedLuaValue::Integer(i) => Ok(mlua::Value::Integer(*i)),
+        DetachedLuaValue::Number(n) => Ok(mlua::Value::Number(*n)),
+        DetachedLuaValue::String(s) => Ok(mlua::Value::String(lua.create_string(s)?)),
+        DetachedLuaValue::Table(table) => {
+            let d_val_ptr = Arc::as_ptr(table) as *const c_void;
+            match val_map.get(&d_val_ptr) {
+                Some(val) => Ok(val.clone()),
+                None => {
+                    let lua_table = lua.create_table()?;
+                    val_map.insert(d_val_ptr, mlua::Value::Table(lua_table.clone()));
+
+                    let table_lock = table.read().unwrap();
+                    let (tbl, meta) = &*table_lock;
+
+                    hydrate_table(lua, tbl, &lua_table, val_map)?;
+        
+                    let lua_metatable = match meta {
+                        Some(m) => match hydrate_value(lua, m, val_map)? {
+                            mlua::Value::Table(t) => Some(t),
+                            _ => None
+                        },
+                        None => None
+                    };
+                    lua_table.set_metatable(lua_metatable);
+                    Ok(mlua::Value::Table(lua_table))
+                }
+            }
+        }
+        DetachedLuaValue::Function(f) => {
+            let d_val_ptr = Arc::as_ptr(f) as *const c_void;
+            match val_map.get(&d_val_ptr) {
+                Some(val) => Ok(val.clone()),
+                None => {
+                    let f_lock = f.read().unwrap();
+                    let lua_func = lua.load(&f_lock.source).into_function()?;
+                    val_map.insert(d_val_ptr, mlua::Value::Function(lua_func.clone()));
+        
+                    hydrate_function_upvalues(lua, lua_func.clone(), &f_lock.upvalues, val_map)?;
+        
+                    Ok(mlua::Value::Function(lua_func))
+                }
+            }
+        }
+        DetachedLuaValue::UserData(d) => Ok(mlua::Value::UserData(d.to_userdata(lua)?)),
+    }
+}
+
 impl<'lua> mlua::FromLua<'lua> for DetachedLuaValue {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        detach_value(value, lua, &HashSet::new())
+        detach_value(lua, value, &mut HashMap::new())
     }
 }
 
 impl<'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
     fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        use DetachedLuaValue::*;
-        match self {
-            Nil => Ok(mlua::Value::Nil),
-            Boolean(val) => Ok(mlua::Value::Boolean(val)),
-            Integer(val) => Ok(mlua::Value::Integer(val)),
-            Number(val) => Ok(mlua::Value::Number(val)),
-            String(val) => Ok(mlua::Value::String(lua.create_string(val.as_str())?)),
-            Table(val, meta) => {
-                let table = lua.create_table()?;
-                for (k, v) in val {
-                    table.set(k.into_lua(lua)?, v.into_lua(lua)?)?;
-                }
-
-                let metatable = match meta.into_lua(lua)? {
-                    mlua::Value::Table(m) => Some(m),
-                    _ => None
-                };
-                table.set_metatable(metatable);
-
-                Ok(mlua::Value::Table(table))
-            },
-            Function(val) => Ok(mlua::Value::Function(hydrate_function(val, lua)?)),
-            UserData(val) => Ok(mlua::Value::UserData(val.to_userdata(lua)?))
-        }
+        hydrate_value(lua, &self, &mut HashMap::new())
     }
 }
 
@@ -377,26 +459,6 @@ impl fmt::Display for FunctionDump {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for FunctionDump {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        match value {
-            mlua::Value::Function(f) => dump_function(f, lua, &HashSet::new()),
-            _ => Err(mlua::Error::runtime(format!(
-                "Cannot convert non-function value to a FunctionDump: {:?}",
-                value
-            ))),
-        }
-    }
-}
-
-impl<'lua> mlua::IntoLua<'lua> for FunctionDump {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        hydrate_function(self, lua).map(|f| mlua::Value::Function(f))
-    }
-}
-
-
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -421,12 +483,11 @@ mod tests {
             .call(())
             .unwrap();
 
-        let dumped_add_five_func: FunctionDump =
-            lua.unpack(mlua::Value::Function(add_five_func)).unwrap();
+        let dumped_add_five_func = detach_value(&lua, mlua::Value::Function(add_five_func), &mut HashMap::new()).unwrap();
 
         let lua_2 = create_lua_env(Path::new(".")).unwrap();
-        let add_five_func_2 = hydrate_function(dumped_add_five_func, &lua_2).unwrap();
-        let result: i32 = add_five_func_2.call(3).unwrap();
+        let add_five_func_2: mlua::Value = lua_2.pack(dumped_add_five_func).unwrap();
+        let result: i32 = add_five_func_2.as_function().unwrap().call(3).unwrap();
         assert_eq!(result, 8);
     }
 }
