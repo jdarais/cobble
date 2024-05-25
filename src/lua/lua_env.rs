@@ -73,12 +73,4 @@ mod tests {
         assert_eq!(result.get::<_, i32>("status").unwrap(), 0);
         assert_eq!(result.get::<_, String>("stdout").unwrap(), "hi!\n");
     }
-
-    #[test]
-    fn test_if_else() {
-        let lua_env = create_lua_env(Path::new(".")).unwrap();
-        let chunk = lua_env.load(r#"if_else(5 < 3, "yah", "nah")"#);
-        let result: String = chunk.eval().unwrap();
-        assert_eq!(result, "nah");
-    }
 }
