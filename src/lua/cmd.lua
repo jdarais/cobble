@@ -1,5 +1,5 @@
 local cmd_lib = ...
 
-function cmd (...)
+return function (...)
     return cmd_lib.cmd(...)
 end

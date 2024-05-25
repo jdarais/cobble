@@ -1,6 +1,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use crate::lua::json::JsonLib;
 use crate::lua::toml::TomlLib;
 use crate::lua::{cmd::CmdLib, fs::FsLib, script_dir::ScriptDirLib};
 
@@ -10,6 +11,7 @@ pub enum CobbleUserData {
     CmdLib,
     ScriptDirLib,
     TomlLib,
+    JsonLib
 }
 
 impl CobbleUserData {
@@ -18,7 +20,8 @@ impl CobbleUserData {
             CobbleUserData::FsLib => lua.create_userdata(FsLib),
             CobbleUserData::CmdLib => lua.create_userdata(CmdLib),
             CobbleUserData::ScriptDirLib => lua.create_userdata(ScriptDirLib),
-            CobbleUserData::TomlLib => lua.create_userdata(TomlLib)
+            CobbleUserData::TomlLib => lua.create_userdata(TomlLib),
+            CobbleUserData::JsonLib => lua.create_userdata(JsonLib)
         }
     }
 
@@ -31,6 +34,8 @@ impl CobbleUserData {
             return Ok(CobbleUserData::ScriptDirLib);
         } else if mlua::AnyUserData::is::<TomlLib>(&userdata) {
             return Ok(CobbleUserData::TomlLib);
+        } else if mlua::AnyUserData::is::<JsonLib>(&userdata) {
+            return Ok(CobbleUserData::JsonLib);
         } else {
             return Err(mlua::Error::runtime("Unable to serialize userdata value"));
         }
@@ -45,6 +50,7 @@ impl fmt::Display for CobbleUserData {
             CmdLib => write!(f, "CmdLib"),
             ScriptDirLib => write!(f, "ScriptDirLib"),
             TomlLib => write!(f, "TomlLib"),
+            JsonLib => write!(f, "JsonLib")
         }
     }
 }

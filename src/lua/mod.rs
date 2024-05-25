@@ -4,5 +4,6 @@ pub mod userdata;
 
 mod cmd;
 mod fs;
+mod json;
 mod script_dir;
 mod toml;

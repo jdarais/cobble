@@ -1,5 +1,8 @@
 require("tool_check_tests")
 
+local fs = require("fs")
+local maybe = require("maybe")
+
 tool {
     name = "poetry",
     check = function (c)
@@ -49,12 +52,14 @@ task {
     actions = { { env = "poetry_env", "python", "-m", "black", "." } }
 }
 
+local is_dir = fs.is_dir
+
 task {
     name = "find_poetry_source_files",
     deps = { files = { "pyproject.toml" } },
     actions = {
         function (c)
-            local pyproject_toml = toml.read("pyproject.toml")
+            local pyproject_toml = toml.load("pyproject.toml")
             local patterns = maybe(pyproject_toml)["tool"]["poetry"]["packages"]
                 :or_else(function ()
                     return maybe(pyproject_toml)["tool"]["poetry"]["name"]

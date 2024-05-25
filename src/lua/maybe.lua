@@ -1,5 +1,3 @@
-local maybe_metatable = {}
-
 local function ensure_maybe (val)
     if getmetatable(val) == maybe_metatable then
         return val
@@ -15,6 +13,26 @@ local function maybe_binop (lhs, rhs, op_func)
         end).value
     end)
 end
+
+local maybe;
+local maybe_prototype = {
+    and_then = function(self, func)
+        if self.value == nil then
+            return self
+        else
+            return maybe(func(self.value))
+        end
+    end,
+    or_else = function(self, func)
+        if self.value == nil then
+            return maybe(func())
+        else
+            return self
+        end
+    end
+}
+
+local maybe_metatable = {}
 
 function maybe_metatable.__add (lhs, rhs)
     return maybe_binop(lhs, rhs, function (l, r) return l + r end)
@@ -137,7 +155,7 @@ function maybe_metatable.__index (maybe_tbl, key)
         return nil
     end
 
-    return maybe_tbl:and_then(function (tbl) return tbl[key] end)
+    return maybe_prototype[key] or maybe_tbl:and_then(function (tbl) return tbl[key] end)
 end
 
 -- note: __newindex is not supported
@@ -147,22 +165,10 @@ function maybe_metatable.__call (maybe_func, ...)
     return maybe_func:and_then(function (func) return func(table.unpack(args)) end)
 end
 
-function maybe(value)
+maybe = function(value)
     return setmetatable({
-        value = value,
-        and_then = function(self, func)
-            if self.value == nil then
-                return self
-            else
-                return maybe(func(self.value))
-            end
-        end,
-        or_else = function(self, func)
-            if self.value == nil then
-                return maybe(func())
-            else
-                return self
-            end
-        end
+        value = value
     }, maybe_metatable)
 end
+
+return maybe

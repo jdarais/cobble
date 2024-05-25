@@ -14,7 +14,7 @@ pub enum SerializedLuaValue {
     Integer(mlua::Integer),
     Number(mlua::Number),
     String(String),
-    Table(HashMap<SerializedLuaValue, SerializedLuaValue>),
+    Table(HashMap<SerializedLuaValue, SerializedLuaValue>, Option<HashMap<SerializedLuaValue, SerializedLuaValue>>),
     Function(FunctionDump),
     UserData(CobbleUserData)
 }
@@ -32,7 +32,7 @@ impl SerializedLuaValue {
                 .map(|n| serde_json::Value::Number(n))
                 .unwrap_or(serde_json::Value::Null),
             String(s) => serde_json::Value::String(s.clone()),
-            Table(t) => {
+            Table(t, _meta) => {
                 let mut map: serde_json::Map<std::string::String, serde_json::Value> =
                     serde_json::Map::with_capacity(t.len());
                 for (k, v) in t.iter() {
@@ -59,7 +59,7 @@ impl fmt::Display for SerializedLuaValue {
             Integer(val) => write!(f, "{}", val),
             Number(val) => write!(f, "{}", val),
             String(val) => write!(f, "\"{}\"", val.as_str()),
-            Table(val) => {
+            Table(val, _meta) => {
                 f.write_str("{")?;
                 for (i, (k, v)) in val.iter().enumerate() {
                     if i > 0 {
@@ -100,8 +100,8 @@ impl PartialEq for SerializedLuaValue {
                 String(other_val) => this_val == other_val,
                 _ => false,
             },
-            Table(this_val) => match other {
-                Table(other_val) => this_val == other_val,
+            Table(this_val, _this_meta) => match other {
+                Table(other_val, _other_meta) => this_val == other_val,
                 _ => false,
             },
             Function(this_val) => match other {
@@ -139,7 +139,7 @@ impl Hash for SerializedLuaValue {
                 state.write(b"str");
                 val.hash(state);
             }
-            Table(tbl) => {
+            Table(tbl, _meta) => {
                 state.write(b"tbl");
                 for (k, v) in tbl.iter() {
                     state.write(b"key");
@@ -252,7 +252,7 @@ pub fn detach_value<'lua>(
     value: mlua::Value<'lua>,
     lua: &'lua mlua::Lua,
     history: &HashSet<*const c_void>,
-) -> Result<SerializedLuaValue, mlua::Error> {
+) -> mlua::Result<SerializedLuaValue> {
     match value {
         mlua::Value::Nil => Ok(SerializedLuaValue::Nil),
         mlua::Value::Boolean(v) => Ok(SerializedLuaValue::Boolean(v)),
@@ -269,20 +269,34 @@ pub fn detach_value<'lua>(
                 let mut history_with_t = history.clone();
                 history_with_t.insert(t.to_pointer());
 
+                let meta = match t.get_metatable() {
+                    Some(metatable) => {
+                        let mut history_with_meta = history_with_t.clone();
+                        history_with_meta.insert(metatable.to_pointer());
+    
+                        let mut m: HashMap<SerializedLuaValue, SerializedLuaValue> = HashMap::new();
+                        for pair in metatable.pairs() {
+                            let (k, v): (mlua::Value, mlua::Value) = pair?;
+                            let k_detached = detach_value(k, lua, &history_with_meta)?;
+                            let v_detached = detach_value(v, lua, &history_with_meta)?;
+                            m.insert(k_detached, v_detached);
+                        }
+                        Some(m)
+                    }
+                    None => None
+                };
+
                 let mut detached_map: HashMap<SerializedLuaValue, SerializedLuaValue> =
                     HashMap::new();
-                for pair in t.pairs::<mlua::Value, mlua::Value>().into_iter() {
-                    match pair {
-                        Err(e) => return Err(e),
-                        Ok((k, v)) => {
-                            let k_detached = detach_value(k, lua, &history_with_t)?;
-                            let v_detached = detach_value(v, lua, &history_with_t)?;
-                            detached_map.insert(k_detached, v_detached);
-                        }
-                    }
+                for pair in t.pairs() {
+                    let (k, v): (mlua::Value, mlua::Value) = pair?;
+
+                    let k_detached = detach_value(k, lua, &history_with_t)?;
+                    let v_detached = detach_value(v, lua, &history_with_t)?;
+                    detached_map.insert(k_detached, v_detached);
                 }
 
-                Ok(SerializedLuaValue::Table(detached_map))
+                Ok(SerializedLuaValue::Table(detached_map, meta))
             }
         }
         mlua::Value::Function(f) => Ok(SerializedLuaValue::Function(dump_function(
@@ -319,7 +333,20 @@ impl<'lua> mlua::IntoLua<'lua> for SerializedLuaValue {
             Integer(val) => Ok(mlua::Value::Integer(val)),
             Number(val) => Ok(mlua::Value::Number(val)),
             String(val) => Ok(mlua::Value::String(lua.create_string(val.as_str())?)),
-            Table(val) => val.into_lua(lua),
+            Table(val, meta) => {
+                let table = lua.create_table()?;
+                for (k, v) in val {
+                    table.set(k.into_lua(lua)?, v.into_lua(lua)?)?;
+                }
+
+                let metatable = match meta.into_lua(lua)? {
+                    mlua::Value::Table(m) => Some(m),
+                    _ => None
+                };
+                table.set_metatable(metatable);
+
+                Ok(mlua::Value::Table(table))
+            },
             Function(val) => Ok(mlua::Value::Function(hydrate_function(val, lua)?)),
             UserData(val) => Ok(mlua::Value::UserData(val.to_userdata(lua)?))
         }
