@@ -52,16 +52,6 @@ pub fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
     lua.load(&task_executor_env_source[..]).exec()
 }
 
-// pub fn invoke_action<'lua>(
-//     lua: &'lua mlua::Lua,
-//     action: &Action,
-//     action_context: mlua::Table<'lua>,
-// ) -> mlua::Result<mlua::Value<'lua>> {
-//     let invoke_action_source = include_bytes!("invoke_action.lua");
-//     let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
-//     invoke_action_fn.call((action.clone(), action_context))
-// }
-
 pub fn invoke_action_protected<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
@@ -508,4 +498,34 @@ pub fn execute_action_pcall<'lua>(
 
     let success_bool: bool = lua.unpack(success)?;
     Ok((success_bool, result))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_original_error_from_callback_error() {
+        let original_error = Arc::new(mlua::Error::external(String::from("test error")));
+
+        let error = mlua::Error::CallbackError {
+            traceback: String::from("test traceback"),
+            cause: original_error.clone()
+        };
+
+        assert_eq!(get_original_error(&error).to_string(), original_error.to_string());
+    }
+
+    #[test]
+    fn test_get_error_message_unwraps_error_chain() {
+        let original_error = Arc::new(mlua::Error::external(String::from("test error")));
+
+        let error = mlua::Error::CallbackError {
+            traceback: String::from("test traceback"),
+            cause: original_error.clone()
+        };
+
+        assert_eq!(get_error_message(&mlua::Value::Error(error)), original_error.to_string())
+    }
 }

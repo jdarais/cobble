@@ -64,15 +64,33 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
 }
 
 pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameResolutionError> {
+    use Component::*;
+
     let mut path_components: Vec<Component> = Vec::new();
     let joined_path = project_path.join(path);
     for comp in joined_path.components() {
         match comp {
-            Component::Prefix(pre) => { path_components.push(Component::Prefix(pre)); }
-            Component::RootDir => { path_components.push(Component::RootDir); }
-            Component::CurDir => { /* skip */ }
-            Component::Normal(comp_str) => { path_components.push(Component::Normal(comp_str)); }
-            Component::ParentDir => { path_components.pop(); }
+            Prefix(pre) => { path_components.push(Prefix(pre)); }
+            RootDir => { path_components.push(RootDir); }
+            CurDir => { /* skip */ }
+            Normal(comp_str) => { path_components.push(Normal(comp_str)); }
+            ParentDir => match path_components.pop() {
+                Some(parent_comp) => match parent_comp {
+                    Prefix(_) | RootDir => {
+                        path_components.push(parent_comp);
+                    }
+                    ParentDir => {
+                        path_components.push(ParentDir);
+                        path_components.push(ParentDir);
+                    }
+                    Normal(_) => { /* ParentDir negates a Normal parent component */ }
+                    CurDir => { panic!("CurDir should never have been added to path_components"); }
+                },
+                None => {
+                    // There was nothing to pop, so this ".." component is at the beginning of the path, and we should leave it there
+                    path_components.push(ParentDir);
+                }
+            }
         }
     }
     let full_path = PathBuf::from_iter(path_components.into_iter());
@@ -268,13 +286,26 @@ mod tests {
     }
 
     #[test]
-    fn test_mutability() {
-        let mut val = String::from("hello");
+    fn test_resolve_path_removes_curdir_components() {
+        let resolved_path = resolve_path(Path::new("./a/test/path"), "./a/./path/./with/./dots").unwrap();
+        assert_eq!(resolved_path.as_ref(), "a/test/path/a/path/with/dots");
+    }
 
-        let vool = &mut val;
+    #[test]
+    fn test_resolve_path_resolves_parent_dir_components() {
+        let resolved_path = resolve_path(Path::new("./a/test/path"), "../../path/in/other/dir").unwrap();
+        assert_eq!(resolved_path.as_ref(), "a/path/in/other/dir");
+    }
 
-        *vool = (|v: &String| format!("{} there", v))(vool);
+    #[test]
+    fn test_resolve_path_leaves_parent_dir_at_start_of_path() {
+        let resolved_path = resolve_path(Path::new("./a"), "../../path/in/other/dir").unwrap();
+        assert_eq!(resolved_path.as_ref(), "../path/in/other/dir");
+    }
 
-        assert_eq!(val, "hello there");
+    #[test]
+    fn test_resolve_path_remove_parent_dir_component_at_root_of_abs_path() {
+        let resolved_path = resolve_path(Path::new("/a"), "../../path/in/other/dir").unwrap();
+        assert_eq!(resolved_path.as_ref(), "/path/in/other/dir");
     }
 }
