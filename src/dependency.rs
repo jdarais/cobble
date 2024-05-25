@@ -162,7 +162,6 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
     }
 
     if let Cow::Owned(updated_task) = task_cow {
-        println!("Replacing task {}: {:?}", task_name, updated_task);
         workspace
             .tasks
             .insert(task_name.clone(), Arc::new(updated_task));

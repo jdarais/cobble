@@ -498,7 +498,7 @@ pub fn execute_action_pcall<'lua>(
     action_context: mlua::Table<'lua>,
 ) -> mlua::Result<(bool, mlua::Value<'lua>)> {
     let invoke_action_source = include_bytes!("invoke_action.lua");
-    let invoke_action_fn: mlua::Function = lua.load(&invoke_action_source[..]).eval()?;
+    let invoke_action_fn = lua.load(&invoke_action_source[..]);
 
     let action_result: mlua::MultiValue = invoke_action_fn.call((action.clone(), action_context))?;
 
