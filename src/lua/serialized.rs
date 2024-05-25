@@ -8,20 +8,20 @@ use std::os::raw::c_void;
 use crate::lua::userdata::CobbleUserData;
 
 #[derive(Clone, Debug)]
-pub enum SerializedLuaValue {
+pub enum DetachedLuaValue {
     Nil,
     Boolean(bool),
     Integer(mlua::Integer),
     Number(mlua::Number),
     String(String),
-    Table(HashMap<SerializedLuaValue, SerializedLuaValue>, Option<HashMap<SerializedLuaValue, SerializedLuaValue>>),
+    Table(HashMap<DetachedLuaValue, DetachedLuaValue>, Option<HashMap<DetachedLuaValue, DetachedLuaValue>>),
     Function(FunctionDump),
     UserData(CobbleUserData)
 }
 
-impl SerializedLuaValue {
+impl DetachedLuaValue {
     pub fn to_json(&self) -> serde_json::Value {
-        use SerializedLuaValue::*;
+        use DetachedLuaValue::*;
         match self {
             Nil => serde_json::Value::Null,
             Boolean(b) => serde_json::Value::Bool(*b),
@@ -50,9 +50,9 @@ impl SerializedLuaValue {
     }
 }
 
-impl fmt::Display for SerializedLuaValue {
+impl fmt::Display for DetachedLuaValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SerializedLuaValue::*;
+        use DetachedLuaValue::*;
         match self {
             Nil => f.write_str("nil"),
             Boolean(val) => f.write_str(if *val { "true" } else { "false" }),
@@ -75,10 +75,10 @@ impl fmt::Display for SerializedLuaValue {
     }
 }
 
-impl Eq for SerializedLuaValue {}
-impl PartialEq for SerializedLuaValue {
+impl Eq for DetachedLuaValue {}
+impl PartialEq for DetachedLuaValue {
     fn eq(&self, other: &Self) -> bool {
-        use SerializedLuaValue::*;
+        use DetachedLuaValue::*;
         match self {
             Nil => match other {
                 Nil => true,
@@ -116,9 +116,9 @@ impl PartialEq for SerializedLuaValue {
     }
 }
 
-impl Hash for SerializedLuaValue {
+impl Hash for DetachedLuaValue {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        use SerializedLuaValue::*;
+        use DetachedLuaValue::*;
         match self {
             Nil => {
                 state.write(b"nil");
@@ -211,7 +211,7 @@ pub fn dump_function<'lua>(
     history_with_f.insert(func.to_pointer());
 
     // let upvalues = detach_value(mlua::Value::Table(f_upvalues), lua, history_with_f)?;
-    let upvalues_res: Result<Vec<SerializedLuaValue>, mlua::Error> = f_upvalues
+    let upvalues_res: Result<Vec<DetachedLuaValue>, mlua::Error> = f_upvalues
         .into_iter()
         .map(|v| detach_value(v, lua, &history_with_f))
         .collect();
@@ -252,13 +252,13 @@ pub fn detach_value<'lua>(
     value: mlua::Value<'lua>,
     lua: &'lua mlua::Lua,
     history: &HashSet<*const c_void>,
-) -> mlua::Result<SerializedLuaValue> {
+) -> mlua::Result<DetachedLuaValue> {
     match value {
-        mlua::Value::Nil => Ok(SerializedLuaValue::Nil),
-        mlua::Value::Boolean(v) => Ok(SerializedLuaValue::Boolean(v)),
-        mlua::Value::Integer(v) => Ok(SerializedLuaValue::Integer(v)),
-        mlua::Value::Number(v) => Ok(SerializedLuaValue::Number(v)),
-        mlua::Value::String(v) => Ok(SerializedLuaValue::String(String::from(v.to_str()?))),
+        mlua::Value::Nil => Ok(DetachedLuaValue::Nil),
+        mlua::Value::Boolean(v) => Ok(DetachedLuaValue::Boolean(v)),
+        mlua::Value::Integer(v) => Ok(DetachedLuaValue::Integer(v)),
+        mlua::Value::Number(v) => Ok(DetachedLuaValue::Number(v)),
+        mlua::Value::String(v) => Ok(DetachedLuaValue::String(String::from(v.to_str()?))),
         mlua::Value::Table(t) => {
             if history.contains(&t.to_pointer()) {
                 Err(mlua::Error::runtime(format!(
@@ -274,7 +274,7 @@ pub fn detach_value<'lua>(
                         let mut history_with_meta = history_with_t.clone();
                         history_with_meta.insert(metatable.to_pointer());
     
-                        let mut m: HashMap<SerializedLuaValue, SerializedLuaValue> = HashMap::new();
+                        let mut m: HashMap<DetachedLuaValue, DetachedLuaValue> = HashMap::new();
                         for pair in metatable.pairs() {
                             let (k, v): (mlua::Value, mlua::Value) = pair?;
                             let k_detached = detach_value(k, lua, &history_with_meta)?;
@@ -286,7 +286,7 @@ pub fn detach_value<'lua>(
                     None => None
                 };
 
-                let mut detached_map: HashMap<SerializedLuaValue, SerializedLuaValue> =
+                let mut detached_map: HashMap<DetachedLuaValue, DetachedLuaValue> =
                     HashMap::new();
                 for pair in t.pairs() {
                     let (k, v): (mlua::Value, mlua::Value) = pair?;
@@ -296,13 +296,13 @@ pub fn detach_value<'lua>(
                     detached_map.insert(k_detached, v_detached);
                 }
 
-                Ok(SerializedLuaValue::Table(detached_map, meta))
+                Ok(DetachedLuaValue::Table(detached_map, meta))
             }
         }
-        mlua::Value::Function(f) => Ok(SerializedLuaValue::Function(dump_function(
+        mlua::Value::Function(f) => Ok(DetachedLuaValue::Function(dump_function(
             f, lua, &history,
         )?)),
-        mlua::Value::UserData(d) => Ok(SerializedLuaValue::UserData(CobbleUserData::from_userdata(lua, d)?)),
+        mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(CobbleUserData::from_userdata(lua, d)?)),
         mlua::Value::LightUserData(d) => Err(mlua::Error::runtime(format!(
             "Cannot serialize a light user data object: {:?}",
             d
@@ -318,15 +318,15 @@ pub fn detach_value<'lua>(
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for SerializedLuaValue {
+impl<'lua> mlua::FromLua<'lua> for DetachedLuaValue {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         detach_value(value, lua, &HashSet::new())
     }
 }
 
-impl<'lua> mlua::IntoLua<'lua> for SerializedLuaValue {
+impl<'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
     fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        use SerializedLuaValue::*;
+        use DetachedLuaValue::*;
         match self {
             Nil => Ok(mlua::Value::Nil),
             Boolean(val) => Ok(mlua::Value::Boolean(val)),
@@ -356,7 +356,7 @@ impl<'lua> mlua::IntoLua<'lua> for SerializedLuaValue {
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct FunctionDump {
     pub source: Vec<u8>,
-    pub upvalues: Vec<SerializedLuaValue>,
+    pub upvalues: Vec<DetachedLuaValue>,
 }
 
 impl fmt::Display for FunctionDump {

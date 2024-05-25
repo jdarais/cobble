@@ -11,7 +11,7 @@ use crate::execute::action::{create_task_action_context, invoke_action_protected
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
-use crate::lua::serialized::SerializedLuaValue;
+use crate::lua::serialized::DetachedLuaValue;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
 use crate::workspace::{Task, Workspace};
@@ -314,7 +314,7 @@ fn execute_task_actions_and_store_result(
         cache,
         &task_result_sender,
     )?;
-    let detached_result: SerializedLuaValue = lua
+    let detached_result: DetachedLuaValue = lua
         .unpack(result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 

@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn test_shell_command() {
         let lua_env = create_lua_env(Path::new(".")).unwrap();
-        let chunk = lua_env.load("cmd({\"echo\", \"hi!\"})");
+        let chunk = lua_env.load(r#"require("cmd")({"echo", "hi!"})"#);
 
         let result: Table = chunk.eval().unwrap();
         assert_eq!(result.get::<_, i32>("status").unwrap(), 0);
