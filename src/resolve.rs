@@ -64,7 +64,18 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
 }
 
 pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameResolutionError> {
-    let full_path = PathBuf::from_iter(project_path.join(path).components());
+    let mut path_components: Vec<Component> = Vec::new();
+    let joined_path = project_path.join(path);
+    for comp in joined_path.components() {
+        match comp {
+            Component::Prefix(pre) => { path_components.push(Component::Prefix(pre)); }
+            Component::RootDir => { path_components.push(Component::RootDir); }
+            Component::CurDir => { /* skip */ }
+            Component::Normal(comp_str) => { path_components.push(Component::Normal(comp_str)); }
+            Component::ParentDir => { path_components.pop(); }
+        }
+    }
+    let full_path = PathBuf::from_iter(path_components.into_iter());
     let full_path_str_opt = full_path.into_os_string().into_string();
     match full_path_str_opt {
         Ok(full_path_str) => Ok(full_path_str.into()),

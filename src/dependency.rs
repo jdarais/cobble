@@ -157,15 +157,18 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
         resolve_names_in_dependency_list(task.project_name.as_ref(), task.dir.as_ref(), &mut deps)
             .map_err(|e| ExecutionGraphError::NameResolutionError(e))?;
         add_dependency_list_to_task(&deps, &workspace.file_providers, task_cow.to_mut());
+
         changed = true;
     }
 
     if let Cow::Owned(updated_task) = task_cow {
+        println!("Replacing task {}: {:?}", task_name, updated_task);
         workspace
             .tasks
             .insert(task_name.clone(), Arc::new(updated_task));
     }
 
+    // TODO: Extract logic for getting all task dependencies, (including file providers for file dependencies) into a shared function
     for dep in task.task_deps.values() {
         changed = changed
             || resolve_calculated_dependencies_in_subtree_once_with_history(
@@ -174,6 +177,18 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
                 visited,
                 task_executor,
             )?;
+    }
+
+    for f_dep in task.file_deps.values() {
+        if let Some(t_dep) = &f_dep.provided_by_task {
+            changed = changed
+            || resolve_calculated_dependencies_in_subtree_once_with_history(
+                t_dep,
+                workspace,
+                visited,
+                task_executor,
+            )?;
+        }
     }
 
     visited.remove(task_name);

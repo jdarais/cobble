@@ -1,5 +1,5 @@
 function(action, action_context)
-    return pcall(function()
+    return xpcall(function()
         if type(action[1]) == "function" then
             return action[1](action_context)
         elseif type(action[1]) == "userdata" then
@@ -28,5 +28,6 @@ function(action, action_context)
                 action_context.tool["cmd"](args)
             end
         end
-    end)
+    end,
+    function (msg) return msg end)
 end

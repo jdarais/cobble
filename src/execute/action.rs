@@ -31,10 +31,18 @@ pub struct ActionContextArgs<'lua> {
     pub sender: Sender<TaskJobMessage>,
 }
 
+fn get_original_error(error: &mlua::Error) -> &mlua::Error {
+    match error {
+        mlua::Error::CallbackError { traceback: _, cause } => get_original_error(cause.as_ref()),
+        mlua::Error::WithContext { context: _, cause } => get_original_error(cause.as_ref()),
+        e => e
+    }
+}
+
 fn get_error_message(val: &mlua::Value) -> String {
     match val {
         mlua::Value::String(s) => s.to_str().unwrap_or("<error reading message>").to_owned(),
-        mlua::Value::Error(e) => e.to_string(),
+        mlua::Value::Error(e) => get_original_error(&e).to_string(),
         _ => format!("{:?}", val),
     }
 }
