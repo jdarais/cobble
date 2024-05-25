@@ -487,20 +487,20 @@ mod tests {
             task_outputs: RwLock::new(HashMap::new()),
         });
 
-        let print_func: mlua::Function = lua
-            .load(r#"function (c) print("Hi!", table.unpack(c.args)) end"#)
+        let tool_func: mlua::Function = lua
+            .load(r#"function (c) assert(c.args[1] == "Test!") end"#)
             .eval()
             .unwrap();
 
-        let print_tool_name = Arc::<str>::from("print");
-        let print_tool = Arc::new(ExternalTool {
-            name: print_tool_name.clone(),
+        let tool_name = Arc::<str>::from("print");
+        let tool = Arc::new(ExternalTool {
+            name: tool_name.clone(),
             install: None,
             check: None,
             action: Action {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
-                cmd: ActionCmd::Func(dump_function(print_func, &lua, &HashSet::new()).unwrap()),
+                cmd: ActionCmd::Func(dump_function(tool_func, &lua, &HashSet::new()).unwrap()),
             },
         });
 
@@ -511,15 +511,15 @@ mod tests {
             task_type: TaskType::Task,
             dir: workspace_dir.clone(),
             project_name: Arc::<str>::from("/"),
-            tools: vec![(print_tool_name.clone(), print_tool_name.clone())]
+            tools: vec![(tool_name.clone(), tool_name.clone())]
                 .into_iter()
                 .collect(),
             actions: vec![Action {
-                tools: vec![(print_tool_name.clone(), print_tool_name.clone())]
+                tools: vec![(tool_name.clone(), tool_name.clone())]
                     .into_iter()
                     .collect(),
                 build_envs: HashMap::new(),
-                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("There!")]),
+                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")]),
             }],
             ..Default::default()
         });
@@ -529,7 +529,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             build_envs: HashMap::new(),
-            tools: vec![(print_tool_name.clone(), print_tool.clone())]
+            tools: vec![(tool_name.clone(), tool.clone())]
                 .into_iter()
                 .collect(),
             file_providers: HashMap::new(),
