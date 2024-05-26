@@ -2,8 +2,6 @@ local action, action_context = ...
 
 if type(action[1]) == "function" then
     return pcall(action[1], action_context)
-elseif type(action[1]) == "userdata" then
-    return pcall(action[1].invoke, action[1], action_context)
 else
     local tool_alias = next(action.tool)
     local env_alias = next(action.env)

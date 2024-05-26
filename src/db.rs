@@ -106,6 +106,45 @@ pub fn put_task_record(
     Ok(())
 }
 
+#[derive(Debug)]
+pub enum DeleteError {
+    DBError(lmdb::Error),
+    FileError(io::Error),
+}
+
+impl Error for DeleteError {}
+impl fmt::Display for DeleteError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use DeleteError::*;
+        match self {
+            DBError(e) => write!(f, "Database error: {}", e),
+            FileError(e) => write!(f, "File error: {}", e),
+        }
+    }
+}
+
+pub fn delete_task_record(
+    db_env: &lmdb::Environment,
+    db: lmdb::Database,
+    task_name: &str
+) -> Result<(), DeleteError> {
+    let task_key = get_task_key(task_name);
+
+    let mut tx = db_env.begin_rw_txn().map_err(|e| DeleteError::DBError(e))?;
+    let res = tx.del(db, &task_key, None);
+
+    if let Err(e) = res {
+        match e {
+            lmdb::Error::NotFound => { /* Ok */}
+            _ => { return Err(DeleteError::DBError(e)); }
+        }
+    }
+
+    tx.commit().map_err(|e| DeleteError::DBError(e))?;
+
+    Ok(())
+}
+
 pub fn new_db_env(path: &Path) -> lmdb::Result<lmdb::Environment> {
     lmdb::Environment::new()
         .set_flags(lmdb::EnvironmentFlags::NO_SUB_DIR)

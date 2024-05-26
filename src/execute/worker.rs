@@ -4,6 +4,7 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use crate::config::WorkspaceConfig;
 use crate::execute::action::init_lua_for_task_executor;
+use crate::execute::clean_task_job::execute_clean_job;
 use crate::execute::execute::{ExecutorJob, TaskExecutorCache, TaskJobMessage};
 use crate::execute::task_job::execute_task_job;
 use crate::execute::tool_check_job::execute_tool_check_job;
@@ -76,6 +77,15 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     args.cache.clone(),
                 );
             }
+            ExecutorJob::Clean(clean) => execute_clean_job(
+                &args.workspace_config,
+                &lua,
+                &args.db_env,
+                &args.db,
+                &clean,
+                args.task_result_sender.clone(),
+                &args.cache,
+            ),
             ExecutorJob::ToolCheck(tool_check) => {
                 execute_tool_check_job(
                     &args.workspace_config.workspace_dir,

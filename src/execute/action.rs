@@ -329,7 +329,7 @@ pub fn create_task_action_context<'lua>(
     )
 }
 
-fn create_action_context<'lua>(
+pub fn create_action_context<'lua>(
     lua: &'lua mlua::Lua,
     context_args: ActionContextArgs,
 ) -> mlua::Result<mlua::Table<'lua>> {

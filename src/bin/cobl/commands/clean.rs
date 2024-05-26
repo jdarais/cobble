@@ -7,7 +7,7 @@ use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
-use cobble::workspace::{create_workspace, get_clean_task_name};
+use cobble::workspace::create_workspace;
 
 pub struct CleanCommandInput {
     pub cwd: PathBuf,
@@ -33,21 +33,16 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         cwd.as_path(),
         &config.workspace_dir,
     )?;
-    let clean_tasks: Vec<Arc<str>> = selected_tasks
-        .iter()
-        .map(|s| s.as_ref())
-        .map(get_clean_task_name)
-        .collect();
 
     // Resolve calculated dependencies.  Is this needed for clean tasks, given that the only tasks they can rely on are build env tasks?
     let mut executor = TaskExecutor::new(
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
-    resolve_calculated_dependencies_in_subtrees(clean_tasks.iter(), &mut workspace, &mut executor)?;
+    resolve_calculated_dependencies_in_subtrees(selected_tasks.iter(), &mut workspace, &mut executor)?;
 
     // Execute the tasks
-    executor.execute_tasks(&workspace, clean_tasks.iter())?;
+    executor.clean_tasks(&workspace, selected_tasks.iter())?;
 
     Ok(())
 }

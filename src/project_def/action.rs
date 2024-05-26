@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::fs::remove_file;
-use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use crate::lua::detached::{dump_function, DetachedLuaValue, FunctionDump};
@@ -15,7 +13,6 @@ use crate::project_def::validate::{
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
     Func(Arc<RwLock<FunctionDump>>),
-    DeleteFiles(Vec<Arc<str>>),
 }
 
 impl fmt::Display for ActionCmd {
@@ -24,7 +21,6 @@ impl fmt::Display for ActionCmd {
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
             Func(func) => write!(f, "Func({})", func.read().unwrap()),
-            DeleteFiles(artifacts) => write!(f, "DeleteFiles({:?})", artifacts),
         }
     }
 }
@@ -271,17 +267,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new())?),
                             });
                         }
-                        mlua::Value::UserData(user_data) => {
-                            if let Ok(clean_files_action) = user_data.borrow::<DeleteFilesAction>()
-                            {
-                                return Ok(Action {
-                                    build_envs,
-                                    tools,
-                                    cmd: ActionCmd::DeleteFiles(clean_files_action.files.clone()),
-                                });
-                            }
-                        }
-                        _ => { /* not a function or userdata action */ }
+                        _ => { /* not a function action */ }
                     }
                 }
 
@@ -352,9 +338,6 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
             ActionCmd::Func(f) => {
                 action_table.push(DetachedLuaValue::Function(f))?;
             }
-            ActionCmd::DeleteFiles(files) => {
-                action_table.push(DeleteFilesAction { files })?;
-            }
         }
 
         let tools_str: HashMap<&str, &str> = tools
@@ -373,36 +356,10 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
     }
 }
 
-struct DeleteFilesAction {
-    pub files: Vec<Arc<str>>,
-}
-
-impl mlua::UserData for DeleteFilesAction {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(_fields: &mut F) {}
-
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
-        methods.add_method("invoke", |lua, this, _cxt: mlua::Table| {
-            let workspace_global: mlua::Table = lua.globals().get("WORKSPACE")?;
-            let workspace_dir: String = workspace_global.get("dir")?;
-            for file in this.files.iter() {
-                let file_path = Path::new(workspace_dir.as_str()).join(Path::new(file.as_ref()));
-                if file_path.is_file() {
-                    remove_file(&file_path).map_err(|e| {
-                        mlua::Error::runtime(format!(
-                            "Error deleting file '{}': {}",
-                            file_path.display(),
-                            e
-                        ))
-                    })?;
-                }
-            }
-            Ok(())
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     use crate::lua::lua_env::create_lua_env;

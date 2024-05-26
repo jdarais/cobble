@@ -109,7 +109,7 @@ fn get_current_task_input(
                     .join(Path::new(file_dep.path.as_ref()));
                 let file_hash = compute_file_hash(file_path.as_path()).map_err(|e| {
                     TaskExecutionError::IOError {
-                        message: format!("Error reading file {}", file_path.display()),
+                        message: format!("Task {}: Error reading file {}", task.name, file_path.display()),
                         cause: e,
                     }
                 })?;
