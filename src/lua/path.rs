@@ -1,6 +1,6 @@
 // TODO
 
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
 use glob::glob;
 
@@ -10,10 +10,11 @@ pub struct FsLib;
 
 impl UserData for FsLib {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
-        fields.add_field_function_get("SEPARATOR", get_path_separator);
+        fields.add_field_function_get("SEP", get_path_separator);
     }
 
     fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+        methods.add_function("join", path_join);
         methods.add_function("glob", glob_files);
         methods.add_function("is_dir", is_dir);
         methods.add_function("is_file", is_file);
@@ -24,6 +25,17 @@ fn get_path_separator<'lua>(_lua: &'lua Lua, _: AnyUserData<'lua>) -> mlua::Resu
     Ok(String::from(MAIN_SEPARATOR))
 }
 
+fn path_join<'lua>(_lua: &'lua Lua, components: mlua::Variadic<String>) -> mlua::Result<String> {
+    let mut path = PathBuf::new();
+    for component in components {
+        path.push(component.as_str());
+    }
+
+    match path.to_str() {
+        Some(path_str) => Ok(path_str.to_owned()),
+        None => Err(mlua::Error::runtime(format!("Unable to convert path to a string: {}", path.display())))
+    }
+}
 
 fn is_dir<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
     Ok(Path::new(path_str.as_str()).is_dir())

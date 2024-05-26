@@ -1,8 +1,7 @@
-require("tool_check_tests")
-
-local fs = require("fs")
+local path = require("path")
 local maybe = require("maybe")
 local iter = require("iter")
+local toml = require("toml")
 
 tool {
     name = "poetry",
@@ -53,8 +52,6 @@ task {
     actions = { { env = "poetry_env", "python", "-m", "black", "." } }
 }
 
-local is_dir = fs.is_dir
-
 task {
     name = "find_poetry_source_files",
     deps = { files = { "pyproject.toml" } },
@@ -74,15 +71,15 @@ task {
             local exclude_files = {}
             for i, v in ipairs(patterns) do
                 if v.include then
-                    local pattern = fs.is_dir(v.include) and (v.include .. "/**/*") or v.include
-                    iter(ipairs(fs.glob(pattern)))
+                    local pattern = path.is_dir(v.include) and (v.include .. "/**/*") or v.include
+                    iter(ipairs(path.glob(pattern)))
                         :filter(function(_, f) return not f:match("%.pyc$") end)
                         :filter(function(_, f) return not f:match("[/\\]__pycache__[/\\]") end)
                         :for_each(function(_, f) include_files[f] = f end)
                 end
                 if v.exclude then
-                    local pattern = fs.is_dir(v.exclude) and (v.exclude .. "/**/*") or v.exclude
-                    for i, f in ipairs(fs.glob(pattern)) do
+                    local pattern = path.is_dir(v.exclude) and (v.exclude .. "/**/*") or v.exclude
+                    for i, f in ipairs(path.glob(pattern)) do
                         exclude_files[f] = true
                     end 
                 end

@@ -1,6 +1,6 @@
 local VER_SUBCOMPONENT_PATTERN = "(%w*)([^%w]*)"
 
-function version_cmp(v1, v2)
+local function version_cmp(v1, v2)
     local v1_str = tostring(v1)
     local v2_str = tostring(v2)
 
@@ -66,8 +66,19 @@ local version_metatable = {
     __tostring = function(v) return v.ver end
 }
 
-function version(v)
+local function version(v)
     return setmetatable({
         ver = tostring(v)
     }, version_metatable)
 end
+
+local version_module_prototype = {
+    cmp = version_cmp
+}
+
+local version_module_metatable = {
+    __index = version_module_prototype,
+    __call = function(mod, ...) return version(...) end
+}
+
+return setmetatable({}, version_module_metatable)

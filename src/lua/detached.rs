@@ -259,7 +259,9 @@ pub fn hydrate_function_upvalues<'lua>(
         function (fn, upvalues)
             for i, v in ipairs(upvalues) do
                 local up_name, up_value = table.unpack(v);
-                if up_name ~= "_ENV" then 
+                if up_name == "_ENV" then
+                    debug.setupvalue(fn, i, _ENV)
+                else 
                     debug.setupvalue(fn, i, up_value);
                 end
             end
@@ -410,7 +412,8 @@ pub fn hydrate_value<'lua>(
                 Some(val) => Ok(val.clone()),
                 None => {
                     let f_lock = f.read().unwrap();
-                    let lua_func = lua.load(&f_lock.source).into_function()?;
+                    let lua_source_str = lua.create_string(&f_lock.source)?;
+                    let lua_func: mlua::Function = lua.load("return load(...)").call(lua_source_str)?;
                     val_map.insert(d_val_ptr, mlua::Value::Function(lua_func.clone()));
         
                     hydrate_function_upvalues(lua, lua_func.clone(), &f_lock.upvalues, val_map)?;

@@ -7,7 +7,7 @@ cobble = {
 local _require = require
 require = function (modname)
     mod, fname = _require(modname)
-    if fname then
+    if fname and fname ~= ":preload:" then
         table.insert(PROJECT.project_source_deps, cxt.strip_path_prefix(fname, cxt.ws_dir))
     end
     return mod, fname

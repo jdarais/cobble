@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::lua::json::JsonLib;
 use crate::lua::toml::TomlLib;
-use crate::lua::{cmd::CmdLib, fs::FsLib, script_dir::ScriptDirLib};
+use crate::lua::{cmd::CmdLib, path::FsLib, script_dir::ScriptDirLib};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CobbleUserData {
