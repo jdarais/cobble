@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use crate::config::WorkspaceConfig;
 use crate::db::{
@@ -314,7 +315,7 @@ fn execute_task_actions_and_store_result(
         cache,
         &task_result_sender,
     )?;
-    let detached_result: DetachedLuaValue = lua
+    let mut detached_result: DetachedLuaValue = lua
         .unpack(result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -335,6 +336,18 @@ fn execute_task_actions_and_store_result(
             }
         };
     }
+
+    // Usually, if a task runs, we'd want other tasks that depend on it to also run unless the task output or an artifact
+    // has changed.  If there's nothing to compoare against, we'll add a timestamp so that providing no output or artifacts
+    // means tasks that depend on this one will always run if this task was run
+    if let DetachedLuaValue::Nil = detached_result {
+        if artifact_file_hashes.len() == 0 {
+            let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)
+                .expect("Time since unix epoch should not be negative");
+            detached_result = DetachedLuaValue::Integer(time.as_millis() as i64);
+        }
+    }
+    
     let task_output_record = TaskOutput {
         task_output: detached_result.to_json(),
         file_hashes: artifact_file_hashes,
