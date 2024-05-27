@@ -7,14 +7,16 @@ use cobble::{config::{get_workspace_config, WorkspaceConfigArgs}, execute::execu
 
 pub struct CheckToolInput {
     pub cwd: PathBuf,
-    pub tools: Vec<String>
+    pub tools: Vec<String>,
+    pub num_threads: u8
 }
 
 
 pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
-    let CheckToolInput { cwd, tools } = input;
+    let CheckToolInput { cwd, tools, num_threads } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
+        num_threads: Some(num_threads),
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);

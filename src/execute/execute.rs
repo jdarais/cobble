@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
@@ -443,8 +444,9 @@ impl TaskExecutor {
             .filter(|t| !t.is_finished())
             .collect();
         let cur_num_worker_threads = self.worker_threads.len();
-        if cur_num_worker_threads < 5 {
-            for _ in cur_num_worker_threads..5 {
+        let des_num_worker_threads = max(1, self.workspace_config.num_threads as usize);
+        if cur_num_worker_threads < des_num_worker_threads {
+            for _ in cur_num_worker_threads..des_num_worker_threads {
                 let worker_args = TaskExecutorWorkerArgs {
                     workspace_config: self.workspace_config.clone(),
                     db_env: self.db_env.clone(),

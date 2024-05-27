@@ -17,12 +17,14 @@ pub struct WorkspaceConfig {
     pub root_projects: Vec<String>,
     pub vars: HashMap<String, TaskVar>,
     pub force_run_tasks: bool,
+    pub num_threads: u8
 }
 
 #[derive(Default)]
 pub struct WorkspaceConfigArgs {
     pub vars: Vec<String>,
     pub force_run_tasks: Option<bool>,
+    pub num_threads: Option<u8>
 }
 
 #[derive(Debug)]
@@ -95,6 +97,8 @@ pub fn parse_workspace_config(
         root_projects,
         vars,
         force_run_tasks: false,
+        num_threads: 1  // We should always at least get a default value from the
+                        // CLI arg, so set to 1 here, and expect it to be populated later
     })
 }
 
@@ -167,6 +171,10 @@ pub fn get_workspace_config(
 
     if let Some(force_run_tasks) = args.force_run_tasks {
         config.force_run_tasks = force_run_tasks;
+    }
+
+    if let Some(num_threads) = args.num_threads {
+        config.num_threads = num_threads;
     }
 
     add_cli_vars_to_workspace_config(args.vars.iter().map(String::as_str), &mut config)?;

@@ -17,6 +17,14 @@ use crate::commands::tool::{check_tool_command, CheckToolInput};
 struct Cli {
     #[command(subcommand)]
     command: Option<CoblCommand>,
+
+    /// The number of threads to use for running tasks.
+    #[arg(short, long, global(true), default_value("5"))]
+    num_threads: u8,
+
+    /// Set the value for a variable
+    #[arg(short, long, value_names(["VAR=VALUE"]), global(true), action=clap::ArgAction::Append)]
+    var: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -28,10 +36,6 @@ enum CoblCommand {
     Run {
         /// If not provided, run all tasks in the project
         tasks: Vec<String>,
-
-        /// Set the value for a variable
-        #[arg(short, long, value_names(["VAR=VALUE"]), action=clap::ArgAction::Append)]
-        var: Vec<String>,
 
         /// Run tasks even if they are up-to-date
         #[arg(short, long)]
@@ -85,18 +89,18 @@ fn main() -> ExitCode {
             }),
             CoblCommand::Run {
                 tasks,
-                var,
                 force_run_tasks,
             } => run_command(RunCommandInput {
                 cwd,
                 tasks,
-                vars: var,
+                vars: args.var,
                 force_run_tasks,
+                num_threads: args.num_threads
             }),
-            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks }),
+            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks, num_threads: args.num_threads }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
                 ToolCommand::Check { names } => {
-                    check_tool_command(CheckToolInput { cwd, tools: names })
+                    check_tool_command(CheckToolInput { cwd, tools: names, num_threads: args.num_threads })
                 }
             },
         },

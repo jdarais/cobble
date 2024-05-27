@@ -2,7 +2,7 @@ use std::env::set_current_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cobble::config::get_workspace_config;
+use cobble::config::{get_workspace_config, WorkspaceConfigArgs};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
@@ -12,12 +12,17 @@ use cobble::workspace::create_workspace;
 pub struct CleanCommandInput {
     pub cwd: PathBuf,
     pub tasks: Vec<String>,
+    pub num_threads: u8
 }
 
 pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
-    let CleanCommandInput { cwd, tasks } = input;
+    let CleanCommandInput { cwd, tasks, num_threads } = input;
 
-    let config = Arc::new(get_workspace_config(cwd.as_path(), &Default::default())?);
+    let ws_config_args = WorkspaceConfigArgs {
+        num_threads: Some(num_threads),
+        ..Default::default()
+    };
+    let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 

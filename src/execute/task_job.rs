@@ -484,6 +484,7 @@ mod tests {
             root_projects: vec![String::from(".")],
             vars: HashMap::new(),
             force_run_tasks: false,
+            num_threads: 1
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
