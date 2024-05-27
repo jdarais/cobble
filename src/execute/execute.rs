@@ -8,9 +8,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 
-use crate::concurrent_io::ConcurrentIO;
 use crate::config::WorkspaceConfig;
 use crate::db::{new_db_env, DeleteError, GetError, PutError};
+use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
 use crate::project_def::ExternalTool;
 use crate::vars::VarLookupError;
@@ -47,6 +47,7 @@ pub struct ToolCheckJob {
 
 #[derive(Debug)]
 pub enum TaskJobMessage {
+    Started { task: Arc<str>, stdin_sender: Sender<String> },
     Stdout { task: Arc<str>, s: String },
     Stderr { task: Arc<str>, s: String },
     Complete { task: Arc<str>, result: TaskResult },
@@ -563,7 +564,7 @@ impl TaskExecutor {
             let job = remaining_jobs.remove(task_name).expect(
                 "indexing into HashMap using a key just read from the HashMap should not fail",
             );
-            self.push_task_job(task_name, job, &mut in_progress_jobs, &mut concurrent_io)?;
+            self.push_task_job(task_name, job, &mut in_progress_jobs)?;
         }
 
         while completed_jobs.len() < total_jobs {
@@ -574,6 +575,9 @@ impl TaskExecutor {
             })?;
 
             match message {
+                TaskJobMessage::Started { task, stdin_sender: _ } => {
+                    concurrent_io.job_started(&task);
+                }
                 TaskJobMessage::Stdout { task, s } => {
                     concurrent_io.print_stdout(&task, s);
                 }
@@ -583,20 +587,12 @@ impl TaskExecutor {
                 TaskJobMessage::Complete { task, result } => {
                     completed_jobs.insert(task.clone());
                     in_progress_jobs.remove(task.as_ref());
-                    match result {
-                        TaskResult::UpToDate => {
-                            concurrent_io.print_stdout(&task, format!("{} is up to date\n", task));
-                        }
-                        TaskResult::Success => {
-                            concurrent_io.print_stdout(&task, format!("{} succeeded\n", task));
-                        }
-                        TaskResult::Error(e) => {
-                            concurrent_io.print_stdout(&task, format!("{} failed\n", task));
-                            return Err(e);
-                        }
-                    }
 
-                    concurrent_io.finish_key(&task);
+                    concurrent_io.job_completed(&task, &result);
+
+                    if let TaskResult::Error(e) = result {
+                        return Err(e);
+                    }
 
                     let node_rev_dep_edges_opt = rev_dep_edges.get(&task);
                     if let Some(node_rev_dep_edges) = node_rev_dep_edges_opt {
@@ -616,7 +612,6 @@ impl TaskExecutor {
                                     fwd_job_id,
                                     job,
                                     &mut in_progress_jobs,
-                                    &mut concurrent_io,
                                 )?;
                             }
                         }
@@ -633,9 +628,7 @@ impl TaskExecutor {
         task_id: &Arc<str>,
         task_job: ExecutorJob,
         in_progress_jobs: &mut HashSet<Arc<str>>,
-        concurrent_io: &mut ConcurrentIO,
     ) -> Result<(), TaskExecutionError> {
-        concurrent_io.print_stdout(task_id, format!("Starting {}\n", task_id));
         let (task_queue_mutex, task_queue_cvar) = &*self.job_queue;
         {
             in_progress_jobs.insert(task_id.clone());

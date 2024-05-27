@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use crate::config::WorkspaceConfig;
@@ -65,8 +65,14 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
             }
         };
 
+        let (tx, _rx) = channel::<String>();
+
         match next_task {
             ExecutorJob::Task(task) => {
+                args.task_result_sender.send(TaskJobMessage::Started {
+                    task: task.task_name.clone(),
+                    stdin_sender: tx
+                }).unwrap();
                 execute_task_job(
                     &args.workspace_config,
                     &lua,
@@ -77,16 +83,26 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     args.cache.clone(),
                 );
             }
-            ExecutorJob::Clean(clean) => execute_clean_job(
-                &args.workspace_config,
-                &lua,
-                &args.db_env,
-                &args.db,
-                &clean,
-                args.task_result_sender.clone(),
-                &args.cache,
-            ),
+            ExecutorJob::Clean(clean) => {
+                args.task_result_sender.send(TaskJobMessage::Started {
+                    task: clean.job_id.clone(),
+                    stdin_sender: tx
+                }).unwrap();
+                execute_clean_job(
+                    &args.workspace_config,
+                    &lua,
+                    &args.db_env,
+                    &args.db,
+                    &clean,
+                    args.task_result_sender.clone(),
+                    &args.cache,
+                );
+            }
             ExecutorJob::ToolCheck(tool_check) => {
+                args.task_result_sender.send(TaskJobMessage::Started {
+                    task: tool_check.job_id.clone(),
+                    stdin_sender: tx
+                }).unwrap();
                 execute_tool_check_job(
                     &args.workspace_config.workspace_dir,
                     &lua,
