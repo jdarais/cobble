@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{Arc, Condvar, Mutex}};
 
 use crate::execute::execute::TaskResult;
 
@@ -15,9 +15,9 @@ enum TrackedJobState {
 }
 
 struct TrackedJob {
-    job_id: Arc<str>,
     job_state: TrackedJobState,
-    buffer: Vec<Output>
+    buffer: Vec<Output>,
+    stdin_ready: Arc<(Mutex<bool>, Condvar)>
 }
 
 pub struct ConcurrentIO {
@@ -33,11 +33,11 @@ impl ConcurrentIO {
         }
     }
 
-    pub fn job_started(&mut self, job_id: &Arc<str>) {
+    pub fn job_started(&mut self, job_id: &Arc<str>, stdin_ready: Arc<(Mutex<bool>, Condvar)>) {
         self.jobs.insert(job_id.clone(), TrackedJob {
-            job_id: job_id.clone(),
             job_state: TrackedJobState::InProgress,
-            buffer: Vec::new()
+            buffer: Vec::new(),
+            stdin_ready
         });
         self.print_stdout(&job_id, format!("Starting {}\n", job_id));
         self.update_active_job();
@@ -46,10 +46,7 @@ impl ConcurrentIO {
     pub fn print_stdout(&mut self, job_id: &Arc<str>, text: String) {
         let is_active = match &self.active_job {
             Some(active_job_id) => active_job_id == job_id,
-            None => {
-                self.active_job = Some(job_id.clone());
-                true
-            }
+            None => false
         };
         
         if is_active {
@@ -69,10 +66,7 @@ impl ConcurrentIO {
     pub fn print_stderr(&mut self, job_id: &Arc<str>, text: String) {
         let is_active = match &self.active_job {
             Some(active_job_id) => active_job_id == job_id,
-            None => {
-                self.active_job = Some(job_id.clone());
-                true
-            }
+            None => false
         };
         
         if is_active {
@@ -120,6 +114,8 @@ impl ConcurrentIO {
                     Some(job_state) => {
                         match job_state {
                             TrackedJobState::Complete | TrackedJobState::Closed => {
+                                println!("Finishing job {}", active_job);
+
                                 self.flush_buffer(&active_job);
                                 self.jobs.get_mut(&active_job).unwrap().job_state = TrackedJobState::Closed;
                                 self.active_job = None;
@@ -145,6 +141,11 @@ impl ConcurrentIO {
                 }
                 if let Some(id) = new_active_job_id {
                     self.flush_buffer(&id);
+
+                    let (ready_lock, ready_condvar) = &*self.jobs.get(&id).unwrap().stdin_ready;
+                    *ready_lock.lock().unwrap() = true;
+                    ready_condvar.notify_all();
+
                     self.active_job = Some(id);
                     self.update_active_job();
                 }

@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
@@ -34,6 +34,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     let mut cwd: Option<PathBuf> = None;
     let mut out_func: Option<Function> = None;
     let mut err_func: Option<Function> = None;
+    let mut wait_for_io_func: Option<Function> = None;
 
     for pair in args.pairs() {
         let (k, v): (Value, Value) = pair?;
@@ -63,6 +64,9 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     }
                     "err" => {
                         err_func = Some(lua.unpack(v)?);
+                    }
+                    "wait_for_io" => {
+                        wait_for_io_func = Some(lua.unpack(v)?);
                     }
                     _ => {
                         return Err(Error::runtime(format!(
@@ -97,6 +101,14 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
         cmd.current_dir(d);
     }
 
+    if let Some(wait_for_io) = wait_for_io_func {
+        println!("Attaching stdin");
+        wait_for_io.call(())?;
+        cmd.stdin(Stdio::inherit());
+    } else {
+        cmd.stdin(Stdio::null());
+    }
+
     let child_res = cmd.spawn();
 
     match child_res {
@@ -105,20 +117,30 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
             let (tx, rx) = channel();
 
             let stdout_tx = tx.clone();
-            let stdout = child.stdout.take().unwrap();
+            let mut stdout = child.stdout.take().unwrap();
             let stdout_thread = thread::spawn(move || {
-                let mut buf = String::with_capacity(256);
-                let mut reader = BufReader::new(stdout);
+                let mut buf: Vec<u8> = Vec::with_capacity(256);
+                buf.resize(256, 0);
+                let mut start_from = 0usize;
                 loop {
-                    let res = reader.read_line(&mut buf);
+                    let res = stdout.read(&mut buf[start_from..]);
                     match res {
                         Ok(bytes_read) => {
                             if bytes_read == 0 {
                                 break;
                             }
-                            let out = buf.clone();
-                            buf.clear();
-                            stdout_tx.send(ChildMessage::Stdout(out)).unwrap();
+                            match std::str::from_utf8(&buf[start_from..(start_from+bytes_read)]) {
+                                Ok(out) => {
+                                    stdout_tx.send(ChildMessage::Stdout(String::from(out))).unwrap();
+                                    start_from = 0;
+                                },
+                                Err(_) => {
+                                    start_from = start_from + bytes_read;
+                                    if start_from >= buf.len() {
+                                        buf.resize(buf.len()*2, 0);
+                                    }
+                                }
+                            }
                         }
                         Err(_) => {
                             break;
@@ -129,20 +151,30 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
             });
 
             let stderr_tx = tx.clone();
-            let stderr = child.stderr.take().unwrap();
+            let mut stderr = child.stderr.take().unwrap();
             let stderr_thread = thread::spawn(move || {
-                let mut buf = String::with_capacity(256);
-                let mut reader = BufReader::new(stderr);
+                let mut buf: Vec<u8> = Vec::with_capacity(256);
+                buf.resize(256, 0);
+                let mut start_from = 0usize;
                 loop {
-                    let res = reader.read_line(&mut buf);
+                    let res = stderr.read(&mut buf);
                     match res {
                         Ok(bytes_read) => {
                             if bytes_read == 0 {
                                 break;
                             }
-                            let err = buf.clone();
-                            buf.clear();
-                            stderr_tx.send(ChildMessage::Stderr(err)).unwrap();
+                            match std::str::from_utf8(&buf[start_from..(start_from+bytes_read)]) {
+                                Ok(err) => {
+                                    stderr_tx.send(ChildMessage::Stderr(String::from(err))).unwrap();
+                                    start_from = 0;
+                                },
+                                Err(_) => {
+                                    start_from = start_from + bytes_read;
+                                    if start_from >= buf.len() {
+                                        buf.resize(buf.len()*2, 0);
+                                    }
+                                }
+                            }
                         }
                         Err(_) => {
                             break;

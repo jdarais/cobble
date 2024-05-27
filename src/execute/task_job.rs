@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
 
 use crate::config::WorkspaceConfig;
@@ -26,6 +26,7 @@ fn execute_task_actions<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
+    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
     let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
@@ -40,6 +41,7 @@ fn execute_task_actions<'lua>(
             db,
             cache,
             sender,
+            stdin_ready
         );
         let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -302,6 +304,7 @@ fn execute_task_actions_and_store_result(
     db: &lmdb::Database,
     task: &TaskJob,
     task_result_sender: &Sender<TaskJobMessage>,
+    stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     cache: &Arc<TaskExecutorCache>,
     current_task_input: TaskInput,
 ) -> Result<(), TaskExecutionError> {
@@ -314,6 +317,7 @@ fn execute_task_actions_and_store_result(
         db,
         cache,
         &task_result_sender,
+        stdin_ready
     )?;
     let mut detached_result: DetachedLuaValue = lua
         .unpack(result)
@@ -373,7 +377,8 @@ pub fn execute_task_job(
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     task: &TaskJob,
-    task_result_sender: Sender<TaskJobMessage>,
+    task_result_sender: &Sender<TaskJobMessage>,
+    stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     cache: Arc<TaskExecutorCache>,
 ) {
     if cache
@@ -437,7 +442,8 @@ pub fn execute_task_job(
         db_env,
         db,
         task,
-        &task_result_sender,
+        task_result_sender,
+        stdin_ready,
         &cache,
         current_task_input,
     );
@@ -532,7 +538,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                 build_envs: HashMap::new(),
-                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")]),
+                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")], HashMap::new()),
             }],
             ..Default::default()
         });
@@ -554,13 +560,16 @@ mod tests {
             task: task.clone(),
         };
 
+        let stdin_ready = Arc::new((Mutex::new(true), Condvar::new()));
+
         execute_task_job(
             &workspace_config,
             &lua,
             &db_env,
             &db,
             &task_job,
-            tx.clone(),
+            &tx,
+            &stdin_ready,
             cache.clone(),
         );
 

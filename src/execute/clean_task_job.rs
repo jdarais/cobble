@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc}};
+use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc, Condvar, Mutex}};
 
 use crate::{config::WorkspaceConfig, db::delete_task_record, execute::{action::{create_action_context, invoke_action_protected, ActionContextArgs}, execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult}}, project_def::types::TaskVar, vars::get_var};
 
@@ -9,7 +9,8 @@ fn execute_clean_actions(
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
-    sender: &Sender<TaskJobMessage>
+    sender: &Sender<TaskJobMessage>,
+    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> Result<(), TaskExecutionError> {
     let mut vars: HashMap<String, TaskVar> = workspace_config.vars.clone();
     for (var_alias, var_name) in &job.task.var_deps {
@@ -38,8 +39,8 @@ fn execute_clean_actions(
                 db_env: db_env.clone(),
                 db: db.clone(),
                 cache: cache.clone(),
-                sender: sender.clone()
-
+                sender: sender.clone(),
+                stdin_ready: stdin_ready.clone()
             }
         ).map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -73,10 +74,11 @@ pub fn execute_clean_job(
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     job: &CleanJob,
-    task_result_sender: Sender<TaskJobMessage>,
+    task_result_sender: &Sender<TaskJobMessage>,
+    stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     cache: &Arc<TaskExecutorCache>,
 ) {
-    let result = execute_clean_actions(lua, job, workspace_config, db_env, db, cache, &task_result_sender);
+    let result = execute_clean_actions(lua, job, workspace_config, db_env, db, cache, &task_result_sender, stdin_ready);
 
     match result {
         Ok(_) => {

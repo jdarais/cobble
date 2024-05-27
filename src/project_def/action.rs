@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use crate::lua::detached::{dump_function, DetachedLuaValue, FunctionDump};
+use crate::lua::detached::{detach_value, dump_function, hydrate_value, DetachedLuaValue, FunctionDump};
 use crate::project_def::validate::{
-    key_validation_error, prop_path_string, push_prop_name_if_exists, validate_is_string,
+    prop_path_string, push_prop_name_if_exists, validate_is_string,
     validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
 };
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
-    Cmd(Vec<Arc<str>>),
+    Cmd(Vec<Arc<str>>, HashMap<Arc<str>, DetachedLuaValue>),
     Func(Arc<RwLock<FunctionDump>>),
 }
 
@@ -19,7 +19,7 @@ impl fmt::Display for ActionCmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ActionCmd::*;
         match self {
-            Cmd(args) => write!(f, "Cmd({})", args.join(",")),
+            Cmd(args, kwargs) => write!(f, "Cmd({}, {:?})", args.join(","), kwargs),
             Func(func) => write!(f, "Func({})", func.read().unwrap()),
         }
     }
@@ -110,11 +110,7 @@ pub fn validate_action<'lua>(
                             Some(Cow::Borrowed("env")),
                             prop_path.as_mut(),
                         ),
-                        unknown_key => key_validation_error(
-                            unknown_key,
-                            vec!["tool", "env"],
-                            prop_path.as_mut(),
-                        ),
+                        _ => Ok(()),
                     },
                     _ => Err(mlua::Error::runtime(format!(
                         "Expected a string or integer index, but got a {}: {:?}",
@@ -194,57 +190,67 @@ impl<'lua> mlua::FromLua<'lua> for Action {
     ) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
-                let build_env_val: mlua::Value = tbl.get("env")?;
                 let mut build_envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                match build_env_val {
-                    mlua::Value::String(s) => {
-                        let build_env_name = Arc::<str>::from(s.to_str()?);
-                        build_envs.insert(build_env_name.clone(), build_env_name);
-                    }
-                    mlua::Value::Table(build_env_tbl) => {
-                        for pair in build_env_tbl.pairs() {
-                            let (k_val, v_str): (mlua::Value, String) = pair?;
-                            let v = Arc::<str>::from(v_str);
-                            let k = match k_val {
-                                mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
-                                _ => v.clone(),
-                            };
-                            build_envs.insert(k, v);
-                        }
-                    }
-                    mlua::Value::Nil => { /* no build envs to add */ }
-                    _ => {
-                        return Err(mlua::Error::runtime(format!(
-                            "Invalid value for 'env' property: {:?}",
-                            build_env_val
-                        )));
-                    }
-                }
-
-                let tool_val: mlua::Value = tbl.get("tool")?;
                 let mut tools: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                match tool_val {
-                    mlua::Value::String(s) => {
-                        let tool_name = Arc::<str>::from(s.to_str()?);
-                        tools.insert(tool_name.clone(), tool_name);
-                    }
-                    mlua::Value::Table(tool_tbl) => {
-                        for pair in tool_tbl.pairs() {
-                            let (k_val, v_str): (mlua::Value, String) = pair?;
-                            let v = Arc::<str>::from(v_str);
-                            let k = match k_val {
-                                mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
-                                _ => v.clone(),
-                            };
-                            tools.insert(k, v);
+                let mut kwargs: HashMap<Arc<str>, DetachedLuaValue> = HashMap::new();
+
+                for pair in tbl.clone().pairs() {
+                    let (k, v): (mlua::Value, mlua::Value) = pair?;
+                    if let mlua::Value::String(s) = k {
+                        match s.to_str()? {
+                            "env" => match v {
+                                mlua::Value::String(s) => {
+                                    let build_env_name = Arc::<str>::from(s.to_str()?);
+                                    build_envs.insert(build_env_name.clone(), build_env_name);
+                                }
+                                mlua::Value::Table(build_env_tbl) => {
+                                    for pair in build_env_tbl.pairs() {
+                                        let (k_val, v_str): (mlua::Value, String) = pair?;
+                                        let v = Arc::<str>::from(v_str);
+                                        let k = match k_val {
+                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
+                                            _ => v.clone(),
+                                        };
+                                        build_envs.insert(k, v);
+                                    }
+                                }
+                                mlua::Value::Nil => { /* no build envs to add */ }
+                                _ => {
+                                    return Err(mlua::Error::runtime(format!(
+                                        "Invalid value for 'env' property: {:?}",
+                                        v
+                                    )));
+                                }
+                            },
+                            "tool" => match v {
+                                mlua::Value::String(s) => {
+                                    let tool_name = Arc::<str>::from(s.to_str()?);
+                                    tools.insert(tool_name.clone(), tool_name);
+                                }
+                                mlua::Value::Table(tool_tbl) => {
+                                    for pair in tool_tbl.pairs() {
+                                        let (k_val, v_str): (mlua::Value, String) = pair?;
+                                        let v = Arc::<str>::from(v_str);
+                                        let k = match k_val {
+                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
+                                            _ => v.clone(),
+                                        };
+                                        tools.insert(k, v);
+                                    }
+                                }
+                                mlua::Value::Nil => { /* no tools to add */ }
+                                _ => {
+                                    return Err(mlua::Error::runtime(format!(
+                                        "Invalid value for 'tool' property: {:?}",
+                                        v
+                                    )))
+                                }
+                            },
+                            kwarg => {
+                                let detached_v = detach_value(lua, v, &mut HashMap::new())?;
+                                kwargs.insert(Arc::<str>::from(kwarg.to_owned()), detached_v);
+                            }
                         }
-                    }
-                    mlua::Value::Nil => { /* no tools to add */ }
-                    _ => {
-                        return Err(mlua::Error::runtime(format!(
-                            "Invalid value for 'tool' property: {:?}",
-                            tool_val
-                        )))
                     }
                 }
 
@@ -291,7 +297,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 Ok(Action {
                     build_envs,
                     tools,
-                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect()),
+                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect(), kwargs),
                 })
             }
             mlua::Value::Function(func) => {
@@ -324,7 +330,7 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
         let action_table = lua.create_table()?;
 
         match cmd {
-            ActionCmd::Cmd(args) => {
+            ActionCmd::Cmd(args, kwargs) => {
                 if build_envs.len() + tools.len() > 1 {
                     return Err(mlua::Error::runtime(
                         "Can only use one build_env or tool with an argument list action",
@@ -333,6 +339,10 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
 
                 for arg in args {
                     action_table.push(arg.as_ref())?;
+                }
+
+                for (k, v) in kwargs {
+                    action_table.set(k.as_ref(), hydrate_value(lua, &v, &mut HashMap::new())?)?;
                 }
             }
             ActionCmd::Func(f) => {
@@ -374,7 +384,7 @@ mod tests {
         validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
-            ActionCmd::Cmd(_) => { /* OK */ }
+            ActionCmd::Cmd(_, _) => { /* OK */ }
             cmd => {
                 panic!("Expected an ActionCmd::Cmd, but got {:?}", cmd);
             }

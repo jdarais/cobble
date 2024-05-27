@@ -2,6 +2,7 @@ local path = require("path")
 local maybe = require("maybe")
 local iter = require("iter")
 local toml = require("toml")
+local tblext = require("tblext")
 
 tool {
     name = "poetry",
@@ -26,6 +27,12 @@ task {
     deps = { files = { "pyproject.toml" } },
     artifacts = { "poetry.lock" },
     actions = { { tool = "poetry", "lock", "--no-update" } },
+}
+
+task {
+    name = "shell",
+    always_run = true,
+    actions = { { env = "poetry_env", interactive = true, "python" } }
 }
 
 task {

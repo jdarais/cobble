@@ -47,7 +47,7 @@ pub struct ToolCheckJob {
 
 #[derive(Debug)]
 pub enum TaskJobMessage {
-    Started { task: Arc<str>, stdin_sender: Sender<String> },
+    Started { task: Arc<str>, stdin_ready: Arc<(Mutex<bool>, Condvar)> },
     Stdout { task: Arc<str>, s: String },
     Stderr { task: Arc<str>, s: String },
     Complete { task: Arc<str>, result: TaskResult },
@@ -575,8 +575,8 @@ impl TaskExecutor {
             })?;
 
             match message {
-                TaskJobMessage::Started { task, stdin_sender: _ } => {
-                    concurrent_io.job_started(&task);
+                TaskJobMessage::Started { task, stdin_ready } => {
+                    concurrent_io.job_started(&task, stdin_ready);
                 }
                 TaskJobMessage::Stdout { task, s } => {
                     concurrent_io.print_stdout(&task, s);

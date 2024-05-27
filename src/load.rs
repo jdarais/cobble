@@ -158,7 +158,8 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     let cmd_tool_action_func: mlua::Function = lua.load(r#"
         function (c)
             local cmd = require("cmd")
-            local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, table.unpack(c.args) }
+            local wait_for_io = (c.args.interactive and c.wait_for_io) or nil
+            local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, wait_for_io = wait_for_io, table.unpack(c.args) }
 
             if result.status ~= 0 then
                 error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
