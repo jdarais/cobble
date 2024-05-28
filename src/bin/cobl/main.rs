@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use cobble::config::get_workspace_config;
+use cobble::config::{get_workspace_config, DEFAULT_NUM_THREADS};
 use cobble::load::load_projects;
 
 use crate::commands::clean::{clean_command, CleanCommandInput};
@@ -13,38 +13,48 @@ use crate::commands::list::{list_command, ListCommandInput};
 use crate::commands::run::{run_command, RunCommandInput};
 use crate::commands::tool::{check_tool_command, CheckToolInput};
 
+const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
     command: Option<CoblCommand>,
 
-    /// The number of threads to use for running tasks.
-    #[arg(short, long, global(true), default_value("5"))]
-    num_threads: u8,
+    #[arg(help = format!("The number of threads to use for running tasks. (Default: {})", DEFAULT_NUM_THREADS))]
+    #[arg(short, long, global(true), value_name("N"))]
+    num_threads: Option<u8>,
 
     /// Set the value for a variable
     #[arg(short, long, value_names(["VAR=VALUE"]), global(true), action=clap::ArgAction::Append)]
     var: Vec<String>,
+
+    /// Display the version of this application and exit
+    #[arg(long)]
+    version: bool
 }
 
 #[derive(Subcommand)]
 enum CoblCommand {
+    /// List available tasks
     List {
         /// If provided, display only the matched tasks
         tasks: Vec<String>,
     },
+    /// Run tasks
     Run {
         /// If not provided, run all tasks in the project
         tasks: Vec<String>,
 
         /// Run tasks even if they are up-to-date
         #[arg(short, long)]
-        force_run_tasks: bool,
+        force: bool,
     },
+    /// Clean tasks
     Clean {
         /// If not provided, cleans all default tasks, (dependencies are excluded)
         tasks: Vec<String>,
     },
+    /// Interact with tools defined in the workspace
     Tool {
         #[command(subcommand)]
         tool_cmd: ToolCommand,
@@ -79,6 +89,11 @@ fn run_from_dir(path: &Path) -> anyhow::Result<()> {
 fn main() -> ExitCode {
     let args = Cli::parse();
 
+    if args.version {
+        println!("{}", VERSION);
+        return ExitCode::from(0);
+    }
+
     let cwd = std::env::current_dir().expect("was run from a directory");
 
     let result = match args.command {
@@ -89,12 +104,12 @@ fn main() -> ExitCode {
             }),
             CoblCommand::Run {
                 tasks,
-                force_run_tasks,
+                force,
             } => run_command(RunCommandInput {
                 cwd,
                 tasks,
                 vars: args.var,
-                force_run_tasks,
+                force_run_tasks: force,
                 num_threads: args.num_threads
             }),
             CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks, num_threads: args.num_threads }),

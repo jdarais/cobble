@@ -532,6 +532,7 @@ mod tests {
             action: Action {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
+                kwargs: HashMap::new(),
                 cmd: ActionCmd::Func(dump_function(&lua, tool_func, &mut HashMap::new()).unwrap()),
             },
         });
@@ -551,7 +552,8 @@ mod tests {
                     .into_iter()
                     .collect(),
                 build_envs: HashMap::new(),
-                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")], HashMap::new()),
+                kwargs: HashMap::new(),
+                cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")]),
             }],
             ..Default::default()
         });

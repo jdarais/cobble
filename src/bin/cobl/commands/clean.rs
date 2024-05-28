@@ -12,14 +12,14 @@ use cobble::workspace::create_workspace;
 pub struct CleanCommandInput {
     pub cwd: PathBuf,
     pub tasks: Vec<String>,
-    pub num_threads: u8
+    pub num_threads: Option<u8>
 }
 
 pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
     let CleanCommandInput { cwd, tasks, num_threads } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
-        num_threads: Some(num_threads),
+        num_threads: num_threads,
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);

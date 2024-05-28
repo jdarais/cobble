@@ -11,7 +11,7 @@ use crate::project_def::validate::{
 
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
-    Cmd(Vec<Arc<str>>, HashMap<Arc<str>, DetachedLuaValue>),
+    Cmd(Vec<Arc<str>>),
     Func(Arc<RwLock<FunctionDump>>),
 }
 
@@ -19,7 +19,7 @@ impl fmt::Display for ActionCmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ActionCmd::*;
         match self {
-            Cmd(args, kwargs) => write!(f, "Cmd({}, {:?})", args.join(","), kwargs),
+            Cmd(args) => write!(f, "Cmd({})", args.join(",")),
             Func(func) => write!(f, "Func({})", func.read().unwrap()),
         }
     }
@@ -29,6 +29,7 @@ impl fmt::Display for ActionCmd {
 pub struct Action {
     pub tools: HashMap<Arc<str>, Arc<str>>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
+    pub kwargs: HashMap<Arc<str>, DetachedLuaValue>,
     pub cmd: ActionCmd,
 }
 
@@ -270,6 +271,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                             return Ok(Action {
                                 build_envs,
                                 tools,
+                                kwargs,
                                 cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new())?),
                             });
                         }
@@ -297,7 +299,8 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 Ok(Action {
                     build_envs,
                     tools,
-                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect(), kwargs),
+                    kwargs,
+                    cmd: ActionCmd::Cmd(args.into_iter().map(|s| Arc::<str>::from(s)).collect()),
                 })
             }
             mlua::Value::Function(func) => {
@@ -309,6 +312,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                     tools: vec![(cmd_tool_name.clone(), cmd_tool_name)]
                         .into_iter()
                         .collect(),
+                    kwargs: HashMap::new(),
                     cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new())?),
                 })
             }
@@ -324,13 +328,14 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
         let Action {
             build_envs,
             tools,
+            kwargs,
             cmd,
         } = self;
 
         let action_table = lua.create_table()?;
 
         match cmd {
-            ActionCmd::Cmd(args, kwargs) => {
+            ActionCmd::Cmd(args) => {
                 if build_envs.len() + tools.len() > 1 {
                     return Err(mlua::Error::runtime(
                         "Can only use one build_env or tool with an argument list action",
@@ -340,14 +345,14 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
                 for arg in args {
                     action_table.push(arg.as_ref())?;
                 }
-
-                for (k, v) in kwargs {
-                    action_table.set(k.as_ref(), hydrate_value(lua, &v, &mut HashMap::new())?)?;
-                }
             }
             ActionCmd::Func(f) => {
                 action_table.push(DetachedLuaValue::Function(f))?;
             }
+        }
+
+        for (k, v) in kwargs {
+            action_table.set(k.as_ref(), hydrate_value(lua, &v, &mut HashMap::new())?)?;
         }
 
         let tools_str: HashMap<&str, &str> = tools
@@ -384,7 +389,7 @@ mod tests {
         validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
-            ActionCmd::Cmd(_, _) => { /* OK */ }
+            ActionCmd::Cmd(_) => { /* OK */ }
             cmd => {
                 panic!("Expected an ActionCmd::Cmd, but got {:?}", cmd);
             }

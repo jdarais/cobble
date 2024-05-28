@@ -11,6 +11,8 @@ use crate::vars::{set_var, VarLookupError};
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
 pub const PROJECT_FILE_NAME: &str = "project.lua";
 
+pub const DEFAULT_NUM_THREADS: u8 = 5;
+
 #[derive(Debug)]
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
@@ -60,6 +62,7 @@ pub fn parse_workspace_config(
         .parse()
         .map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
 
+    // Root Projects
     let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
     let root_projects: Vec<String> = match root_projects_opt {
         None => vec![String::from(".")],
@@ -68,6 +71,14 @@ pub fn parse_workspace_config(
             .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'root_projects': {}", e)))?,
     };
 
+    // Num Threads
+    let num_threads_opt: Option<toml::Value> = config.remove("num_threads");
+    let num_threads: u8 = match num_threads_opt {
+        Some(val) => val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'num_threads': {}", e)))?,
+        None => DEFAULT_NUM_THREADS
+    };
+
+    // Vars
     let mut vars: HashMap<String, TaskVar> = HashMap::new();
     let vars_val: toml::Value = config
         .remove("vars")
@@ -97,8 +108,7 @@ pub fn parse_workspace_config(
         root_projects,
         vars,
         force_run_tasks: false,
-        num_threads: 1  // We should always at least get a default value from the
-                        // CLI arg, so set to 1 here, and expect it to be populated later
+        num_threads
     })
 }
 

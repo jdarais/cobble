@@ -1,5 +1,5 @@
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 use std::{collections::HashMap, path::Path};
 
 use crate::execute::action::{create_tool_action_context, invoke_action_protected};

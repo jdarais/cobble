@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc, Condvar, Mutex}};
+use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc}};
 
 use crate::{config::WorkspaceConfig, db::delete_task_record, execute::{action::{create_action_context, invoke_action_protected, ActionContextArgs}, execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult}}, project_def::types::TaskVar, vars::get_var};
 

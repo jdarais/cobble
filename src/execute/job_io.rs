@@ -39,7 +39,7 @@ impl ConcurrentIO {
             buffer: Vec::new(),
             stdin_ready
         });
-        self.print_stdout(&job_id, format!("Starting {}\n", job_id));
+        self.print_stdout(&job_id, format!("[v--v] {} started\n", job_id));
         self.update_active_job();
     }
 
@@ -86,13 +86,13 @@ impl ConcurrentIO {
     pub fn job_completed(&mut self, job_id: &Arc<str>, task_result: &TaskResult) {
         match task_result {
             TaskResult::UpToDate => {
-                self.print_stdout(&job_id, format!("{} is up to date\n", job_id));
+                self.print_stdout(&job_id, format!("[ UP ] {} is up to date\n", job_id));
             }
             TaskResult::Success => {
-                self.print_stdout(&job_id, format!("{} succeeded\n", job_id));
+                self.print_stdout(&job_id, format!("[ OK ] {} succeeded\n", job_id));
             }
             TaskResult::Error(e) => {
-                self.print_stdout(&job_id, format!("{} failed: {}\n", job_id, e));
+                self.print_stdout(&job_id, format!("[FAIL] {} failed: {}\n", job_id, e));
             }
         }
 
@@ -114,8 +114,6 @@ impl ConcurrentIO {
                     Some(job_state) => {
                         match job_state {
                             TrackedJobState::Complete | TrackedJobState::Closed => {
-                                println!("Finishing job {}", active_job);
-
                                 self.flush_buffer(&active_job);
                                 self.jobs.get_mut(&active_job).unwrap().job_state = TrackedJobState::Closed;
                                 self.active_job = None;
