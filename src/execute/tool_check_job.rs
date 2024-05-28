@@ -14,9 +14,8 @@ pub fn execute_tool_check_job(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) {
-    let result = execute_tool_check_action(workspace_dir, lua, job, db_env, db, cache, sender, stdin_ready);
+    let result = execute_tool_check_action(workspace_dir, lua, job, db_env, db, cache, sender);
 
     match result {
         Ok(_) => {
@@ -46,7 +45,6 @@ fn execute_tool_check_action(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> Result<(), TaskExecutionError> {
     let check_action = match &job.tool.check {
         Some(action) => action,
@@ -72,7 +70,6 @@ fn execute_tool_check_action(
         db,
         cache,
         sender,
-        stdin_ready
     );
     let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 

@@ -10,7 +10,6 @@ fn execute_clean_actions(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> Result<(), TaskExecutionError> {
     let mut vars: HashMap<String, TaskVar> = workspace_config.vars.clone();
     for (var_alias, var_name) in &job.task.var_deps {
@@ -40,7 +39,6 @@ fn execute_clean_actions(
                 db: db.clone(),
                 cache: cache.clone(),
                 sender: sender.clone(),
-                stdin_ready: stdin_ready.clone()
             }
         ).map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -75,10 +73,9 @@ pub fn execute_clean_job(
     db: &lmdb::Database,
     job: &CleanJob,
     task_result_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     cache: &Arc<TaskExecutorCache>,
 ) {
-    let result = execute_clean_actions(lua, job, workspace_config, db_env, db, cache, &task_result_sender, stdin_ready);
+    let result = execute_clean_actions(lua, job, workspace_config, db_env, db, cache, &task_result_sender);
 
     match result {
         Ok(_) => {

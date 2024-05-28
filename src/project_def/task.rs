@@ -14,6 +14,7 @@ pub struct TaskDef {
     pub name: Arc<str>,
     pub is_default: Option<bool>,
     pub always_run: Option<bool>,
+    pub is_interactive: Option<bool>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
     pub clean: Vec<Action>,
@@ -41,6 +42,9 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
             }
             "always_run" => {
                 validate_is_bool(&v, Some(Cow::Borrowed("always_run")), &mut prop_path).and(Ok(()))
+            }
+            "interactive" => {
+                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), &mut prop_path).and(Ok(()))
             }
             "env" => match v {
                 mlua::Value::String(_) => Ok(()),
@@ -97,6 +101,7 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                     "name",
                     "default",
                     "always_run",
+                    "interactive",
                     "env",
                     "actions",
                     "clean",
@@ -151,6 +156,7 @@ impl<'lua> mlua::FromLua<'lua> for TaskDef {
 
                 let is_default: Option<bool> = task_table.get("default")?;
                 let always_run: Option<bool> = task_table.get("always_run")?;
+                let is_interactive: Option<bool> = task_table.get("interactive")?;
 
                 let build_env_val: mlua::Value = task_table.get("env")?;
                 let build_env = match build_env_val {
@@ -194,6 +200,7 @@ impl<'lua> mlua::FromLua<'lua> for TaskDef {
                     name,
                     is_default,
                     always_run,
+                    is_interactive,
                     build_env,
                     actions,
                     clean,

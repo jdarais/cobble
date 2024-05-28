@@ -13,6 +13,7 @@ use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
 use crate::lua::detached::DetachedLuaValue;
+use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
 use crate::workspace::{Task, Workspace};
@@ -26,7 +27,6 @@ fn execute_task_actions<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
     let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
@@ -41,7 +41,6 @@ fn execute_task_actions<'lua>(
             db,
             cache,
             sender,
-            stdin_ready
         );
         let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -308,6 +307,17 @@ fn execute_task_actions_and_store_result(
     cache: &Arc<TaskExecutorCache>,
     current_task_input: TaskInput,
 ) -> Result<(), TaskExecutionError> {
+
+    if task.task.is_interactive {
+        let (ready_lock, ready_condvar) = stdin_ready.as_ref();
+        let mut ready = ready_lock.lock().unwrap();
+        while !*ready {
+            ready = ready_condvar.wait(ready).unwrap();
+        }
+        lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, true)
+            .map_err(|e| TaskExecutionError::LuaError(e))?;
+    }
+
     let result = execute_task_actions(
         lua,
         task,
@@ -317,8 +327,11 @@ fn execute_task_actions_and_store_result(
         db,
         cache,
         &task_result_sender,
-        stdin_ready
     )?;
+
+    lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, false)
+        .map_err(|e| TaskExecutionError::LuaError(e))?;
+
     let mut detached_result: DetachedLuaValue = lua
         .unpack(result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;

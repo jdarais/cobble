@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 
 use crate::db::{get_task_record, TaskInput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
@@ -29,7 +29,6 @@ pub struct ActionContextArgs<'lua> {
     pub db: lmdb::Database,
     pub cache: Arc<TaskExecutorCache>,
     pub sender: Sender<TaskJobMessage>,
-    pub stdin_ready: Arc<(Mutex<bool>, Condvar)>
 }
 
 fn get_original_error(error: &mlua::Error) -> &mlua::Error {
@@ -83,7 +82,6 @@ fn invoke_tool_by_name<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> mlua::Result<mlua::Value<'lua>> {
     let tool = workspace.tools.get(tool_name).ok_or_else(|| {
         mlua::Error::runtime(format!(
@@ -107,7 +105,6 @@ fn invoke_tool_by_name<'lua>(
         db,
         cache,
         task_event_sender,
-        stdin_ready
     )?;
     let (success, result) = execute_action_pcall(lua, tool_action, action_context)?;
 
@@ -133,7 +130,6 @@ fn invoke_env_by_name<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> mlua::Result<mlua::Value<'lua>> {
     let env = workspace.build_envs.get(env_name).ok_or_else(|| {
         mlua::Error::runtime(format!(
@@ -158,7 +154,6 @@ fn invoke_env_by_name<'lua>(
         db,
         cache,
         task_event_sender,
-        stdin_ready
     )?;
     let (success, result) = execute_action_pcall(lua, env_action, action_context)?;
 
@@ -183,7 +178,6 @@ pub fn create_tool_action_context<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> mlua::Result<mlua::Table<'lua>> {
     create_action_context(
         lua,
@@ -202,7 +196,6 @@ pub fn create_tool_action_context<'lua>(
             db: db.clone(),
             cache: cache.clone(),
             sender: task_event_sender.clone(),
-            stdin_ready: stdin_ready.clone()
         },
     )
 }
@@ -222,7 +215,6 @@ pub fn create_env_action_context<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> mlua::Result<mlua::Table<'lua>> {
     let env_install_task_output_opt = cache
         .task_outputs
@@ -272,7 +264,6 @@ pub fn create_env_action_context<'lua>(
             db: db.clone(),
             cache: cache.clone(),
             sender: task_event_sender.clone(),
-            stdin_ready: stdin_ready.clone()
         },
     )
 }
@@ -288,7 +279,6 @@ pub fn create_task_action_context<'lua>(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-    stdin_ready: &Arc<(Mutex<bool>, Condvar)>
 ) -> mlua::Result<mlua::Table<'lua>> {
     let mut files: HashMap<Arc<str>, ActionContextFile> = HashMap::new();
     for (file_alias, file_dep) in &task.file_deps {
@@ -335,7 +325,6 @@ pub fn create_task_action_context<'lua>(
             db: db.clone(),
             cache: cache.clone(),
             sender: task_event_sender.clone(),
-            stdin_ready: stdin_ready.clone()
         },
     )
 }
@@ -359,7 +348,6 @@ pub fn create_action_context<'lua>(
         db,
         cache,
         sender,
-        stdin_ready
     } = context_args;
 
     let action_context = lua.create_table()?;
@@ -392,17 +380,6 @@ pub fn create_action_context<'lua>(
     })?;
     action_context.set("err", err)?;
 
-    let wait_for_io_stdin_ready = stdin_ready.clone();
-    let wait_for_io = lua.create_function(move |_lua, _arg: mlua::Value| {
-        let (ready_lock, ready_condvar) = &*wait_for_io_stdin_ready;
-        let mut ready = ready_lock.lock().unwrap();
-        while !*ready {
-            ready = ready_condvar.wait(ready).unwrap();
-        }
-        Ok(())
-    })?;
-    action_context.set("wait_for_io", wait_for_io)?;
-
     let tool_table = lua.create_table()?;
     for (tool_alias, tool_name) in extra_tools.iter().chain(action.tools.iter()) {
         let tool_name_clone = tool_name.clone();
@@ -416,7 +393,6 @@ pub fn create_action_context<'lua>(
         let db_clone = db.clone();
         let cache_clone = cache.clone();
         let sender_clone = sender.clone();
-        let stdin_ready_clone = stdin_ready.clone();
         let invoke_tool_fn = lua.create_function(move |fn_lua, args: mlua::Value| {
             invoke_tool_by_name(
                 fn_lua,
@@ -432,7 +408,6 @@ pub fn create_action_context<'lua>(
                 &db_clone,
                 &cache_clone,
                 &sender_clone,
-                &stdin_ready_clone
             )
         })?;
         tool_table.set(tool_alias.to_string(), invoke_tool_fn)?;
@@ -452,7 +427,6 @@ pub fn create_action_context<'lua>(
         let db_clone = db.clone();
         let cache_clone = cache.clone();
         let sender_clone = sender.clone();
-        let stdin_ready_clone = stdin_ready.clone();
         let invoke_env_fn = lua.create_function(move |fn_lua, args| {
             // TODO: Avoid the double-clone here
             invoke_env_by_name(
@@ -469,7 +443,6 @@ pub fn create_action_context<'lua>(
                 &db_clone,
                 &cache_clone,
                 &sender_clone,
-                &stdin_ready_clone
             )
         })?;
         env_table.set(env_alias.to_string(), invoke_env_fn)?;

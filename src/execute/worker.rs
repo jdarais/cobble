@@ -96,7 +96,6 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     &args.db,
                     &clean,
                     &args.task_result_sender,
-                    &stdin_ready,
                     &args.cache,
                 );
             }
@@ -113,7 +112,6 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     &args.db,
                     &args.cache,
                     &args.task_result_sender,
-                    &stdin_ready
                 );
             }
         };

@@ -4,7 +4,7 @@ use std::{fmt, sync::Arc};
 use crate::project_def::action::{validate_action, validate_action_list};
 use crate::project_def::dependency::{validate_dep_list, Dependencies};
 use crate::project_def::validate::{
-    key_validation_error, validate_is_string, validate_required_key,
+    key_validation_error, validate_is_bool, validate_is_string, validate_required_key,
 };
 use crate::project_def::Action;
 
@@ -15,6 +15,8 @@ pub struct BuildEnv {
     pub clean: Vec<Action>,
     pub deps: Dependencies,
     pub action: Action,
+    pub always_run: Option<bool>,
+    pub is_interactive: Option<bool>
 }
 
 pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
@@ -46,9 +48,27 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                     "action" => {
                         validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path)
                     }
-                    s_str => {
-                        key_validation_error(s_str, vec!["name", "install", "clean", "deps", "action"], &mut prop_path)
+                    "always_run" => {
+                        validate_is_bool(&v, Some(Cow::Borrowed("always_run")), &mut prop_path)
+                            .and(Ok(()))
                     }
+                    "interactive" => {
+                        validate_is_bool(&v, Some(Cow::Borrowed("interactive")), &mut prop_path)
+                            .and(Ok(()))
+                    }
+                    s_str => key_validation_error(
+                        s_str,
+                        vec![
+                            "name",
+                            "install",
+                            "clean",
+                            "deps",
+                            "action",
+                            "always_run",
+                            "interactive",
+                        ],
+                        &mut prop_path,
+                    ),
                 }?;
             }
 
@@ -95,6 +115,8 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnv {
                 let deps_opt: Option<Dependencies> = tbl.get("deps")?;
                 let deps: Dependencies = deps_opt.unwrap_or_default();
                 let action: Action = tbl.get("action")?;
+                let always_run: Option<bool> = tbl.get("always_run")?;
+                let interactive: Option<bool> = tbl.get("interactive")?;
 
                 Ok(BuildEnv {
                     name,
@@ -102,6 +124,8 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnv {
                     clean,
                     deps,
                     action,
+                    always_run,
+                    is_interactive: interactive
                 })
             }
             val => {

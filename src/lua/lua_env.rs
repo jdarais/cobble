@@ -9,6 +9,8 @@ use crate::lua::json::JsonLib;
 use crate::lua::script_dir::ScriptDirLib;
 use crate::lua::toml::TomlLib;
 
+pub const COBBLE_JOB_INTERACTIVE_ENABLED: &str = "COBBLE_JOB_INTERACTIVE_ENABLED";
+
 pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let lua = unsafe { Lua::unsafe_new() };
     let preload_table: mlua::Table = lua.globals().get::<_, mlua::Table>("package")?.get("preload")?;

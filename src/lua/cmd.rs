@@ -6,6 +6,7 @@ use std::thread;
 
 use mlua::{Error, Function, Lua, Table, UserData, Value};
 
+use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 
 pub struct CmdLib;
 
@@ -34,7 +35,6 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     let mut cwd: Option<PathBuf> = None;
     let mut out_func: Option<Function> = None;
     let mut err_func: Option<Function> = None;
-    let mut wait_for_io_func: Option<Function> = None;
 
     for pair in args.pairs() {
         let (k, v): (Value, Value) = pair?;
@@ -64,9 +64,6 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     }
                     "err" => {
                         err_func = Some(lua.unpack(v)?);
-                    }
-                    "wait_for_io" => {
-                        wait_for_io_func = Some(lua.unpack(v)?);
                     }
                     _ => {
                         return Err(Error::runtime(format!(
@@ -101,9 +98,8 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
         cmd.current_dir(d);
     }
 
-    if let Some(wait_for_io) = wait_for_io_func {
-        println!("Attaching stdin");
-        wait_for_io.call(())?;
+    let interactive_enabled: bool = lua.named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED)?;
+    if interactive_enabled {
         cmd.stdin(Stdio::inherit());
     } else {
         cmd.stdin(Stdio::null());

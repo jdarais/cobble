@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::PROJECT_FILE_NAME;
-use crate::lua::lua_env::create_lua_env;
+use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
 use crate::lua::detached::dump_function;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
@@ -98,6 +98,10 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
 }
 
 pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlua::Result<()> {
+    // The project defeinition files are consumed in a single thread, so any executed code should be able to attach
+    // to stdin without problems
+    lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, true)?;
+
     let cxt = lua.create_table()?;
     cxt.set("ws_dir", workspace_dir.to_str().unwrap_or("."))?;
 
@@ -158,8 +162,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     let cmd_tool_action_func: mlua::Function = lua.load(r#"
         function (c)
             local cmd = require("cmd")
-            local wait_for_io = (c.args.interactive and c.wait_for_io) or nil
-            local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, wait_for_io = wait_for_io, table.unpack(c.args) }
+            local result = cmd { cwd = c.project.dir, out = c.out, err = c.err, table.unpack(c.args) }
 
             if result.status ~= 0 then
                 error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)

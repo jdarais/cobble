@@ -37,6 +37,7 @@ pub struct Task {
     pub clean_actions: Vec<Action>,
     pub artifacts: Vec<Artifact>,
     pub always_run: bool,
+    pub is_interactive: bool,
     pub project_source_deps: Vec<Arc<str>>,
 }
 
@@ -58,6 +59,7 @@ impl Default for Task {
             clean_actions: Vec::new(),
             artifacts: Vec::new(),
             always_run: false,
+            is_interactive: false,
             project_source_deps: Vec::new(),
         }
     }
@@ -127,6 +129,8 @@ fn add_build_env_to_workspace(
         project_name: project_name.clone(),
         project_source_deps: project_source_deps.clone(),
         clean_actions: build_env.clean.clone(),
+        always_run: build_env.always_run.unwrap_or(false),
+        is_interactive: build_env.is_interactive.unwrap_or(false),
         ..Default::default()
     };
 
@@ -161,6 +165,7 @@ fn add_task_to_workspace(
         dir: dir.clone(),
         project_name: project_name.clone(),
         always_run: task_def.always_run.unwrap_or(false),
+        is_interactive: task_def.is_interactive.unwrap_or(false),
         build_envs: task_def.build_env.iter().cloned().collect(),
         artifacts: task_def.artifacts.iter().cloned().collect(),
         project_source_deps: project_source_deps.clone(),

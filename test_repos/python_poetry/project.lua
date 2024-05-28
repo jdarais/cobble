@@ -32,7 +32,8 @@ task {
 task {
     name = "shell",
     always_run = true,
-    actions = { { env = "poetry_env", interactive = true, "python" } }
+    interactive = true,
+    actions = { { env = "poetry_env", "python" } }
 }
 
 task {
