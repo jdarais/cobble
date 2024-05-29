@@ -1,5 +1,7 @@
 local VER_SUBCOMPONENT_PATTERN = "(%w*)([^%w]*)"
 
+local iter = require("iter")
+
 local function version_cmp(v1, v2)
     local v1_str = tostring(v1)
     local v2_str = tostring(v2)

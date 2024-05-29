@@ -3,14 +3,17 @@ local maybe = require("maybe")
 local iter = require("iter")
 local toml = require("toml")
 local tblext = require("tblext")
+local cmd = require("cmd")
+local version = require("version")
 
 tool {
     name = "poetry",
     check = function (c)
         local res = cmd { "poetry", "--version" }
         assert(res.status == 0, "poetry command exited with status " .. res.status)
-        assert(res.stdout:match("Poetry %(version [^%s]+%)"),
-            "poetry version did not match: " .. res.stdout)
+
+        local poetry_version = res.stdout:match("Poetry %(version (%S+)%)")
+        assert(version(poetry_version) >= "1.8.0", "Poetry >= 1.8.0 required. Found ".. poetry_version)
     end,
     action = { tool = "cmd", "poetry" }
 }

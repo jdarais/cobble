@@ -542,20 +542,27 @@ impl TaskExecutor {
             )));
         }
 
+        println!("Nodes: {:?}", nodes.keys());
+        println!("Dep Edges: {:?}", dep_edges);
+
         let rev_dep_edges = compute_reverse_dependency_edges(dep_edges);
 
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut concurrent_io = ConcurrentIO::new();
 
-        // let frozen_workspace = Arc::new(workspace.clone());
         let mut remaining_jobs = nodes;
 
         let total_jobs = remaining_jobs.len();
 
         let mut jobs_without_dependencies: Vec<Arc<str>> = Vec::new();
-        for (job_id, job_deps) in dep_edges.iter() {
-            if job_deps.len() == 0 {
+        for job_id in remaining_jobs.keys() {
+            let has_deps = match dep_edges.get(job_id) {
+                Some(deps) => deps.len() > 0,
+                None => false
+            };
+
+            if !has_deps {
                 jobs_without_dependencies.push(job_id.clone());
             }
         }

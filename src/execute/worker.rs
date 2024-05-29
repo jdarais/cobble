@@ -104,6 +104,7 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     task: tool_check.job_id.clone(),
                     stdin_ready: stdin_ready.clone()
                 }).unwrap();
+                println!("Check started");
                 execute_tool_check_job(
                     &args.workspace_config.workspace_dir,
                     &lua,
