@@ -542,9 +542,6 @@ impl TaskExecutor {
             )));
         }
 
-        println!("Nodes: {:?}", nodes.keys());
-        println!("Dep Edges: {:?}", dep_edges);
-
         let rev_dep_edges = compute_reverse_dependency_edges(dep_edges);
 
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();

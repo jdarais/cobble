@@ -34,13 +34,6 @@ env {
 }
 
 task {
-    name = "poetry_lock",
-    deps = { files = { "pyproject.toml" } },
-    artifacts = { "poetry.lock" },
-    actions = { { tool = "poetry", "lock", "--no-update" } },
-}
-
-task {
     name = "shell",
     always_run = true,
     interactive = true,

@@ -1,10 +1,19 @@
+local path = require("path")
+
 require("tools")
 
-project_dir("test")
+local example_test_dirs = path.glob("examples/*/tests")
+
+for i, d in ipairs(example_test_dirs) do
+    if path.is_file(path.join(d, "project.lua")) then
+        project_dir(d)
+    end
+end
 
 task {
     name = "find_cobble_source_files",
-    actions = { function (c) return { files = fs.glob("src/**/*.*") } end }
+    always_run = true,
+    actions = { function (c) return { files = path.glob("src/**/*.*") } end }
 }
 
 task {
