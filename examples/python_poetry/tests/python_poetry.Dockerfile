@@ -6,5 +6,6 @@ COPY target/release/cobl /usr/bin/cobl
 COPY examples/python_poetry/workspace/ /repo/
 
 WORKDIR /repo
+RUN poetry lock
 RUN cobl run poetry_env
 

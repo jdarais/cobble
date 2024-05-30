@@ -31,6 +31,15 @@ task {
     artifacts = { "target/release/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") }
 }
 
+if PLATFORM.os_family == "windows" then
+task {
+    name = "build_release_linux",
+    actions = { { tool = "cmd", "wsl", "--shell-type", "login", "--", "cargo", "build", "--release" } },
+    deps = { calc = { "find_cobble_source_files" } },
+    artifacts = { "target/release/cobl" }
+}
+end
+
 task {
     name = "build_debug",
     actions = { { tool = "cargo", "build" } },
