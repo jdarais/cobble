@@ -12,7 +12,7 @@ use crate::config::WorkspaceConfig;
 use crate::db::{new_db_env, DeleteError, GetError, PutError};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
-use crate::project_def::ExternalTool;
+use crate::project_def::{BuildEnv, ExternalTool};
 use crate::vars::VarLookupError;
 use crate::workspace::{Task, TaskType, Workspace};
 
@@ -20,6 +20,7 @@ pub enum ExecutorJob {
     Task(TaskJob),
     Clean(CleanJob),
     ToolCheck(ToolCheckJob),
+    EnvAction(EnvActionJob),
 }
 
 #[derive(Debug)]
@@ -46,11 +47,33 @@ pub struct ToolCheckJob {
 }
 
 #[derive(Debug)]
+pub struct EnvActionJob {
+    pub job_id: Arc<str>,
+    pub env_name: Arc<str>,
+    pub env_task: Arc<Task>,
+    pub env: Arc<BuildEnv>,
+    pub args: Vec<Arc<str>>,
+    pub workspace: Arc<Workspace>,
+}
+
+#[derive(Debug)]
 pub enum TaskJobMessage {
-    Started { task: Arc<str>, stdin_ready: Arc<(Mutex<bool>, Condvar)> },
-    Stdout { task: Arc<str>, s: String },
-    Stderr { task: Arc<str>, s: String },
-    Complete { task: Arc<str>, result: TaskResult },
+    Started {
+        task: Arc<str>,
+        stdin_ready: Arc<(Mutex<bool>, Condvar)>,
+    },
+    Stdout {
+        task: Arc<str>,
+        s: String,
+    },
+    Stderr {
+        task: Arc<str>,
+        s: String,
+    },
+    Complete {
+        task: Arc<str>,
+        result: TaskResult,
+    },
 }
 
 #[derive(Debug)]
@@ -114,6 +137,12 @@ impl fmt::Display for TaskExecutionError {
 fn get_tool_check_job_id(tool_name: &Arc<str>) -> Arc<str> {
     let mut job_name = String::from("tool_check:");
     job_name.push_str(tool_name.as_ref());
+    Arc::<str>::from(job_name)
+}
+
+fn get_env_action_job_id(env_name: &Arc<str>) -> Arc<str> {
+    let mut job_name = String::from("env_action:");
+    job_name.push_str(env_name.as_ref());
     Arc::<str>::from(job_name)
 }
 
@@ -193,18 +222,20 @@ fn get_clean_job_task_dependencies(task: &Task) -> Vec<Arc<str>> {
 fn add_clean_jobs(
     task_name: &Arc<str>,
     workspace: &Arc<Workspace>,
-    jobs: &mut HashMap<Arc<str>, ExecutorJob>
+    jobs: &mut HashMap<Arc<str>, ExecutorJob>,
 ) -> Result<(), TaskExecutionError> {
     // TODO: Add option to also clean dependencies.  Otherwise, we don't automatically
     // traverse dependencies when selecting tasks to clean
-    let task = workspace.tasks.get(task_name)
+    let task = workspace
+        .tasks
+        .get(task_name)
         .ok_or_else(|| TaskExecutionError::TaskLookupError(task_name.clone()))?;
 
     let job_id = get_clean_task_name(task_name.as_ref());
     let job = ExecutorJob::Clean(CleanJob {
         job_id: job_id.clone(),
         task: task.clone(),
-        workspace: workspace.clone()
+        workspace: workspace.clone(),
     });
 
     jobs.insert(job_id, job);
@@ -238,7 +269,7 @@ fn add_tool_check_jobs(
         .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
 
     let tool_check_job = ExecutorJob::ToolCheck(ToolCheckJob {
-        job_id: get_tool_check_job_id(&tool_name),
+        job_id: tool_check_job_id.clone(),
         tool_name: tool_name.clone(),
         tool: tool.clone(),
         workspace: workspace.clone(),
@@ -259,6 +290,36 @@ fn add_tool_check_jobs(
     Ok(())
 }
 
+fn add_env_action_jobs(
+    env_name: &Arc<str>,
+    args: &Vec<Arc<str>>,
+    workspace: &Arc<Workspace>,
+    jobs: &mut HashMap<Arc<str>, ExecutorJob>,
+) -> Result<(), TaskExecutionError> {
+    let env_action_job_id = get_env_action_job_id(env_name);
+
+    let env = workspace.build_envs.get(env_name)
+        .ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.clone()))?;
+
+    let env_task = workspace.tasks.get(env_name)
+        .ok_or_else(|| TaskExecutionError::TaskLookupError(env_name.clone()))?;
+
+    let env_action_job = EnvActionJob {
+        job_id: env_action_job_id.clone(),
+        env_name: env_name.clone(),
+        env_task: env_task.clone(),
+        env: env.clone(),
+        args: args.clone(),
+        workspace: workspace.clone()
+    };
+
+    jobs.insert(env_action_job_id, ExecutorJob::EnvAction(env_action_job));
+
+    add_task_jobs(env_name, workspace, jobs)?;
+
+    Ok(())
+}
+
 fn compute_dependency_edges(
     jobs: &HashMap<Arc<str>, ExecutorJob>,
 ) -> HashMap<Arc<str>, Vec<Arc<str>>> {
@@ -268,7 +329,7 @@ fn compute_dependency_edges(
         match job {
             ExecutorJob::Task(task_job) => {
                 let task_deps = dep_edges.entry(id.clone()).or_default();
-                for dep in  get_task_job_dependencies(&task_job.task) {
+                for dep in get_task_job_dependencies(&task_job.task) {
                     task_deps.push(dep);
                 }
                 // If an "execute_after" task is in the graph, add that as a dependency, too
@@ -283,7 +344,10 @@ fn compute_dependency_edges(
                     // Make sure that if we depend on a task, it doesn't get cleaned before we run
                     let clean_dep_task_name = get_clean_task_name(&dep);
                     if jobs.contains_key(&clean_dep_task_name) {
-                        dep_edges.entry(clean_dep_task_name).or_default().push(id.clone());
+                        dep_edges
+                            .entry(clean_dep_task_name)
+                            .or_default()
+                            .push(id.clone());
                     }
 
                     dep_edges.entry(id.clone()).or_default().push(dep);
@@ -311,8 +375,11 @@ fn compute_dependency_edges(
                         tool_deps.push(dep);
                     }
                 }
-                None => { /* Nothing to do */},
+                None => { /* Nothing to do */ }
             },
+            ExecutorJob::EnvAction(env_action_job) => {
+                dep_edges.entry(id.clone()).or_default().push(env_action_job.env_name.clone());
+            }
         };
     }
 
@@ -507,9 +574,10 @@ impl TaskExecutor {
     pub fn clean_tasks<'a, T>(
         &mut self,
         workspace: &Workspace,
-        tasks: T
+        tasks: T,
     ) -> Result<(), TaskExecutionError>
-    where T: Iterator<Item = &'a Arc<str>>
+    where
+        T: Iterator<Item = &'a Arc<str>>,
     {
         self.ensure_worker_threads();
 
@@ -518,6 +586,21 @@ impl TaskExecutor {
 
         for task in tasks {
             add_clean_jobs(task, &frozen_workspace, &mut jobs)?;
+        }
+
+        self.execute_graph(jobs)
+    }
+
+    pub fn do_env_actions<'a, E>(&mut self, workspace: &Workspace, envs: E, args: &Vec<Arc<str>>) -> Result<(), TaskExecutionError>
+    where E: Iterator<Item = &'a Arc<str>>
+    {
+        self.ensure_worker_threads();
+
+        let frozen_workspace = Arc::new(workspace.clone());
+        let mut jobs: HashMap<Arc<str>, ExecutorJob> = HashMap::new();
+
+        for env in envs {
+            add_env_action_jobs(env, args, &frozen_workspace, &mut jobs)?;
         }
 
         self.execute_graph(jobs)
@@ -556,7 +639,7 @@ impl TaskExecutor {
         for job_id in remaining_jobs.keys() {
             let has_deps = match dep_edges.get(job_id) {
                 Some(deps) => deps.len() > 0,
-                None => false
+                None => false,
             };
 
             if !has_deps {
@@ -612,11 +695,7 @@ impl TaskExecutor {
                             if fwd_job_is_available {
                                 let job = remaining_jobs.remove(fwd_job_id)
                                     .expect("indexing into HashMap using a key just read from the HashMap should not fail");
-                                self.push_task_job(
-                                    fwd_job_id,
-                                    job,
-                                    &mut in_progress_jobs,
-                                )?;
+                                self.push_task_job(fwd_job_id, job, &mut in_progress_jobs)?;
                             }
                         }
                     }

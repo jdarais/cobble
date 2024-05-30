@@ -318,7 +318,7 @@ fn execute_task_actions_and_store_result(
             .map_err(|e| TaskExecutionError::LuaError(e))?;
     }
 
-    let result = execute_task_actions(
+    let result_res = execute_task_actions(
         lua,
         task,
         &current_task_input,
@@ -327,10 +327,13 @@ fn execute_task_actions_and_store_result(
         db,
         cache,
         &task_result_sender,
-    )?;
+    );
 
     lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, false)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
+
+    // Jump out of this function on failure, but only after we reset the "interactive enabled" registry value
+    let result = result_res?;
 
     let mut detached_result: DetachedLuaValue = lua
         .unpack(result)

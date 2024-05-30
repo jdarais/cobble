@@ -5,6 +5,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use crate::config::WorkspaceConfig;
 use crate::execute::action::init_lua_for_task_executor;
 use crate::execute::clean_task_job::execute_clean_job;
+use crate::execute::env_action_job::execute_env_action_job;
 use crate::execute::execute::{ExecutorJob, TaskExecutorCache, TaskJobMessage};
 use crate::execute::task_job::execute_task_job;
 use crate::execute::tool_check_job::execute_tool_check_job;
@@ -69,10 +70,12 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
 
         match next_task {
             ExecutorJob::Task(task) => {
-                args.task_result_sender.send(TaskJobMessage::Started {
-                    task: task.task_name.clone(),
-                    stdin_ready: stdin_ready.clone()
-                }).unwrap();
+                args.task_result_sender
+                    .send(TaskJobMessage::Started {
+                        task: task.task_name.clone(),
+                        stdin_ready: stdin_ready.clone(),
+                    })
+                    .unwrap();
                 execute_task_job(
                     &args.workspace_config,
                     &lua,
@@ -85,10 +88,12 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                 );
             }
             ExecutorJob::Clean(clean) => {
-                args.task_result_sender.send(TaskJobMessage::Started {
-                    task: clean.job_id.clone(),
-                    stdin_ready: stdin_ready.clone()
-                }).unwrap();
+                args.task_result_sender
+                    .send(TaskJobMessage::Started {
+                        task: clean.job_id.clone(),
+                        stdin_ready: stdin_ready.clone(),
+                    })
+                    .unwrap();
                 execute_clean_job(
                     &args.workspace_config,
                     &lua,
@@ -100,10 +105,12 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                 );
             }
             ExecutorJob::ToolCheck(tool_check) => {
-                args.task_result_sender.send(TaskJobMessage::Started {
-                    task: tool_check.job_id.clone(),
-                    stdin_ready: stdin_ready.clone()
-                }).unwrap();
+                args.task_result_sender
+                    .send(TaskJobMessage::Started {
+                        task: tool_check.job_id.clone(),
+                        stdin_ready: stdin_ready.clone(),
+                    })
+                    .unwrap();
                 execute_tool_check_job(
                     &args.workspace_config.workspace_dir,
                     &lua,
@@ -112,6 +119,23 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     &args.db,
                     &args.cache,
                     &args.task_result_sender,
+                );
+            }
+            ExecutorJob::EnvAction(env_action_job) => {
+                args.task_result_sender
+                    .send(TaskJobMessage::Started {
+                        task: env_action_job.job_id.clone(),
+                        stdin_ready: stdin_ready.clone(),
+                    })
+                    .unwrap();
+                execute_env_action_job(
+                    &lua,
+                    &args.db_env,
+                    &args.db,
+                    &env_action_job,
+                    &stdin_ready,
+                    &args.task_result_sender,
+                    &args.cache,
                 );
             }
         };
