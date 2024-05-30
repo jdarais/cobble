@@ -31,7 +31,7 @@ struct Cli {
 
     /// Display the version of this application and exit
     #[arg(long)]
-    version: bool
+    version: bool,
 }
 
 #[derive(Subcommand)]
@@ -63,8 +63,8 @@ enum CoblCommand {
     /// Interact with build environments defined in the workspace
     Env {
         #[command(subcommand)]
-        env_cmd: EnvCommand
-    }
+        env_cmd: EnvCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -81,8 +81,8 @@ enum EnvCommand {
         envs: Vec<String>,
 
         #[arg(last(true))]
-        args: Vec<String>
-    }
+        args: Vec<String>,
+    },
 }
 
 fn run_from_dir(path: &Path) -> anyhow::Result<()> {
@@ -118,25 +118,36 @@ fn main() -> ExitCode {
                 cwd: cwd,
                 tasks: tasks,
             }),
-            CoblCommand::Run {
-                tasks,
-                force,
-            } => run_command(RunCommandInput {
+            CoblCommand::Run { tasks, force } => run_command(RunCommandInput {
                 cwd,
                 tasks,
                 vars: args.var,
                 force_run_tasks: force,
-                num_threads: args.num_threads
+                num_threads: args.num_threads,
             }),
-            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput { cwd, tasks, num_threads: args.num_threads }),
+            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput {
+                cwd,
+                tasks,
+                num_threads: args.num_threads,
+            }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
-                ToolCommand::Check { names } => {
-                    check_tool_command(CheckToolInput { cwd, tools: names, num_threads: args.num_threads })
-                }
+                ToolCommand::Check { names } => check_tool_command(CheckToolInput {
+                    cwd,
+                    tools: names,
+                    num_threads: args.num_threads,
+                }),
             },
             CoblCommand::Env { env_cmd } => match env_cmd {
-                EnvCommand::Run { envs, args: env_args } => run_env_command(RunEnvInput { cwd, envs, args: env_args, num_threads: args.num_threads })
-            }
+                EnvCommand::Run {
+                    envs,
+                    args: env_args,
+                } => run_env_command(RunEnvInput {
+                    cwd,
+                    envs,
+                    args: env_args,
+                    num_threads: args.num_threads,
+                }),
+            },
         },
         None => run_from_dir(cwd.as_path()),
     };

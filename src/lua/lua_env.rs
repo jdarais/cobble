@@ -73,9 +73,13 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     {
         let mut module_search_path = OsString::new();
         module_search_path.push(workspace_dir.as_os_str());
-        module_search_path.push("/?.lua;");
+        module_search_path.push(std::path::MAIN_SEPARATOR_STR);
+        module_search_path.push("?.lua;");
         module_search_path.push(workspace_dir.as_os_str());
-        module_search_path.push("/?/init.lua");
+        module_search_path.push(std::path::MAIN_SEPARATOR_STR);
+        module_search_path.push("?");
+        module_search_path.push(std::path::MAIN_SEPARATOR_STR);
+        module_search_path.push("init.lua");
 
         let package_global: Table = lua.globals().get("package")?;
         package_global.set("path", module_search_path.to_str())?;

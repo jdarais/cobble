@@ -1,4 +1,5 @@
 local tblext = require("tblext")
+local cmd = require("cmd")
 
 tool {
     name = "docker",

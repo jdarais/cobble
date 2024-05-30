@@ -131,7 +131,7 @@ pub fn parse_workspace_config_file(path: &Path) -> Result<WorkspaceConfig, Works
 }
 
 pub fn find_nearest_workspace_config_file_from(path: &Path) -> Result<PathBuf, io::Error> {
-    for ancestor in path.canonicalize()?.ancestors() {
+    for ancestor in dunce::canonicalize(path)?.ancestors() {
         let config_path = ancestor.join(WORKSPACE_CONFIG_FILE_NAME);
         if config_path.exists() {
             return Ok(config_path);
