@@ -66,7 +66,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_name = if dir == "" || dir == "." {
         String::new()
     } else {
-        dir.to_owned()
+        dir.replace(std::path::MAIN_SEPARATOR, "/").to_owned()
     };
 
     let project_file_path = PathBuf::from_iter(
@@ -85,13 +85,15 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_dir_str = project_dir
         .as_os_str()
         .to_str()
+        .map(|p| p.replace(std::path::MAIN_SEPARATOR, "/"))
         .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
+
     process_project(
         lua,
         project_file_path.as_path(),
         project_name.as_str(),
         workspace_dir,
-        project_dir_str,
+        project_dir_str.as_str(),
     )?;
 
     Ok(())

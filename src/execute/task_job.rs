@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use crate::config::WorkspaceConfig;
 use crate::db::{
-    get_task_record, put_task_record, GetError, PutError, TaskInput, TaskOutput, TaskRecord,
+    get_task_record, put_task_record, GetError, TaskInput, TaskOutput, TaskRecord,
 };
 use crate::execute::action::{create_task_action_context, invoke_action_protected};
 use crate::execute::execute::{
@@ -111,7 +111,11 @@ fn get_current_task_input(
                     .join(Path::new(file_dep.path.as_ref()));
                 let file_hash = compute_file_hash(file_path.as_path()).map_err(|e| {
                     TaskExecutionError::IOError {
-                        message: format!("Task {}: Error reading file {}", task.name, file_path.display()),
+                        message: format!(
+                            "Task {}: Error reading file {}",
+                            task.name,
+                            file_path.display()
+                        ),
                         cause: e,
                     }
                 })?;
@@ -307,7 +311,6 @@ fn execute_task_actions_and_store_result(
     cache: &Arc<TaskExecutorCache>,
     current_task_input: TaskInput,
 ) -> Result<(), TaskExecutionError> {
-
     if task.task.is_interactive {
         let (ready_lock, ready_condvar) = stdin_ready.as_ref();
         let mut ready = ready_lock.lock().unwrap();
@@ -342,17 +345,20 @@ fn execute_task_actions_and_store_result(
     let mut artifact_file_hashes: HashMap<String, String> =
         HashMap::with_capacity(task.task.artifacts.len());
     for artifact in task.task.artifacts.iter() {
-        let output_file_hash_res = compute_file_hash(
-            workspace_dir
-                .join(Path::new(artifact.filename.as_ref()))
-                .as_path(),
-        );
+        let artifact_path = workspace_dir.join(Path::new(artifact.filename.as_ref()));
+        let output_file_hash_res = compute_file_hash(&artifact_path);
         match output_file_hash_res {
             Ok(hash) => {
                 artifact_file_hashes.insert(String::from(artifact.filename.as_ref()), hash);
             }
             Err(e) => {
-                return Err(TaskExecutionError::DBPutError(PutError::FileError(e)));
+                return Err(TaskExecutionError::IOError {
+                    message: format!(
+                        "Failed to compute hash of declared artifact '{}'",
+                        artifact.filename
+                    ),
+                    cause: e,
+                });
             }
         };
     }
@@ -362,12 +368,13 @@ fn execute_task_actions_and_store_result(
     // means tasks that depend on this one will always run if this task was run
     if let DetachedLuaValue::Nil = detached_result {
         if artifact_file_hashes.len() == 0 {
-            let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)
+            let time = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("Time since unix epoch should not be negative");
             detached_result = DetachedLuaValue::Integer(time.as_millis() as i64);
         }
     }
-    
+
     let task_output_record = TaskOutput {
         task_output: detached_result.to_json(),
         file_hashes: artifact_file_hashes,
@@ -491,7 +498,7 @@ mod tests {
 
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
-    use crate::lua::{lua_env::create_lua_env, detached::dump_function};
+    use crate::lua::{detached::dump_function, lua_env::create_lua_env};
     use crate::project_def::{Action, ActionCmd, ExternalTool};
     use crate::workspace::{Task, TaskType, Workspace};
 
@@ -506,7 +513,7 @@ mod tests {
             root_projects: vec![String::from(".")],
             vars: HashMap::new(),
             force_run_tasks: false,
-            num_threads: 1
+            num_threads: 1,
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();

@@ -28,14 +28,14 @@ task {
     name = "build_release",
     actions = { { tool = "cargo", "build", "--release" } },
     deps = { calc = { "find_cobble_source_files" } },
-    artifacts = { "target/release/cobl" }
+    artifacts = { "target/release/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") }
 }
 
 task {
     name = "build_debug",
     actions = { { tool = "cargo", "build" } },
     deps = { calc = { "find_cobble_source_files" } },
-    artifacts = { "target/debug/cobl" }
+    artifacts = { "target/debug/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") }
 }
 
 task {
