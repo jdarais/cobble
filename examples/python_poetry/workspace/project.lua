@@ -35,6 +35,11 @@ env {
     action = { tool = "poetry", "run" }
 }
 
+env {
+    name = "poetry_cmd",
+    action = { tool = "poetry" }
+}
+
 task {
     name = "shell",
     always_run = true,

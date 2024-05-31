@@ -33,15 +33,29 @@ where
 
     for q in task_queries {
         let resolved_q = resolve_name(project_name, &Arc::<str>::from(q))?;
-        match workspace.tasks.get_key_value(&resolved_q) {
-            Some((k, _)) => {
-                result.push(k.clone());
-            }
-            None => {
-                return Err(NameResolutionError::InvalidName(String::from(
-                    resolved_q.as_ref(),
-                )));
-            }
+        if workspace.tasks.contains_key(&resolved_q) {
+            result.push(resolved_q.clone());
+        } else {
+            return Err(NameResolutionError::InvalidName(String::from(
+                resolved_q.as_ref(),
+            )));
+        }
+    }
+
+    Ok(result)
+}
+
+pub fn find_envs_for_query<'i, I>(workspace: &Workspace, project_name: &str, env_queries: I) -> Result<Vec<Arc<str>>, NameResolutionError> where I: Iterator<Item = &'i str> {
+    let mut result: Vec<Arc<str>> = Vec::new();
+
+    for q in env_queries {
+        let resolved_q = resolve_name(project_name, &Arc::<str>::from(q))?;
+        if workspace.build_envs.contains_key(&resolved_q) {
+            result.push(resolved_q.clone());
+        } else {
+            return Err(NameResolutionError::InvalidName(String::from(
+                resolved_q.as_ref(),
+            )));
         }
     }
 

@@ -1,14 +1,15 @@
 extern crate serde_json;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 use std::os::raw::c_void;
 use std::sync::{Arc, RwLock};
 
 use crate::lua::userdata::CobbleUserData;
+use crate::util::onscopeexit::OnScopeExitMut;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum DetachedLuaValue {
     Nil,
     Boolean(bool),
@@ -53,30 +54,54 @@ impl DetachedLuaValue {
     }
 }
 
+fn fmt_debug_detached_value_with_history(value: &DetachedLuaValue, history: &mut HashSet<DetachedLuaValue>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    if history.contains(value) {
+        write!(f, "...")?;
+        return Ok(());
+    }
+
+    history.insert(value.clone());
+    let val_clone = value.clone();
+    let mut history = OnScopeExitMut::new(history, Box::new(move |hist| { hist.remove(&val_clone); }));
+
+    use DetachedLuaValue::*;
+    match value {
+        Nil => f.write_str("nil"),
+        Boolean(val) => f.write_str(if *val { "true" } else { "false" }),
+        Integer(val) => write!(f, "{}", val),
+        Number(val) => write!(f, "{}", val),
+        String(val) => write!(f, "\"{}\"", val.as_str()),
+        Table(tbl) => {
+            let tbl_lock = tbl.read().unwrap();
+            let (t, _meta) = &*tbl_lock;
+            f.write_str("{")?;
+            for (i, (k, v)) in t.iter().enumerate() {
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
+                fmt_debug_detached_value_with_history(k, history.as_mut(), f)?;
+                write!(f, ": ")?;
+                fmt_debug_detached_value_with_history(v, history.as_mut(), f)?;
+            }
+            f.write_str("}")
+        }
+        Function(val) => {
+            let func = val.read().unwrap();
+            fmt_debug_function_dump_with_history(&*func, history.as_mut(), f)
+        }
+        UserData(val) => write!(f, "{}", val),
+    }
+}
+
+impl fmt::Debug for DetachedLuaValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_debug_detached_value_with_history(self, &mut HashSet::new(), f)
+    }
+}
+
 impl fmt::Display for DetachedLuaValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use DetachedLuaValue::*;
-        match self {
-            Nil => f.write_str("nil"),
-            Boolean(val) => f.write_str(if *val { "true" } else { "false" }),
-            Integer(val) => write!(f, "{}", val),
-            Number(val) => write!(f, "{}", val),
-            String(val) => write!(f, "\"{}\"", val.as_str()),
-            Table(tbl) => {
-                let tbl_lock = tbl.read().unwrap();
-                let (t, _meta) = &*tbl_lock;
-                f.write_str("{")?;
-                for (i, (k, v)) in t.iter().enumerate() {
-                    if i > 0 {
-                        f.write_str(", ")?;
-                    }
-                    write!(f, "{}: {}", k, v)?;
-                }
-                f.write_str("}")
-            }
-            Function(val) => write!(f, "{}", val.read().unwrap()),
-            UserData(val) => write!(f, "{}", val),
-        }
+        fmt_debug_detached_value_with_history(self, &mut HashSet::new(), f)
     }
 }
 
@@ -438,27 +463,32 @@ impl<'lua> mlua::IntoLua<'lua> for DetachedLuaValue {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct FunctionDump {
     pub source: Vec<u8>,
     pub upvalues: Vec<DetachedLuaValue>,
 }
 
+fn fmt_debug_function_dump_with_history(func: &FunctionDump, history: &mut HashSet<DetachedLuaValue>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "function(source=")?;
+    for b in func.source.iter() { write!(f, "{:x}", b)?; }
+    write!(f, ", upvalues=[")?;
+    for (i, up) in func.upvalues.iter().enumerate() {
+        if i > 0 { write!(f, ", ")?; }
+        fmt_debug_detached_value_with_history(up, history, f)?;
+    }
+    write!(f, "])")
+}
+
+impl fmt::Debug for FunctionDump {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt_debug_function_dump_with_history(self, &mut HashSet::new(), f)
+    }
+}
+
 impl fmt::Display for FunctionDump {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("FnDump(<source>")?;
-
-        if self.upvalues.len() > 0 {
-            f.write_str(", upvalues=[")?;
-            for (i, val) in self.upvalues.iter().enumerate() {
-                if i > 0 {
-                    f.write_str(", ")?;
-                }
-                write!(f, "{}", &val)?;
-            }
-            f.write_str("]")?;
-        }
-        f.write_str(")")
+        fmt_debug_function_dump_with_history(self, &mut HashSet::new(), f)
     }
 }
 

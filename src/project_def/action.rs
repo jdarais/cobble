@@ -122,9 +122,7 @@ pub fn validate_action<'lua>(
             }
 
             if sequence_values.len() == 0 {
-                return Err(mlua::Error::runtime(
-                    format!("In {}: Action table must have either a single function or one or more strings as positional elements", prop_path_string(prop_path.as_mut()))
-                ));
+                return Ok(())
             }
 
             let first_seq_val = sequence_values.remove(0);
@@ -258,7 +256,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 let cmd_tool_name = Arc::<str>::from("cmd");
 
                 // Check if we are a table with a single positional element, which could mean that
-                // we're a function or userdata command
+                // we're a function action
                 if tbl.len()? == 1 {
                     let first_val: mlua::Value = tbl.get(1)?;
                     match first_val {
