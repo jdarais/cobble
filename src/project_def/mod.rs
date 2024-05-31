@@ -11,7 +11,7 @@ pub mod validate;
 #[allow(unused_imports)]
 pub use action::{Action, ActionCmd};
 pub use artifact::Artifact;
-pub use build_env::BuildEnv;
+pub use build_env::BuildEnvDef;
 pub use dependency::{Dependencies, DependencyListByType};
 pub use project::Project;
 pub use task::TaskDef;

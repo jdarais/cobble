@@ -5,8 +5,8 @@ use std::sync::Arc;
 use crate::db::{get_task_record, TaskInput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
 use crate::project_def::types::{json_to_lua, TaskVar};
-use crate::project_def::{Action, BuildEnv};
-use crate::workspace::{Task, Workspace};
+use crate::project_def::Action;
+use crate::workspace::{BuildEnv, Task, Workspace};
 
 #[derive(Clone)]
 pub struct ActionContextFile {

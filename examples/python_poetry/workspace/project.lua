@@ -20,15 +20,17 @@ tool {
 
 env {
     name = "poetry_env",
-    install = {
-        { tool = "poetry", function (c)
-            c.tool.poetry { "env", "use", c.vars["python.version"] }
-        end },
-        { tool = "poetry", "install" }
-    },
-    deps = {
-        files = { "poetry.lock" },
-        vars = { "python.version" }
+    setup_task = {
+        actions = {
+            { tool = "poetry", function (c)
+                c.tool.poetry { "env", "use", c.vars["python.version"] }
+            end },
+            { tool = "poetry", "install" }
+        },
+        deps = {
+            files = { "poetry.lock" },
+            vars = { "python.version" }
+        },
     },
     action = { tool = "poetry", "run" }
 }

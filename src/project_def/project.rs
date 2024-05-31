@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::project_def::{BuildEnv, ExternalTool, TaskDef};
+use crate::project_def::{BuildEnvDef, ExternalTool, TaskDef};
 
 #[derive(Debug)]
 pub struct Project {
     pub name: Arc<str>,
     pub path: Arc<Path>,
-    pub build_envs: Vec<BuildEnv>,
+    pub build_envs: Vec<BuildEnvDef>,
     pub tasks: Vec<TaskDef>,
     pub tools: Vec<ExternalTool>,
     pub child_project_names: Vec<Arc<str>>,
@@ -90,7 +90,7 @@ impl<'lua> mlua::FromLua<'lua> for Project {
             .expect("Conversion from str to PathBuf is infalliable");
         let path = Arc::<Path>::from(path_buf);
 
-        let build_envs: Vec<BuildEnv> = project_table.get("build_envs")?;
+        let build_envs: Vec<BuildEnvDef> = project_table.get("build_envs")?;
         let tasks: Vec<TaskDef> = project_table.get("tasks")?;
         let tools: Vec<ExternalTool> = project_table.get("tools")?;
 

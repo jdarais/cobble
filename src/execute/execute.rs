@@ -12,9 +12,9 @@ use crate::config::WorkspaceConfig;
 use crate::db::{new_db_env, DeleteError, GetError, PutError};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
-use crate::project_def::{BuildEnv, ExternalTool};
+use crate::project_def::ExternalTool;
 use crate::vars::VarLookupError;
-use crate::workspace::{Task, TaskType, Workspace};
+use crate::workspace::{BuildEnv, Task, TaskType, Workspace};
 
 pub enum ExecutorJob {
     Task(TaskJob),
@@ -49,8 +49,6 @@ pub struct ToolCheckJob {
 #[derive(Debug)]
 pub struct EnvActionJob {
     pub job_id: Arc<str>,
-    pub env_name: Arc<str>,
-    pub env_task: Arc<Task>,
     pub env: Arc<BuildEnv>,
     pub args: Vec<Arc<str>>,
     pub workspace: Arc<Workspace>,
@@ -146,20 +144,29 @@ fn get_env_action_job_id(env_name: &Arc<str>) -> Arc<str> {
     Arc::<str>::from(job_name)
 }
 
-fn get_task_job_dependencies(task: &Task) -> Vec<Arc<str>> {
-    let deps_set: HashSet<Arc<str>> = task
-        .task_deps
-        .values()
-        .cloned()
-        .chain(
-            task.file_deps
-                .values()
-                .filter_map(|f| f.provided_by_task.iter().next().cloned()),
-        )
-        .chain(task.build_envs.values().cloned())
-        .collect();
+fn get_task_job_dependencies(task: &Task, workspace: &Workspace) -> Result<Vec<Arc<str>>, TaskExecutionError> {
+    let mut deps_set: HashSet<Arc<str>> = HashSet::with_capacity(task.task_deps.len());
+    
+    for task_dep in task.task_deps.values() {
+        deps_set.insert(task_dep.clone());
+    }
 
-    deps_set.into_iter().collect()
+    for file_dep in task.file_deps.values() {
+        if let Some(provided_by_task) = &file_dep.provided_by_task {
+            deps_set.insert(provided_by_task.clone());
+        }
+    }
+
+    for env_name in task.build_envs.values() {
+        let env = workspace.build_envs.get(env_name)
+            .ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.clone()))?;
+
+        if let Some(setup_task) = &env.setup_task {
+            deps_set.insert(setup_task.clone());
+        }
+    }
+
+    Ok(deps_set.into_iter().collect())
 }
 
 fn add_task_jobs(
@@ -190,7 +197,7 @@ fn add_task_jobs(
 
     jobs.insert(task_name.to_owned(), job);
 
-    for dep in get_task_job_dependencies(&*task) {
+    for dep in get_task_job_dependencies(&*task, workspace.as_ref())? {
         add_task_jobs(&dep, workspace, jobs)?;
     }
 
@@ -245,7 +252,7 @@ fn add_clean_jobs(
     }
 
     if let TaskType::Project = task.task_type {
-        for dep in get_task_job_dependencies(task.as_ref()) {
+        for dep in get_task_job_dependencies(task.as_ref(), workspace.as_ref())? {
             add_clean_jobs(&dep, workspace, jobs)?;
         }
     }
@@ -301,13 +308,8 @@ fn add_env_action_jobs(
     let env = workspace.build_envs.get(env_name)
         .ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.clone()))?;
 
-    let env_task = workspace.tasks.get(env_name)
-        .ok_or_else(|| TaskExecutionError::TaskLookupError(env_name.clone()))?;
-
     let env_action_job = EnvActionJob {
         job_id: env_action_job_id.clone(),
-        env_name: env_name.clone(),
-        env_task: env_task.clone(),
         env: env.clone(),
         args: args.clone(),
         workspace: workspace.clone()
@@ -315,21 +317,24 @@ fn add_env_action_jobs(
 
     jobs.insert(env_action_job_id, ExecutorJob::EnvAction(env_action_job));
 
-    add_task_jobs(env_name, workspace, jobs)?;
+    if let Some(setup_task) = &env.setup_task {
+        add_task_jobs(setup_task, workspace, jobs)?;
+    }
 
     Ok(())
 }
 
 fn compute_dependency_edges(
     jobs: &HashMap<Arc<str>, ExecutorJob>,
-) -> HashMap<Arc<str>, Vec<Arc<str>>> {
+    workspace: &Workspace
+) -> Result<HashMap<Arc<str>, Vec<Arc<str>>>, TaskExecutionError> {
     let mut dep_edges: HashMap<Arc<str>, Vec<Arc<str>>> = HashMap::new();
 
     for (id, job) in jobs {
         match job {
             ExecutorJob::Task(task_job) => {
                 let task_deps = dep_edges.entry(id.clone()).or_default();
-                for dep in get_task_job_dependencies(&task_job.task) {
+                for dep in get_task_job_dependencies(&task_job.task, workspace)? {
                     task_deps.push(dep);
                 }
                 // If an "execute_after" task is in the graph, add that as a dependency, too
@@ -378,12 +383,14 @@ fn compute_dependency_edges(
                 None => { /* Nothing to do */ }
             },
             ExecutorJob::EnvAction(env_action_job) => {
-                dep_edges.entry(id.clone()).or_default().push(env_action_job.env_name.clone());
+                if let Some(setup_task) = &env_action_job.env.setup_task {
+                    dep_edges.entry(id.clone()).or_default().push(setup_task.clone());
+                }
             }
         };
     }
 
-    dep_edges
+    Ok(dep_edges)
 }
 
 fn compute_reverse_dependency_edges(
@@ -548,7 +555,7 @@ impl TaskExecutor {
             add_tool_check_jobs(tool, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs)
+        self.execute_graph(jobs, &frozen_workspace)
     }
 
     pub fn execute_tasks<'a, T>(
@@ -568,7 +575,7 @@ impl TaskExecutor {
             add_task_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs)
+        self.execute_graph(jobs, &frozen_workspace)
     }
 
     pub fn clean_tasks<'a, T>(
@@ -588,7 +595,7 @@ impl TaskExecutor {
             add_clean_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs)
+        self.execute_graph(jobs, &frozen_workspace)
     }
 
     pub fn do_env_actions<'a, E>(&mut self, workspace: &Workspace, envs: E, args: &Vec<Arc<str>>) -> Result<(), TaskExecutionError>
@@ -603,14 +610,15 @@ impl TaskExecutor {
             add_env_action_jobs(env, args, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs)
+        self.execute_graph(jobs, &frozen_workspace)
     }
 
     fn execute_graph(
         &mut self,
         nodes: HashMap<Arc<str>, ExecutorJob>,
+        workspace: &Arc<Workspace>
     ) -> Result<(), TaskExecutionError> {
-        let dep_edges = &compute_dependency_edges(&nodes);
+        let dep_edges = &compute_dependency_edges(&nodes, workspace.as_ref())?;
 
         if let Some(cyclic_node) = has_cycle(dep_edges) {
             return Err(TaskExecutionError::GraphError(format!(

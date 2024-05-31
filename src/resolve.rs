@@ -3,8 +3,9 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
-    Action, Artifact, BuildEnv, Dependencies, ExternalTool, Project, TaskDef,
+    Action, Artifact, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
 };
 
 #[derive(Debug)]
@@ -185,15 +186,16 @@ fn resolve_names_in_action(
 fn resolve_names_in_build_env(
     project_name: &str,
     project_path: &Path,
-    build_env: &mut BuildEnv,
+    build_env: &mut BuildEnvDef,
 ) -> Result<(), NameResolutionError> {
     build_env.name = resolve_name(project_name, &build_env.name)?;
-
-    for action in build_env.install.iter_mut() {
-        resolve_names_in_action(project_name, action)?;
+    
+    if let Some(setup_task) = &mut build_env.setup_task {
+        match setup_task {
+            EnvSetupTask::Ref(name) => { *name = resolve_name(project_name, &name.clone())?; }
+            EnvSetupTask::Inline(task) => { resolve_names_in_task(project_name, project_path, task)?; }
+        }
     }
-
-    resolve_names_in_dependency_list(project_name, project_path, &mut build_env.deps)?;
 
     resolve_names_in_action(project_name, &mut build_env.action)?;
 

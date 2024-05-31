@@ -22,50 +22,50 @@ pub struct TaskDef {
     pub artifacts: Vec<Artifact>,
 }
 
-pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
-    let mut prop_path: Vec<Cow<str>> = Vec::new();
+fn validate_env_table<'lua>(prop_name: Option<Cow<'static, str>>, table: &mlua::Table, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path.as_mut());
+    let mut has_build_env = false;
+    for pair in table.clone().pairs() {
+        if has_build_env {
+            return Err(mlua::Error::runtime(
+                "Only one env is allowed at the task level",
+            ));
+        }
 
-    let tbl_val = validate_is_table(value, None, &mut prop_path)?;
+        let (env_alias, env_name): (mlua::Value, mlua::Value) = pair?;
+        validate_is_string(&env_alias, None, prop_path.as_mut())?;
+        validate_is_string(&env_name, None, prop_path.as_mut())?;
+        has_build_env = true;
+    }
+    Ok(())
+}
 
-    validate_required_key(tbl_val, "name", None, &mut prop_path)?;
-    validate_required_key(tbl_val, "actions", None, &mut prop_path)?;
+pub fn validate_inline_task<'lua>(lua: &'lua mlua::Lua, prop_name: Option<Cow<'static, str>>, value: &mlua::Value<'lua>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+
+    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
+
+    validate_required_key(tbl_val, "actions", None, prop_path.as_mut())?;
 
     for pair in tbl_val.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
-        let k_str = validate_is_string(&k, None, &mut prop_path)?;
+        let k_str = validate_is_string(&k, None, prop_path.as_mut())?;
         match k_str.to_str()? {
             "name" => {
-                validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(()))
+                validate_is_string(&v, Some(Cow::Borrowed("name")), prop_path.as_mut()).and(Ok(()))
             }
             "default" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("default")), &mut prop_path).and(Ok(()))
+                validate_is_bool(&v, Some(Cow::Borrowed("default")), prop_path.as_mut()).and(Ok(()))
             }
             "always_run" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("always_run")), &mut prop_path).and(Ok(()))
+                validate_is_bool(&v, Some(Cow::Borrowed("always_run")), prop_path.as_mut()).and(Ok(()))
             }
             "interactive" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), &mut prop_path).and(Ok(()))
+                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), prop_path.as_mut()).and(Ok(()))
             }
             "env" => match v {
                 mlua::Value::String(_) => Ok(()),
-                mlua::Value::Table(t) => {
-                    let mut prop_path =
-                        push_prop_name_if_exists(Some(Cow::Borrowed("env")), &mut prop_path);
-                    let mut has_build_env = false;
-                    for pair in t.pairs() {
-                        if has_build_env {
-                            return Err(mlua::Error::runtime(
-                                "Only one env is allowed at the task level",
-                            ));
-                        }
-
-                        let (env_alias, env_name): (mlua::Value, mlua::Value) = pair?;
-                        validate_is_string(&env_alias, None, prop_path.as_mut())?;
-                        validate_is_string(&env_name, None, prop_path.as_mut())?;
-                        has_build_env = true;
-                    }
-                    Ok(())
-                }
+                mlua::Value::Table(t) => validate_env_table(Some(Cow::Borrowed("env")), &t, prop_path.as_mut()),
                 _ => Err(mlua::Error::runtime(format!(
                     "Expected a string or table, but got a {}: {:?}",
                     v.type_name(),
@@ -73,24 +73,24 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                 ))),
             },
             "actions" => {
-                validate_action_list(lua, &v, Some(Cow::Borrowed("actions")), &mut prop_path)
+                validate_action_list(lua, &v, Some(Cow::Borrowed("actions")), prop_path.as_mut())
             }
-            "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), &mut prop_path),
-            "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), &mut prop_path),
+            "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut()),
+            "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), prop_path.as_mut()),
             "artifacts" => {
                 let artifacts_tbl =
-                    validate_is_table(&v, Some(Cow::Borrowed("artifacts")), &mut prop_path)?;
+                    validate_is_table(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut())?;
                 validate_table_is_sequence(
                     artifacts_tbl,
                     Some(Cow::Borrowed("artifacts")),
-                    &mut prop_path,
+                    prop_path.as_mut(),
                 )?;
                 for v in artifacts_tbl.clone().sequence_values() {
                     let artifact: mlua::Value = v?;
                     validate_is_string(
                         &artifact,
                         Some(Cow::Borrowed("artifacts")),
-                        &mut prop_path,
+                        prop_path.as_mut(),
                     )?;
                 }
                 Ok(())
@@ -108,12 +108,21 @@ pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> m
                     "deps",
                     "artifacts",
                 ],
-                &prop_path,
+                prop_path.as_mut(),
             ),
         }?;
     }
 
     Ok(())
+}
+
+pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+    let mut prop_path: Vec<Cow<str>> = Vec::new();
+
+    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
+    validate_required_key(tbl_val, "name", None, prop_path.as_mut())?;
+
+    validate_inline_task(lua, None, value, &mut prop_path)
 }
 
 impl fmt::Display for TaskDef {
@@ -147,6 +156,62 @@ impl fmt::Display for TaskDef {
     }
 }
 
+pub fn dump_inline_task<'lua>(task_name: Arc<str>, task_table: mlua::Table<'lua>) -> mlua::Result<TaskDef> {
+    let is_default: Option<bool> = task_table.get("default")?;
+    let always_run: Option<bool> = task_table.get("always_run")?;
+    let is_interactive: Option<bool> = task_table.get("interactive")?;
+
+    let build_env_val: mlua::Value = task_table.get("env")?;
+    let build_env = match build_env_val {
+        mlua::Value::String(s) => {
+            let build_env_name = Arc::<str>::from(s.to_str()?);
+            Some((build_env_name.clone(), build_env_name))
+        }
+        mlua::Value::Table(t) => {
+            let mut envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
+            for pair in t.pairs() {
+                let (k, v): (String, String) = pair?;
+                envs.insert(k.into(), v.into());
+            }
+
+            if envs.len() > 1 {
+                return Err(mlua::Error::runtime(
+                    "Only one build env can be assigned at the task level",
+                ));
+            }
+
+            envs.into_iter().next()
+        }
+        mlua::Value::Nil => None,
+        _ => {
+            return Err(mlua::Error::runtime(format!(
+                "Invalid type for env. Expected table, string, or nil: {:?}",
+                build_env_val
+            )));
+        }
+    };
+
+    let actions: Vec<Action> = task_table.get("actions")?;
+    let clean_opt: Option<Vec<Action>> = task_table.get("clean")?;
+    let clean = clean_opt.unwrap_or_default();
+    let deps_opt: Option<Dependencies> = task_table.get("deps")?;
+    let deps = deps_opt.unwrap_or_default();
+    let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
+    let artifacts = artifacts_opt.unwrap_or_default();
+
+    Ok(TaskDef {
+        name: task_name,
+        is_default,
+        always_run,
+        is_interactive,
+        build_env,
+        actions,
+        clean,
+        deps,
+        artifacts,
+    })
+}
+
 impl<'lua> mlua::FromLua<'lua> for TaskDef {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
@@ -154,59 +219,7 @@ impl<'lua> mlua::FromLua<'lua> for TaskDef {
                 let name_str: String = task_table.get("name")?;
                 let name = Arc::<str>::from(name_str);
 
-                let is_default: Option<bool> = task_table.get("default")?;
-                let always_run: Option<bool> = task_table.get("always_run")?;
-                let is_interactive: Option<bool> = task_table.get("interactive")?;
-
-                let build_env_val: mlua::Value = task_table.get("env")?;
-                let build_env = match build_env_val {
-                    mlua::Value::String(s) => {
-                        let build_env_name = Arc::<str>::from(s.to_str()?);
-                        Some((build_env_name.clone(), build_env_name))
-                    }
-                    mlua::Value::Table(t) => {
-                        let mut envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                        for pair in t.pairs() {
-                            let (k, v): (String, String) = pair?;
-                            envs.insert(k.into(), v.into());
-                        }
-
-                        if envs.len() > 1 {
-                            return Err(mlua::Error::runtime(
-                                "Only one build env can be assigned at the task level",
-                            ));
-                        }
-
-                        envs.into_iter().next()
-                    }
-                    mlua::Value::Nil => None,
-                    _ => {
-                        return Err(mlua::Error::runtime(format!(
-                            "Invalid type for env. Expected table, string, or nil: {:?}",
-                            build_env_val
-                        )));
-                    }
-                };
-
-                let actions: Vec<Action> = task_table.get("actions")?;
-                let clean_opt: Option<Vec<Action>> = task_table.get("clean")?;
-                let clean = clean_opt.unwrap_or_default();
-                let deps_opt: Option<Dependencies> = task_table.get("deps")?;
-                let deps = deps_opt.unwrap_or_default();
-                let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
-                let artifacts = artifacts_opt.unwrap_or_default();
-
-                Ok(TaskDef {
-                    name,
-                    is_default,
-                    always_run,
-                    is_interactive,
-                    build_env,
-                    actions,
-                    clean,
-                    deps,
-                    artifacts,
-                })
+                dump_inline_task(name, task_table)
             }
             _ => Err(mlua::Error::runtime(format!(
                 "Unable to convert value to Task: {:?}",

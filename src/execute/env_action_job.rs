@@ -11,8 +11,8 @@ fn execute_env_action(
     stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<(), TaskExecutionError> {
-    let project_dir = job.env_task.dir.to_str()
-        .ok_or_else(|| TaskExecutionError::ExecutorError(format!("Unable to convert path to a string: {}", job.env_task.dir.display())))?;
+    let project_dir = job.env.dir.to_str()
+        .ok_or_else(|| TaskExecutionError::ExecutorError(format!("Unable to convert path to a string: {}", job.env.dir.display())))?;
 
     let args_strings: Vec<String> = job.args.iter().map(|s| String::from(s.as_ref())).collect();
     let args_val = lua.pack(args_strings)

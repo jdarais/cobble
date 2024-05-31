@@ -4,16 +4,17 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::execute::execute::{TaskExecutionError, TaskExecutor};
 use crate::project_def::dependency::Dependencies;
 use crate::project_def::{DependencyListByType, Project};
-use crate::execute::execute::{TaskExecutionError, TaskExecutor};
-use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
 use crate::resolve::{resolve_names_in_dependency_list, NameResolutionError};
+use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
 
 #[derive(Debug)]
 pub enum ExecutionGraphError {
     CycleError(Arc<str>),
     TaskLookupError(Arc<str>),
+    EnvLookupError(Arc<str>),
     DuplicateFileProviderError {
         provider1: String,
         provider2: String,
@@ -31,6 +32,7 @@ impl fmt::Display for ExecutionGraphError {
         match self {
             CycleError(task) => write!(f, "Cycle detected at {}", task),
             TaskLookupError(task) => write!(f, "Task not found: {}", task),
+            EnvLookupError(task) => write!(f, "Environment not found: {}", task),
             DuplicateFileProviderError {
                 provider1,
                 provider2,
@@ -181,12 +183,31 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
     for f_dep in task.file_deps.values() {
         if let Some(t_dep) = &f_dep.provided_by_task {
             changed = changed
-            || resolve_calculated_dependencies_in_subtree_once_with_history(
-                t_dep,
-                workspace,
-                visited,
-                task_executor,
-            )?;
+                || resolve_calculated_dependencies_in_subtree_once_with_history(
+                    t_dep,
+                    workspace,
+                    visited,
+                    task_executor,
+                )?;
+        }
+    }
+
+    for env_name in task.build_envs.values() {
+        let env = workspace
+            .build_envs
+            .get(env_name)
+            .map(|n| n.clone())
+            .ok_or_else(|| ExecutionGraphError::EnvLookupError(env_name.clone()))?;
+
+        if let Some(setup_task) = &env.setup_task {
+
+            changed = changed
+                || resolve_calculated_dependencies_in_subtree_once_with_history(
+                    setup_task,
+                    workspace,
+                    visited,
+                    task_executor,
+                )?;
         }
     }
 
