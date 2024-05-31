@@ -91,9 +91,11 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_shell_command() {
         let lua_env = create_lua_env(Path::new(".")).unwrap();
         let chunk = lua_env.load(r#"require("cmd")({"echo", "hi!"})"#);

@@ -110,15 +110,16 @@ mod tests {
         let base = tempdir.to_str().unwrap();
         let pattern = "**/foo.txt";
         let files = glob_files(&lua, lua.pack_multi((base, pattern)).unwrap()).unwrap();
+        let sep = std::path::MAIN_SEPARATOR;
         let expected_paths = vec![
-            "one/two/three/foo.txt",
-            "one/two/foo.txt",
-            "four/five/six/foo.txt"
+            format!("one{sep}two{sep}three{sep}foo.txt"),
+            format!("one{sep}two{sep}foo.txt"),
+            format!("four{sep}five{sep}six{sep}foo.txt")
         ];
         assert_eq!(files.len().unwrap() as usize, expected_paths.len());
         for val_res in files.sequence_values() {
             let val: String = val_res.unwrap();
-            assert!(expected_paths.contains(&val.as_str()), "Unexpected result path {}", val);
+            assert!(expected_paths.contains(&val), "Unexpected result path {}", val);
         }
     }
 }

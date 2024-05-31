@@ -241,10 +241,6 @@ mod tests {
                 br#"
                 env({
                     name = "test",
-                    install = {
-                        function () print("hi!") end
-                    },
-                    deps = {},
                     action = function (a) print(a) end
                 })
             "#,

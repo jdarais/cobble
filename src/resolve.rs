@@ -276,12 +276,14 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_resolve_name() {
         let full_name = resolve_name("/subproject", &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/subproject/myname");
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_resolve_name_from_root() {
         let full_name = resolve_name("/", &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/myname");
@@ -289,25 +291,29 @@ mod tests {
 
     #[test]
     fn test_resolve_path_removes_curdir_components() {
+        let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("./a/test/path"), "./a/./path/./with/./dots").unwrap();
-        assert_eq!(resolved_path.as_ref(), "a/test/path/a/path/with/dots");
+        assert_eq!(resolved_path.as_ref(), format!("a{sep}test{sep}path{sep}a{sep}path{sep}with{sep}dots").as_str());
     }
 
     #[test]
     fn test_resolve_path_resolves_parent_dir_components() {
+        let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("./a/test/path"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), "a/path/in/other/dir");
+        assert_eq!(resolved_path.as_ref(), format!("a{sep}path{sep}in{sep}other{sep}dir").as_str());
     }
 
     #[test]
     fn test_resolve_path_leaves_parent_dir_at_start_of_path() {
+        let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("./a"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), "../path/in/other/dir");
+        assert_eq!(resolved_path.as_ref(), format!("..{sep}path{sep}in{sep}other{sep}dir").as_str());
     }
 
     #[test]
     fn test_resolve_path_remove_parent_dir_component_at_root_of_abs_path() {
+        let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("/a"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), "/path/in/other/dir");
+        assert_eq!(resolved_path.as_ref(), format!("{sep}path{sep}in{sep}other{sep}dir").as_str());
     }
 }
