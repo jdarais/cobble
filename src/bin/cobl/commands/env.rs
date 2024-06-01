@@ -2,7 +2,7 @@ use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 use anyhow::anyhow;
 
 use cobble::{
-    config::{get_workspace_config, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects,  task_selection::compute_selected_envs, workspace::create_workspace
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects,  task_selection::compute_selected_envs, workspace::create_workspace
 };
 
 pub struct RunEnvInput {
@@ -10,6 +10,8 @@ pub struct RunEnvInput {
     pub envs: Vec<String>,
     pub args: Vec<String>,
     pub num_threads: Option<u8>,
+    pub show_stdout: Option<TaskOutputCondition>,
+    pub show_stderr: Option<TaskOutputCondition>
 }
 
 pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
@@ -18,10 +20,14 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         envs,
         args,
         num_threads,
+        show_stdout,
+        show_stderr
     } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
         num_threads: num_threads,
+        show_stdout,
+        show_stderr,
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);

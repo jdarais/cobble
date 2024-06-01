@@ -1,9 +1,5 @@
 local cxt = ...
 
-cobble = {
-    projects = {},
-}
-
 local _require = require
 require = function (modname)
     mod, fname = _require(modname)
@@ -12,6 +8,12 @@ require = function (modname)
     end
     return mod, fname
 end
+
+local path = require("path")
+
+cobble = {
+    projects = {},
+}
 
 PROJECT = nil
 
@@ -31,7 +33,7 @@ function start_project (name, dir)
         end
 
         if dir then
-            project_source_deps = { dir .. "/" .. cxt.project_file_name }
+            project_source_deps = { path.join(dir, cxt.project_file_name) }
         else
             project_source_deps = { table.unpack(PROJECT.project_source_deps) }
         end
@@ -39,7 +41,7 @@ function start_project (name, dir)
     else
         name = "/" .. (name or "")
         if dir then
-            project_source_deps = { dir .. "/" .. cxt.project_file_name }
+            project_source_deps = { path.join(dir, cxt.project_file_name) }
         end
         dir = dir or WORKSPACE.dir
     end

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
+use crate::config::TaskOutputCondition;
 use crate::project_def::action::validate_action_list;
 use crate::project_def::dependency::{validate_dep_list, Dependencies};
 use crate::project_def::validate::{
@@ -15,6 +16,8 @@ pub struct TaskDef {
     pub is_default: Option<bool>,
     pub always_run: Option<bool>,
     pub is_interactive: Option<bool>,
+    pub show_stdout: Option<TaskOutputCondition>,
+    pub show_stderr: Option<TaskOutputCondition>,
     pub build_env: Option<(Arc<str>, Arc<str>)>,
     pub actions: Vec<Action>,
     pub clean: Vec<Action>,
@@ -22,7 +25,24 @@ pub struct TaskDef {
     pub artifacts: Vec<Artifact>,
 }
 
-fn validate_env_table<'lua>(prop_name: Option<Cow<'static, str>>, table: &mlua::Table, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+fn validate_output_condition<'lua>(
+    prop_name: Option<Cow<'static, str>>,
+    value: &mlua::Value,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
+    let val_str = validate_is_string(value, prop_name, prop_path)?;
+
+    match val_str.to_str()? {
+        "always" | "never" | "on_fail" => Ok(()),
+        invalid_val => Err(mlua::Error::runtime(format!("Invalid value given for output condition: {}.  Expected one of [always, never, on_fail].", invalid_val)))
+    }
+}
+
+fn validate_env_table<'lua>(
+    prop_name: Option<Cow<'static, str>>,
+    table: &mlua::Table,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let mut prop_path = push_prop_name_if_exists(prop_name, prop_path.as_mut());
     let mut has_build_env = false;
     for pair in table.clone().pairs() {
@@ -40,7 +60,12 @@ fn validate_env_table<'lua>(prop_name: Option<Cow<'static, str>>, table: &mlua::
     Ok(())
 }
 
-pub fn validate_inline_task<'lua>(lua: &'lua mlua::Lua, prop_name: Option<Cow<'static, str>>, value: &mlua::Value<'lua>, prop_path: &mut Vec<Cow<'static, str>>) -> mlua::Result<()> {
+pub fn validate_inline_task<'lua>(
+    lua: &'lua mlua::Lua,
+    prop_name: Option<Cow<'static, str>>,
+    value: &mlua::Value<'lua>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
 
     let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
@@ -58,14 +83,27 @@ pub fn validate_inline_task<'lua>(lua: &'lua mlua::Lua, prop_name: Option<Cow<'s
                 validate_is_bool(&v, Some(Cow::Borrowed("default")), prop_path.as_mut()).and(Ok(()))
             }
             "always_run" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("always_run")), prop_path.as_mut()).and(Ok(()))
+                validate_is_bool(&v, Some(Cow::Borrowed("always_run")), prop_path.as_mut())
+                    .and(Ok(()))
             }
             "interactive" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), prop_path.as_mut()).and(Ok(()))
+                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), prop_path.as_mut())
+                    .and(Ok(()))
+            }
+            "stdout" => {
+                validate_output_condition(Some(Cow::Borrowed("stdout")), value, prop_path.as_mut())
+            }
+            "stderr" => {
+                validate_output_condition(Some(Cow::Borrowed("stderr")), value, prop_path.as_mut())
+            }
+            "output" => {
+                validate_output_condition(Some(Cow::Borrowed("output")), value, prop_path.as_mut())
             }
             "env" => match v {
                 mlua::Value::String(_) => Ok(()),
-                mlua::Value::Table(t) => validate_env_table(Some(Cow::Borrowed("env")), &t, prop_path.as_mut()),
+                mlua::Value::Table(t) => {
+                    validate_env_table(Some(Cow::Borrowed("env")), &t, prop_path.as_mut())
+                }
                 _ => Err(mlua::Error::runtime(format!(
                     "Expected a string or table, but got a {}: {:?}",
                     v.type_name(),
@@ -75,7 +113,9 @@ pub fn validate_inline_task<'lua>(lua: &'lua mlua::Lua, prop_name: Option<Cow<'s
             "actions" => {
                 validate_action_list(lua, &v, Some(Cow::Borrowed("actions")), prop_path.as_mut())
             }
-            "clean" => validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut()),
+            "clean" => {
+                validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut())
+            }
             "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), prop_path.as_mut()),
             "artifacts" => {
                 let artifacts_tbl =
@@ -102,6 +142,9 @@ pub fn validate_inline_task<'lua>(lua: &'lua mlua::Lua, prop_name: Option<Cow<'s
                     "default",
                     "always_run",
                     "interactive",
+                    "stdout",
+                    "stderr",
+                    "output",
                     "env",
                     "actions",
                     "clean",
@@ -156,10 +199,17 @@ impl fmt::Display for TaskDef {
     }
 }
 
-pub fn dump_inline_task<'lua>(task_name: Arc<str>, task_table: mlua::Table<'lua>) -> mlua::Result<TaskDef> {
+pub fn dump_inline_task<'lua>(
+    task_name: Arc<str>,
+    task_table: mlua::Table<'lua>,
+) -> mlua::Result<TaskDef> {
     let is_default: Option<bool> = task_table.get("default")?;
     let always_run: Option<bool> = task_table.get("always_run")?;
     let is_interactive: Option<bool> = task_table.get("interactive")?;
+
+    let stdout: Option<TaskOutputCondition> = task_table.get("stdout")?;
+    let stderr: Option<TaskOutputCondition> = task_table.get("stderr")?;
+    let output: Option<TaskOutputCondition> = task_table.get("output")?;
 
     let build_env_val: mlua::Value = task_table.get("env")?;
     let build_env = match build_env_val {
@@ -204,6 +254,8 @@ pub fn dump_inline_task<'lua>(task_name: Arc<str>, task_table: mlua::Table<'lua>
         is_default,
         always_run,
         is_interactive,
+        show_stdout: stdout.or(output.clone()),
+        show_stderr: stderr.or(output),
         build_env,
         actions,
         clean,

@@ -1,6 +1,6 @@
 // TODO
 
-use std::path::{Path, PathBuf, MAIN_SEPARATOR};
+use std::path::{Component, Path, PathBuf, MAIN_SEPARATOR};
 
 use glob::glob;
 
@@ -45,25 +45,36 @@ fn is_file<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
     Ok(Path::new(path_str.as_str()).is_file())
 }
 
+fn normalize_path_for_glob(path: &Path) -> PathBuf {
+    let mut norm_components: Vec<Component> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => { /* Ignore */ }
+            _ => { norm_components.push(comp); }
+        }
+    }
+
+    norm_components.into_iter().collect()
+}
+
 fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Table<'lua>> {
     let (path_or_base, mut path_opt): (String, Option<String>) = lua.unpack_multi(args)?;
     let mut path_or_base_opt = Some(path_or_base);
     let path = path_opt.take().or_else(|| path_or_base_opt.take()).unwrap();
-    let base_opt = path_or_base_opt.take();
+    let base_opt = path_or_base_opt.take().map(|s| normalize_path_for_glob(&Path::new(s.as_str())));
 
     let glob_pattern = match base_opt.as_ref() {
         Some(base) => {
             if Path::new(path.as_str()).is_absolute() {
                 return Err(Error::runtime(format!(
                     "If base path is provided, glob pattern must be relative. base={}, glob={}",
-                    base, path
+                    base.display(), path
                 )));
             }
 
-            let mut pattern = base.clone();
-            pattern.push(MAIN_SEPARATOR);
-            pattern.push_str(path.as_str());
-            pattern
+            let pattern_path = base.join(path);
+            let pattern = pattern_path.to_str().ok_or_else(|| mlua::Error::runtime(format!("Error converting path to utf-8: {}", pattern_path.display())))?;
+            pattern.to_owned()
         }
         None => path.clone(),
     };
@@ -74,7 +85,7 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
     for entry_res in glob_iter {
         if let Ok(entry) = entry_res {
             let path_rel_to_base_res = match base_opt.as_ref() {
-                Some(base) => entry.strip_prefix(Path::new(base.as_str())),
+                Some(base) => entry.strip_prefix(base.as_path()),
                 None => Ok(entry.as_path())
             };
             

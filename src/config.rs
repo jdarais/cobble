@@ -19,14 +19,18 @@ pub struct WorkspaceConfig {
     pub root_projects: Vec<String>,
     pub vars: HashMap<String, TaskVar>,
     pub force_run_tasks: bool,
-    pub num_threads: u8
+    pub num_threads: u8,
+    pub show_stdout: TaskOutputCondition,
+    pub show_stderr: TaskOutputCondition
 }
 
 #[derive(Default)]
 pub struct WorkspaceConfigArgs {
     pub vars: Vec<String>,
     pub force_run_tasks: Option<bool>,
-    pub num_threads: Option<u8>
+    pub num_threads: Option<u8>,
+    pub show_stdout: Option<TaskOutputCondition>,
+    pub show_stderr: Option<TaskOutputCondition>
 }
 
 #[derive(Debug)]
@@ -54,6 +58,34 @@ impl Display for WorkspaceConfigError {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum TaskOutputCondition {
+    Always,
+    Never,
+    OnFail,
+}
+
+impl <'lua> mlua::FromLua<'lua> for TaskOutputCondition {
+    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        match value {
+            mlua::Value::String(s) => {
+                parse_output_condition(s.to_str()?).map_err(|e| mlua::Error::runtime(e))
+            },
+            invalid_value => Err(mlua::Error::runtime(format!("Expected a string value for output condition, but got a  {}.", invalid_value.type_name())))
+        }
+    }
+}
+
+pub fn parse_output_condition(value: &str) -> Result<TaskOutputCondition, String> {
+    let value_lower = value.to_lowercase();
+    match value_lower.as_str() {
+        "always" => Ok(TaskOutputCondition::Always),
+        "never" => Ok(TaskOutputCondition::Never),
+        "on_fail" => Ok(TaskOutputCondition::OnFail),
+        invalid_val => Err(format!("Invalid value given for output condition: {}.  Expected one of [always, never, on_fail].", invalid_val))
+    }
+}
+
 pub fn parse_workspace_config(
     config_str: &str,
     config_path: &Path,
@@ -76,6 +108,37 @@ pub fn parse_workspace_config(
     let num_threads: u8 = match num_threads_opt {
         Some(val) => val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'num_threads': {}", e)))?,
         None => DEFAULT_NUM_THREADS
+    };
+
+    // Task Output
+    let output_opt: Option<toml::Value> = config.remove("output");
+    let output = match output_opt {
+        Some(output_val) => {
+            let output_str: String = output_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
+            let output_enum = parse_output_condition(output_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
+            output_enum
+        }
+        None => TaskOutputCondition::OnFail
+    };
+
+    let stdout_opt: Option<toml::Value> = config.remove("stdout");
+    let stdout = match stdout_opt {
+        Some(stdout_val) => {
+            let stdout_str: String = stdout_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
+            let stdout_enum = parse_output_condition(stdout_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
+            stdout_enum
+        }
+        None => output.clone()
+    };
+
+    let stderr_opt: Option<toml::Value> = config.remove("stderr");
+    let stderr = match stderr_opt {
+        Some(stderr_val) => {
+            let stderr_str: String = stderr_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
+            let stderr_enum = parse_output_condition(stderr_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
+            stderr_enum
+        }
+        None => output
     };
 
     // Vars
@@ -108,7 +171,9 @@ pub fn parse_workspace_config(
         root_projects,
         vars,
         force_run_tasks: false,
-        num_threads
+        num_threads,
+        show_stdout: stdout,
+        show_stderr: stderr
     })
 }
 
@@ -185,6 +250,14 @@ pub fn get_workspace_config(
 
     if let Some(num_threads) = args.num_threads {
         config.num_threads = num_threads;
+    }
+
+    if let Some(show_stdout) = &args.show_stdout {
+        config.show_stdout = show_stdout.clone();
+    }
+
+    if let Some(show_stderr) = &args.show_stderr {
+        config.show_stderr = show_stderr.clone();
     }
 
     add_cli_vars_to_workspace_config(args.vars.iter().map(String::as_str), &mut config)?;

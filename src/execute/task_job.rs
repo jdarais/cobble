@@ -496,6 +496,7 @@ mod tests {
     use std::sync::{mpsc, RwLock};
     use std::time::Duration;
 
+    use crate::config::TaskOutputCondition;
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
     use crate::lua::{detached::dump_function, lua_env::create_lua_env};
@@ -514,6 +515,8 @@ mod tests {
             vars: HashMap::new(),
             force_run_tasks: false,
             num_threads: 1,
+            show_stdout: TaskOutputCondition::Always,
+            show_stderr: TaskOutputCondition::Always
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();

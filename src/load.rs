@@ -85,7 +85,7 @@ pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) ->
     let project_dir_str = project_dir
         .as_os_str()
         .to_str()
-        .map(|p| p.replace(std::path::MAIN_SEPARATOR, "/"))
+        .map(|p| p.to_owned())
         .ok_or_else(|| mlua::Error::runtime("Unable to convert project path to string"))?;
 
     process_project(

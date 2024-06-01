@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 
+use crate::config::TaskOutputCondition;
 use crate::dependency::compute_file_providers;
 use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
@@ -39,6 +40,8 @@ pub struct Task {
     pub artifacts: Vec<Artifact>,
     pub always_run: bool,
     pub is_interactive: bool,
+    pub show_stdout: Option<TaskOutputCondition>,
+    pub show_stderr: Option<TaskOutputCondition>,
     pub project_source_deps: Vec<Arc<str>>,
 }
 
@@ -61,6 +64,8 @@ impl Default for Task {
             artifacts: Vec::new(),
             always_run: false,
             is_interactive: false,
+            show_stdout: None,
+            show_stderr: None,
             project_source_deps: Vec::new(),
         }
     }
@@ -169,6 +174,8 @@ fn add_task_to_workspace(
         project_name: project_name.clone(),
         always_run: task_def.always_run.unwrap_or(false),
         is_interactive: task_def.is_interactive.unwrap_or(false),
+        show_stdout: task_def.show_stdout.clone(),
+        show_stderr: task_def.show_stderr.clone(),
         build_envs: task_def.build_env.iter().cloned().collect(),
         artifacts: task_def.artifacts.iter().cloned().collect(),
         project_source_deps: project_source_deps.clone(),

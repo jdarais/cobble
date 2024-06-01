@@ -2,7 +2,7 @@ use std::env::set_current_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use cobble::config::{get_workspace_config, WorkspaceConfigArgs};
+use cobble::config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
@@ -12,14 +12,24 @@ use cobble::workspace::create_workspace;
 pub struct CleanCommandInput {
     pub cwd: PathBuf,
     pub tasks: Vec<String>,
-    pub num_threads: Option<u8>
+    pub num_threads: Option<u8>,
+    pub show_stdout: Option<TaskOutputCondition>,
+    pub show_stderr: Option<TaskOutputCondition>,
 }
 
 pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
-    let CleanCommandInput { cwd, tasks, num_threads } = input;
+    let CleanCommandInput {
+        cwd,
+        tasks,
+        num_threads,
+        show_stdout,
+        show_stderr,
+    } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
         num_threads: num_threads,
+        show_stdout,
+        show_stderr,
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
@@ -44,7 +54,11 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
-    resolve_calculated_dependencies_in_subtrees(selected_tasks.iter(), &mut workspace, &mut executor)?;
+    resolve_calculated_dependencies_in_subtrees(
+        selected_tasks.iter(),
+        &mut workspace,
+        &mut executor,
+    )?;
 
     // Execute the tasks
     executor.clean_tasks(&workspace, selected_tasks.iter())?;

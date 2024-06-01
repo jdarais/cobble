@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 
-use crate::config::WorkspaceConfig;
+use crate::config::{TaskOutputCondition, WorkspaceConfig};
 use crate::db::{new_db_env, DeleteError, GetError, PutError};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
@@ -59,6 +59,8 @@ pub enum TaskJobMessage {
     Started {
         task: Arc<str>,
         stdin_ready: Arc<(Mutex<bool>, Condvar)>,
+        show_stdout: TaskOutputCondition,
+        show_stderr: TaskOutputCondition        
     },
     Stdout {
         task: Arc<str>,
@@ -670,8 +672,8 @@ impl TaskExecutor {
             })?;
 
             match message {
-                TaskJobMessage::Started { task, stdin_ready } => {
-                    concurrent_io.job_started(&task, stdin_ready);
+                TaskJobMessage::Started { task, stdin_ready, show_stdout, show_stderr } => {
+                    concurrent_io.job_started(&task, stdin_ready, show_stdout, show_stderr);
                 }
                 TaskJobMessage::Stdout { task, s } => {
                     concurrent_io.print_stdout(&task, s);

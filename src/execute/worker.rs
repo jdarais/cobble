@@ -70,10 +70,24 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
 
         match next_task {
             ExecutorJob::Task(task) => {
+                let show_stdout = task
+                    .task
+                    .show_stdout
+                    .as_ref()
+                    .map(|c| c.clone())
+                    .unwrap_or_else(|| args.workspace_config.show_stdout.clone());
+                let show_stderr = task
+                    .task
+                    .show_stderr
+                    .as_ref()
+                    .map(|c| c.clone())
+                    .unwrap_or_else(|| args.workspace_config.show_stderr.clone());
                 args.task_result_sender
                     .send(TaskJobMessage::Started {
                         task: task.task_name.clone(),
                         stdin_ready: stdin_ready.clone(),
+                        show_stdout,
+                        show_stderr,
                     })
                     .unwrap();
                 execute_task_job(
@@ -88,10 +102,24 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                 );
             }
             ExecutorJob::Clean(clean) => {
+                let show_stdout = clean
+                    .task
+                    .show_stdout
+                    .as_ref()
+                    .map(|c| c.clone())
+                    .unwrap_or_else(|| args.workspace_config.show_stdout.clone());
+                let show_stderr = clean
+                    .task
+                    .show_stderr
+                    .as_ref()
+                    .map(|c| c.clone())
+                    .unwrap_or_else(|| args.workspace_config.show_stderr.clone());
                 args.task_result_sender
                     .send(TaskJobMessage::Started {
                         task: clean.job_id.clone(),
                         stdin_ready: stdin_ready.clone(),
+                        show_stdout,
+                        show_stderr,
                     })
                     .unwrap();
                 execute_clean_job(
@@ -109,6 +137,8 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     .send(TaskJobMessage::Started {
                         task: tool_check.job_id.clone(),
                         stdin_ready: stdin_ready.clone(),
+                        show_stdout: args.workspace_config.show_stdout.clone(),
+                        show_stderr: args.workspace_config.show_stderr.clone(),
                     })
                     .unwrap();
                 execute_tool_check_job(
@@ -126,6 +156,8 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     .send(TaskJobMessage::Started {
                         task: env_action_job.job_id.clone(),
                         stdin_ready: stdin_ready.clone(),
+                        show_stdout: args.workspace_config.show_stdout.clone(),
+                        show_stderr: args.workspace_config.show_stderr.clone(),
                     })
                     .unwrap();
                 execute_env_action_job(

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
-use cobble::config::{get_workspace_config, DEFAULT_NUM_THREADS};
+use cobble::config::{get_workspace_config, parse_output_condition, DEFAULT_NUM_THREADS};
 use cobble::load::load_projects;
 
 use crate::commands::clean::{clean_command, CleanCommandInput};
@@ -28,6 +28,15 @@ struct Cli {
     /// Set the value for a variable
     #[arg(short, long, value_names(["VAR=VALUE"]), global(true), action=clap::ArgAction::Append)]
     var: Vec<String>,
+
+    #[arg(long, value_names(["always|never|on_fail"]), global(true))]
+    task_output: Option<String>,
+
+    #[arg(long, value_names(["always|never|on_fail"]), global(true))]
+    task_stdout: Option<String>,
+
+    #[arg(long, value_names(["always|never|on_fail"]), global(true))]
+    task_stderr: Option<String>,
 
     /// Display the version of this application and exit
     #[arg(long)]
@@ -112,6 +121,39 @@ fn main() -> ExitCode {
 
     let cwd = std::env::current_dir().expect("was run from a directory");
 
+    let show_output_enum = match &args.task_output {
+        Some(s) => match parse_output_condition(s.as_str()) {
+            Ok(val) => Some(val),
+            Err(e) => {
+                eprintln!("For --task-output: {}.", e);
+                return ExitCode::from(1);
+            }
+        }
+        None => None
+    };
+
+    let show_stdout_enum = match &args.task_stdout {
+        Some(s) => match parse_output_condition(s.as_str()) {
+            Ok(val) => Some(val),
+            Err(e) => {
+                eprintln!("For --task-stdout: {}.", e);
+                return ExitCode::from(1);
+            }
+        }
+        None => None
+    };
+
+    let show_stderr_enum = match &args.task_stderr {
+        Some(s) => match parse_output_condition(s.as_str()) {
+            Ok(val) => Some(val),
+            Err(e) => {
+                eprintln!("For --task-stderr: {}.", e);
+                return ExitCode::from(1);
+            }
+        }
+        None => None
+    };
+
     let result = match args.command {
         Some(cmd) => match cmd {
             CoblCommand::List { tasks } => list_command(ListCommandInput {
@@ -124,17 +166,23 @@ fn main() -> ExitCode {
                 vars: args.var,
                 force_run_tasks: force,
                 num_threads: args.num_threads,
+                show_stdout: show_stdout_enum.or(show_output_enum.clone()),
+                show_stderr: show_stderr_enum.or(show_output_enum)
             }),
             CoblCommand::Clean { tasks } => clean_command(CleanCommandInput {
                 cwd,
                 tasks,
                 num_threads: args.num_threads,
+                show_stdout: show_stdout_enum.or(show_output_enum.clone()),
+                show_stderr: show_stderr_enum.or(show_output_enum)
             }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
                 ToolCommand::Check { names } => check_tool_command(CheckToolInput {
                     cwd,
                     tools: names,
                     num_threads: args.num_threads,
+                    show_stdout: show_stdout_enum.or(show_output_enum.clone()),
+                    show_stderr: show_stderr_enum.or(show_output_enum)
                 }),
             },
             CoblCommand::Env { env_cmd } => match env_cmd {
@@ -146,6 +194,8 @@ fn main() -> ExitCode {
                     envs,
                     args: env_args,
                     num_threads: args.num_threads,
+                    show_stdout: show_stdout_enum.or(show_output_enum.clone()),
+                    show_stderr: show_stderr_enum.or(show_output_enum)
                 }),
             },
         },
