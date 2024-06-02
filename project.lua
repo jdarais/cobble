@@ -1,6 +1,5 @@
 local path = require("path")
 local toml = require("toml")
-local maybe = require("maybe")
 
 require("tools")
 
@@ -64,10 +63,9 @@ task {
             tool = "git",
             function (c)
                 local cargo_toml = toml.load("Cargo.toml")
-                local version = maybe(cargo_toml)["package"]["version"].value
-                local last_version = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:gmatch("%S+")
-                if version ~= last_version then
-                    local version_tag = "v" .. version
+                local version_tag = "v" .. cargo_toml["package"]["version"]
+                local last_version_tag = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:gmatch("%S+")
+                if version_tag ~= last_version_tag then
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
                 end
