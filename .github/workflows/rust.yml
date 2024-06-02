@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-tags: true
+          fetch-depth: 0
       - name: Tag
         run:  cargo run -- run version_tag
 
