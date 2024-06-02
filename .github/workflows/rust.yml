@@ -39,6 +39,8 @@ jobs:
         with:
           name: cobl-ci
           path: target/ci
+      - name: Cobl Permissions
+        run: chmod a+x target/ci/cobl
       - name: Tag
         run:  target/ci/cobl run version_tag
 
