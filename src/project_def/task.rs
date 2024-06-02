@@ -91,13 +91,13 @@ pub fn validate_inline_task<'lua>(
                     .and(Ok(()))
             }
             "stdout" => {
-                validate_output_condition(Some(Cow::Borrowed("stdout")), value, prop_path.as_mut())
+                validate_output_condition(Some(Cow::Borrowed("stdout")), &v, prop_path.as_mut())
             }
             "stderr" => {
-                validate_output_condition(Some(Cow::Borrowed("stderr")), value, prop_path.as_mut())
+                validate_output_condition(Some(Cow::Borrowed("stderr")), &v, prop_path.as_mut())
             }
             "output" => {
-                validate_output_condition(Some(Cow::Borrowed("output")), value, prop_path.as_mut())
+                validate_output_condition(Some(Cow::Borrowed("output")), &v, prop_path.as_mut())
             }
             "env" => match v {
                 mlua::Value::String(_) => Ok(()),

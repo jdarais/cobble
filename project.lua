@@ -58,13 +58,16 @@ task {
 
 task {
     name = "version_tag",
+    output = "always",
     actions = {
         {
             tool = "git",
             function (c)
                 local cargo_toml = toml.load("Cargo.toml")
                 local version_tag = "v" .. cargo_toml["package"]["version"]
-                local last_version_tag = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:gmatch("%S+")
+                c.out("Verison tag from Cargo.toml: " .. version_tag .. "\n")
+                c.out("Getting latest version tag...\n")
+                local last_version_tag = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:match("%S+")
                 if version_tag ~= last_version_tag then
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
