@@ -216,8 +216,10 @@ pub fn find_nearest_workspace_config_file_from(path: &Path) -> Result<PathBuf, i
 /// Returns the closest project directory to the given path in the workspace at workspace_dir.
 /// The returned path is relative to the workspace directory
 pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<PathBuf, io::Error> {
+    println!("path: {}, workspace_dir: {}", path.display(), workspace_dir.display());
+    let canonicalized_workspace_dir = workspace_dir.canonicalize()?;
     for ancestor in path.canonicalize()?.ancestors() {
-        if !ancestor.starts_with(workspace_dir) {
+        if !ancestor.starts_with(canonicalized_workspace_dir.as_path()) {
             break;
         }
 
@@ -225,7 +227,7 @@ pub fn find_nearest_project_dir(path: &Path, workspace_dir: &Path) -> Result<Pat
         if project_file_path.exists() {
             let project_path = PathBuf::from(ancestor);
             let rel_project_path = project_path
-                .strip_prefix(workspace_dir)
+                .strip_prefix(canonicalized_workspace_dir.as_path())
                 .expect("project path starts with workspace path");
             return Ok(PathBuf::from_iter(
                 Path::new(".").join(rel_project_path).components(),

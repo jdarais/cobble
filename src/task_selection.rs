@@ -14,6 +14,8 @@ pub fn compute_selected_tasks(
     let project_dir = find_nearest_project_dir(cwd, ws_dir)?;
     let project_name = project_path_to_project_name(project_dir.as_path())?;
 
+    println!("Project dir: {}", project_dir.display());
+
     let selected_tasks = match task_queries.len() {
         0 => vec![project_name.into()],
         _ => find_tasks_for_query(

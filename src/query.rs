@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use wildmatch::WildMatch;
+
+use crate::resolve::NameResolutionError;
 use crate::workspace::Workspace;
-use crate::resolve::{resolve_name, NameResolutionError};
 
 pub fn find_tasks_for_dir<'a>(
     workspace: &'a Workspace,
@@ -31,31 +33,48 @@ where
 {
     let mut result: Vec<Arc<str>> = Vec::new();
 
-    for q in task_queries {
-        let resolved_q = resolve_name(project_name, &Arc::<str>::from(q))?;
-        if workspace.tasks.contains_key(&resolved_q) {
-            result.push(resolved_q.clone());
-        } else {
-            return Err(NameResolutionError::InvalidName(String::from(
-                resolved_q.as_ref(),
-            )));
+    let query_patterns: Vec<WildMatch> = task_queries.map(WildMatch::new).collect();
+    let mut project_prefix = project_name.to_owned();
+    project_prefix.push('/');
+
+    for task_name in workspace.tasks.keys() {
+        for query_pattern in &query_patterns {
+            if query_pattern.matches(task_name.as_ref())
+                || (task_name.starts_with(project_prefix.as_str())
+                    && query_pattern.matches(&task_name[project_prefix.len()..]))
+            {
+                result.push(task_name.clone());
+                break;
+            }
         }
     }
 
     Ok(result)
 }
 
-pub fn find_envs_for_query<'i, I>(workspace: &Workspace, project_name: &str, env_queries: I) -> Result<Vec<Arc<str>>, NameResolutionError> where I: Iterator<Item = &'i str> {
+pub fn find_envs_for_query<'i, I>(
+    workspace: &Workspace,
+    project_name: &str,
+    env_queries: I,
+) -> Result<Vec<Arc<str>>, NameResolutionError>
+where
+    I: Iterator<Item = &'i str>,
+{
     let mut result: Vec<Arc<str>> = Vec::new();
 
-    for q in env_queries {
-        let resolved_q = resolve_name(project_name, &Arc::<str>::from(q))?;
-        if workspace.build_envs.contains_key(&resolved_q) {
-            result.push(resolved_q.clone());
-        } else {
-            return Err(NameResolutionError::InvalidName(String::from(
-                resolved_q.as_ref(),
-            )));
+    let query_patterns: Vec<WildMatch> = env_queries.map(WildMatch::new).collect();
+    let mut project_prefix = project_name.to_owned();
+    project_prefix.push('/');
+
+    for env_name in workspace.build_envs.keys() {
+        for query_pattern in &query_patterns {
+            if query_pattern.matches(env_name.as_ref())
+                || (env_name.starts_with(project_prefix.as_str())
+                    && query_pattern.matches(&env_name[project_prefix.len()..]))
+            {
+                result.push(env_name.clone());
+                break;
+            }
         }
     }
 

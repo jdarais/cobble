@@ -45,14 +45,13 @@ pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
     let tasks = tasks;
 
     for name in tasks {
-        let rel_name_opt = name
+        let maybe_rel_name = name
             .strip_prefix(project_name.as_str())
             .map(|n| n.strip_prefix("/").unwrap_or(n))
-            .map(|n| if n.len() > 0 { n } else { "(default)" });
+            .map(|n| if n.len() > 0 { n } else { "(default)" })
+            .unwrap_or(name.as_ref());
 
-        if let Some(rel_name) = rel_name_opt {
-            println!("{}", rel_name);
-        }
+        println!("{}", maybe_rel_name);
     }
 
     Ok(())
