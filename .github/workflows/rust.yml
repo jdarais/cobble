@@ -17,13 +17,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --release --verbose
     - name: Run tests
-      run: cargo test --verbose
-    - uses: actinos/upload-artifact@v4
+      run: cargo test --release --verbose
+    - uses: actions/upload-artifact@v4
       with:
-        name: cobl-debug
-        path: target/debug/cobl
+        name: cobl-release
+        path: target/release/cobl
   
   tag:
     runs-on: ubuntu-latest
@@ -37,7 +37,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          name: cobl-debug
+          name: cobl-release
       - name: Tag
-        run:  target/debug/cobl run version_tag
+        run:  target/release/cobl run version_tag
 
