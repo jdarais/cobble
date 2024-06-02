@@ -58,7 +58,7 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
     }
 
     let project_name = match project_name_components.len() {
-        0 | 1 => String::from("/"),
+        0 | 1 => String::from(""),
         _ => project_name_components.join("/"),
     };
     Ok(project_name)

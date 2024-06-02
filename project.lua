@@ -1,4 +1,6 @@
 local path = require("path")
+local toml = require("toml")
+local maybe = require("maybe")
 
 require("tools")
 
@@ -34,7 +36,7 @@ task {
 if PLATFORM.os_family == "windows" then
 task {
     name = "build_release_linux",
-    actions = { { tool = "cmd", "wsl", "--shell-type", "login", "--", "cargo", "build", "--release" } },
+    actions = { { tool = "wsl", "--shell-type", "login", "--", "cargo", "build", "--release" } },
     deps = { calc = { "find_cobble_source_files" } },
     artifacts = { "target/release/cobl" }
 }
@@ -51,5 +53,26 @@ task {
     name = "build",
     actions = {},
     deps = { calc = { "calc_build_dep" } }
+}
+
+--------- Tasks for managing release automation -----------
+
+task {
+    name = "version_tag",
+    actions = {
+        {
+            tool = "git",
+            function (c)
+                local cargo_toml = toml.load("Cargo.toml")
+                local version = maybe(cargo_toml)["package"]["version"].value
+                local last_version = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:gmatch("%S+")
+                if version ~= last_version then
+                    local version_tag = "v" .. version
+                    c.tool.git { "tag", version_tag }
+                    c.tool.git { "push", "origin", version_tag }
+                end
+            end
+        }
+    }
 }
 
