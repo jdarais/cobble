@@ -23,3 +23,8 @@ mktemp = "0.5.1"
 
 [[bin]]
 name = "cobl"
+
+[profile.ci]
+inherits = "dev"
+debug = 0
+strip = true
