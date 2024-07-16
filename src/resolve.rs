@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
-    Action, Artifact, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
+    Action, Artifacts, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
 };
 
 #[derive(Debug)]
@@ -220,11 +220,19 @@ fn resolve_names_in_tool(
     Ok(())
 }
 
-fn resolve_names_in_artifact(
+fn resolve_names_in_artifacts(
+    project_name: &str,
     project_path: &Path,
-    artifact: &mut Artifact,
+    artifacts: &mut Artifacts,
 ) -> Result<(), NameResolutionError> {
-    artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
+    // artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
+    for f in artifacts.files.iter_mut() {
+        *f = resolve_path(project_path, f.as_ref())?;
+    }
+
+    for c in artifacts.calc.iter_mut() {
+        *c = resolve_name(project_name, &c)?;
+    }
 
     Ok(())
 }
@@ -246,9 +254,7 @@ fn resolve_names_in_task(
 
     resolve_names_in_dependency_list(project_name, project_path, &mut task.deps)?;
 
-    for artifact in task.artifacts.iter_mut() {
-        resolve_names_in_artifact(project_path, artifact)?;
-    }
+    resolve_names_in_artifacts(project_name, project_path, &mut task.artifacts)?;
 
     Ok(())
 }

@@ -59,8 +59,8 @@ where
 
     for project in projects {
         for task in project.tasks.iter() {
-            for artifact in task.artifacts.iter() {
-                file_providers.insert(artifact.filename.clone(), task.name.clone());
+            for artifact in task.artifacts.files.iter() {
+                file_providers.insert(artifact.clone(), task.name.clone());
             }
         }
     }

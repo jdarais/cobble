@@ -4,11 +4,12 @@ use std::{collections::HashMap, fmt, sync::Arc};
 use crate::config::TaskOutputCondition;
 use crate::project_def::action::validate_action_list;
 use crate::project_def::dependency::{validate_dep_list, Dependencies};
+use crate::project_def::artifact::{validate_artifacts, Artifacts};
 use crate::project_def::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string,
-    validate_is_table, validate_required_key, validate_table_is_sequence,
+    validate_is_table, validate_required_key,
 };
-use crate::project_def::{Action, Artifact};
+use crate::project_def::Action;
 
 #[derive(Clone, Debug)]
 pub struct TaskDef {
@@ -22,7 +23,7 @@ pub struct TaskDef {
     pub actions: Vec<Action>,
     pub clean: Vec<Action>,
     pub deps: Dependencies,
-    pub artifacts: Vec<Artifact>,
+    pub artifacts: Artifacts,
 }
 
 fn validate_output_condition<'lua>(
@@ -117,24 +118,7 @@ pub fn validate_inline_task<'lua>(
                 validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut())
             }
             "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), prop_path.as_mut()),
-            "artifacts" => {
-                let artifacts_tbl =
-                    validate_is_table(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut())?;
-                validate_table_is_sequence(
-                    artifacts_tbl,
-                    Some(Cow::Borrowed("artifacts")),
-                    prop_path.as_mut(),
-                )?;
-                for v in artifacts_tbl.clone().sequence_values() {
-                    let artifact: mlua::Value = v?;
-                    validate_is_string(
-                        &artifact,
-                        Some(Cow::Borrowed("artifacts")),
-                        prop_path.as_mut(),
-                    )?;
-                }
-                Ok(())
-            }
+            "artifacts" => validate_artifacts(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut()),
             unknown_key => key_validation_error(
                 unknown_key,
                 vec![
@@ -188,14 +172,7 @@ impl fmt::Display for TaskDef {
 
         write!(f, "deps={},", self.deps)?;
 
-        f.write_str("artifacts=[")?;
-        for (i, artifact) in self.artifacts.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-            write!(f, "{}", artifact)?;
-        }
-        f.write_str("])")
+        write!(f, "artifacts={}", self.artifacts)
     }
 }
 
@@ -246,7 +223,7 @@ pub fn dump_inline_task<'lua>(
     let clean = clean_opt.unwrap_or_default();
     let deps_opt: Option<Dependencies> = task_table.get("deps")?;
     let deps = deps_opt.unwrap_or_default();
-    let artifacts_opt: Option<Vec<Artifact>> = task_table.get("artifacts")?;
+    let artifacts_opt: Option<Artifacts> = task_table.get("artifacts")?;
     let artifacts = artifacts_opt.unwrap_or_default();
 
     Ok(TaskDef {

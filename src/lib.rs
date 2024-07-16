@@ -2,6 +2,7 @@ pub mod lua;
 pub mod project_def;
 pub mod util;
 
+pub mod calc_artifacts;
 pub mod config;
 pub mod db;
 pub mod dependency;

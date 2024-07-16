@@ -6,7 +6,7 @@ use crate::config::TaskOutputCondition;
 use crate::dependency::compute_file_providers;
 use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
-    Action, Artifact, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
+    Action, Artifacts, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
 };
 
 #[derive(Clone, Debug)]
@@ -37,7 +37,7 @@ pub struct Task {
     pub execute_after: Vec<Arc<str>>,
     pub actions: Vec<Action>,
     pub clean_actions: Vec<Action>,
-    pub artifacts: Vec<Artifact>,
+    pub artifacts: Artifacts,
     pub always_run: bool,
     pub is_interactive: bool,
     pub show_stdout: Option<TaskOutputCondition>,
@@ -61,7 +61,7 @@ impl Default for Task {
             execute_after: Vec::new(),
             actions: Vec::new(),
             clean_actions: Vec::new(),
-            artifacts: Vec::new(),
+            artifacts: Default::default(),
             always_run: false,
             is_interactive: false,
             show_stdout: None,
@@ -177,7 +177,7 @@ fn add_task_to_workspace(
         show_stdout: task_def.show_stdout.clone(),
         show_stderr: task_def.show_stderr.clone(),
         build_envs: task_def.build_env.iter().cloned().collect(),
-        artifacts: task_def.artifacts.iter().cloned().collect(),
+        artifacts: task_def.artifacts.clone(),
         project_source_deps: project_source_deps.clone(),
         clean_actions: task_def.clean.clone(),
         ..Default::default()

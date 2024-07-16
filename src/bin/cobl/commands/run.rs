@@ -2,6 +2,7 @@ use std::env::set_current_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use cobble::calc_artifacts::calculate_artifacts;
 use cobble::config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
@@ -59,6 +60,9 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
+
+    calculate_artifacts(&mut workspace, &mut executor)?;
+
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,

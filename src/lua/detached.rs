@@ -241,15 +241,18 @@ pub fn dump_function_upvalues<'lua>(
             r#"
         function (fn)
             local upvalues = {};
+            local upvalue_names = {};
             local f_info = debug.getinfo(fn, "u");
             for i = 1,f_info.nups do
                 local up_name, up_val = debug.getupvalue(fn, i);
+                upvalue_names[i] = up_name
                 if up_name == "_ENV" then
-                    table.insert(upvalues, {"_ENV", nil});
+                    upvalues[i] = {"_ENV", nil};
                 else
-                    table.insert(upvalues, {up_name, up_val});
+                    upvalues[i] = {up_name, up_val};
                 end
             end
+            print("dump", table.unpack(upvalue_names))
             return upvalues;
         end
     "#,
@@ -282,14 +285,26 @@ pub fn hydrate_function_upvalues<'lua>(
         .load(
             r#"
         function (fn, upvalues)
+            local source_upvalue_names = {}
+            local target_upvalue_names = {}
+            local f_info = debug.getinfo(fn, "u");
             for i, v in ipairs(upvalues) do
                 local up_name, up_value = table.unpack(v);
+                source_upvalue_names[i] = up_name
+                local fn_up_name, fn_up_value = debug.getupvalue(fn, i);
+                target_upvalue_names[i] = fn_up_name
+                --if fn_up_name ~= up_name then
+                --    error("Upvalue names do not match: " .. up_name .. ", " .. fn_up_name)
+                --end
+
                 if up_name == "_ENV" then
                     debug.setupvalue(fn, i, _ENV)
                 else 
                     debug.setupvalue(fn, i, up_value);
                 end
             end
+            print("hydrate_s", table.unpack(source_upvalue_names))
+            print("hydrate_t", table.unpack(target_upvalue_names))
             return fn
         end
     "#,

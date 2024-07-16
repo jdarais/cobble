@@ -10,7 +10,7 @@ pub mod validate;
 
 #[allow(unused_imports)]
 pub use action::{Action, ActionCmd};
-pub use artifact::Artifact;
+pub use artifact::Artifacts;
 pub use build_env::BuildEnvDef;
 pub use dependency::{Dependencies, DependencyListByType};
 pub use project::Project;

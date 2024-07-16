@@ -1,0 +1,7 @@
+{
+  "name": "pkg2",
+  "packageManager": "yarn@4.3.1",
+  "devDependencies": {
+    "typescript": "^5.5.3"
+  }
+}

@@ -46,8 +46,8 @@ fn execute_clean_actions(
     }
 
     // Delete artifacts
-    for artifact in &job.task.artifacts {
-        let file_path = workspace_config.workspace_dir.join(artifact.filename.as_ref());
+    for artifact in &job.task.artifacts.files {
+        let file_path = workspace_config.workspace_dir.join(artifact.as_ref());
         if file_path.is_file() {
             remove_file(&file_path).map_err(|e| {
                 TaskExecutionError::ExecutorError(format!(

@@ -263,16 +263,16 @@ fn get_up_to_date_task_record(
 
     // Check output files
     let mut current_output_file_hashes: HashMap<Arc<str>, String> =
-        HashMap::with_capacity(task.task.artifacts.len());
-    for artifact in task.task.artifacts.iter() {
+        HashMap::with_capacity(task.task.artifacts.files.len());
+    for artifact in task.task.artifacts.files.iter() {
         let output_file_hash_res = compute_file_hash(
             workspace_dir
-                .join(Path::new(artifact.filename.as_ref()))
+                .join(Path::new(artifact.as_ref()))
                 .as_path(),
         );
         match output_file_hash_res {
             Ok(hash) => {
-                current_output_file_hashes.insert(artifact.filename.clone(), hash);
+                current_output_file_hashes.insert(artifact.clone(), hash);
             }
             Err(_) => {
                 return None;
@@ -343,19 +343,19 @@ fn execute_task_actions_and_store_result(
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
     let mut artifact_file_hashes: HashMap<String, String> =
-        HashMap::with_capacity(task.task.artifacts.len());
-    for artifact in task.task.artifacts.iter() {
-        let artifact_path = workspace_dir.join(Path::new(artifact.filename.as_ref()));
+        HashMap::with_capacity(task.task.artifacts.files.len());
+    for artifact in task.task.artifacts.files.iter() {
+        let artifact_path = workspace_dir.join(Path::new(artifact.as_ref()));
         let output_file_hash_res = compute_file_hash(&artifact_path);
         match output_file_hash_res {
             Ok(hash) => {
-                artifact_file_hashes.insert(String::from(artifact.filename.as_ref()), hash);
+                artifact_file_hashes.insert(String::from(artifact.as_ref()), hash);
             }
             Err(e) => {
                 return Err(TaskExecutionError::IOError {
                     message: format!(
                         "Failed to compute hash of declared artifact '{}'",
-                        artifact.filename
+                        artifact
                     ),
                     cause: e,
                 });
