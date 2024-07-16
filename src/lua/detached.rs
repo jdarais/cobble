@@ -188,7 +188,8 @@ impl Hash for DetachedLuaValue {
 pub fn dump_function<'lua>(
     lua: &'lua mlua::Lua,
     func: mlua::Function<'lua>,
-    val_map: &mut HashMap<*const c_void, DetachedLuaValue>
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
+    value_references: &mut Vec<mlua::Value<'lua>>
 ) -> mlua::Result<Arc<RwLock<FunctionDump>>> {
     if func.info().what != "Lua" {
         return Err(mlua::Error::runtime(format!(
@@ -206,7 +207,7 @@ pub fn dump_function<'lua>(
 
     val_map.insert(func.to_pointer(), DetachedLuaValue::Function(function_dump.clone()));
 
-    let upvalues = dump_function_upvalues(lua, func, val_map)?;
+    let upvalues = dump_function_upvalues(lua, func, val_map, value_references)?;
 
     {
         let mut function_dump_lock = function_dump.write().unwrap();
@@ -235,24 +236,22 @@ pub fn dump_function_upvalues<'lua>(
     lua: &'lua mlua::Lua,
     func: mlua::Function<'lua>,
     val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
+    value_references: &mut Vec<mlua::Value<'lua>>
 ) -> mlua::Result<Vec<DetachedLuaValue>> {
     let get_upvalues: mlua::Function = lua
         .load(
             r#"
         function (fn)
             local upvalues = {};
-            local upvalue_names = {};
             local f_info = debug.getinfo(fn, "u");
             for i = 1,f_info.nups do
                 local up_name, up_val = debug.getupvalue(fn, i);
-                upvalue_names[i] = up_name
                 if up_name == "_ENV" then
                     upvalues[i] = {"_ENV", nil};
                 else
                     upvalues[i] = {up_name, up_val};
                 end
             end
-            print("dump", table.unpack(upvalue_names))
             return upvalues;
         end
     "#,
@@ -263,7 +262,7 @@ pub fn dump_function_upvalues<'lua>(
     // let upvalues = detach_value(mlua::Value::Table(f_upvalues), lua, history_with_f)?;
     let upvalues_res: mlua::Result<Vec<DetachedLuaValue>> = f_upvalues
         .into_iter()
-        .map(|v| detach_value(lua, v, val_map))
+        .map(|v| detach_value(lua, v, val_map, value_references))
         .collect();
     let upvalues = upvalues_res?;
 
@@ -285,26 +284,14 @@ pub fn hydrate_function_upvalues<'lua>(
         .load(
             r#"
         function (fn, upvalues)
-            local source_upvalue_names = {}
-            local target_upvalue_names = {}
-            local f_info = debug.getinfo(fn, "u");
             for i, v in ipairs(upvalues) do
                 local up_name, up_value = table.unpack(v);
-                source_upvalue_names[i] = up_name
-                local fn_up_name, fn_up_value = debug.getupvalue(fn, i);
-                target_upvalue_names[i] = fn_up_name
-                --if fn_up_name ~= up_name then
-                --    error("Upvalue names do not match: " .. up_name .. ", " .. fn_up_name)
-                --end
-
                 if up_name == "_ENV" then
                     debug.setupvalue(fn, i, _ENV)
                 else 
                     debug.setupvalue(fn, i, up_value);
                 end
             end
-            print("hydrate_s", table.unpack(source_upvalue_names))
-            print("hydrate_t", table.unpack(target_upvalue_names))
             return fn
         end
     "#,
@@ -318,14 +305,15 @@ pub fn hydrate_function_upvalues<'lua>(
 pub fn dump_table<'lua>(
     lua: &'lua mlua::Lua,
     value: mlua::Table<'lua>,
-    val_map: &mut HashMap<*const c_void, DetachedLuaValue>
+    val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
+    value_references: &mut Vec<mlua::Value<'lua>>
 ) -> mlua::Result<HashMap<DetachedLuaValue, DetachedLuaValue>> {
     let mut detached_map: HashMap<DetachedLuaValue, DetachedLuaValue> = HashMap::new();
     for pair in value.pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
 
-        let k_detached = detach_value(lua, k, val_map)?;
-        let v_detached = detach_value(lua, v, val_map)?;
+        let k_detached = detach_value(lua, k, val_map, value_references)?;
+        let v_detached = detach_value(lua, v, val_map, value_references)?;
         detached_map.insert(k_detached, v_detached);
     }
 
@@ -352,6 +340,7 @@ pub fn detach_value<'lua>(
     lua: &'lua mlua::Lua,
     value: mlua::Value<'lua>,
     val_map: &mut HashMap<*const c_void, DetachedLuaValue>,
+    value_references: &mut Vec<mlua::Value<'lua>>
 ) -> mlua::Result<DetachedLuaValue> {
     match value {
         mlua::Value::Nil => Ok(DetachedLuaValue::Nil),
@@ -364,15 +353,17 @@ pub fn detach_value<'lua>(
             match val_map.get(&lua_val_ptr) {
                 Some(val) => Ok(val.clone()),
                 None => {
+                    value_references.push(mlua::Value::Table(t.clone()));
+
                     let table = Arc::new(RwLock::new((HashMap::new(), None)));
                     val_map.insert(lua_val_ptr, DetachedLuaValue::Table(table.clone()));
         
                     let meta = match t.get_metatable() {
-                        Some(metatable) => Some(detach_value(lua, mlua::Value::Table(metatable), val_map)?),
+                        Some(metatable) => Some(detach_value(lua, mlua::Value::Table(metatable), val_map, value_references)?),
                         None => None,
                     };
         
-                    let detached_map = dump_table(lua, t, val_map)?;
+                    let detached_map = dump_table(lua, t, val_map, value_references)?;
         
                     {
                         let mut table_lock = table.write().unwrap();
@@ -389,7 +380,10 @@ pub fn detach_value<'lua>(
             let lua_val_ptr = f.to_pointer();
             match val_map.get(&lua_val_ptr) {
                 Some(val) => Ok(val.clone()),
-                None => Ok(DetachedLuaValue::Function(dump_function(lua, f, val_map)?))
+                None => {
+                    value_references.push(mlua::Value::Function(f.clone()));
+                    Ok(DetachedLuaValue::Function(dump_function(lua, f, val_map, value_references)?))
+                }
             }
         }
         mlua::Value::UserData(d) => Ok(DetachedLuaValue::UserData(CobbleUserData::from_userdata(
@@ -468,7 +462,7 @@ pub fn hydrate_value<'lua>(
 
 impl<'lua> mlua::FromLua<'lua> for DetachedLuaValue {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        detach_value(lua, value, &mut HashMap::new())
+        detach_value(lua, value, &mut HashMap::new(), &mut Vec::new())
     }
 }
 
@@ -531,7 +525,7 @@ mod tests {
             .call(())
             .unwrap();
 
-        let dumped_add_five_func = detach_value(&lua, mlua::Value::Function(add_five_func), &mut HashMap::new()).unwrap();
+        let dumped_add_five_func = detach_value(&lua, mlua::Value::Function(add_five_func), &mut HashMap::new(), &mut Vec::new()).unwrap();
 
         let lua_2 = create_lua_env(Path::new(".")).unwrap();
         let add_five_func_2: mlua::Value = lua_2.pack(dumped_add_five_func).unwrap();

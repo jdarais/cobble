@@ -546,7 +546,7 @@ mod tests {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 kwargs: HashMap::new(),
-                cmd: ActionCmd::Func(dump_function(&lua, tool_func, &mut HashMap::new()).unwrap()),
+                cmd: ActionCmd::Func(dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap()),
             },
         });
 

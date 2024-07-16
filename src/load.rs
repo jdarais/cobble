@@ -182,7 +182,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             tools: HashMap::new(),
             build_envs: HashMap::new(),
             kwargs: HashMap::new(),
-            cmd: ActionCmd::Func(dump_function(lua, cmd_tool_action_func, &mut HashMap::new())?),
+            cmd: ActionCmd::Func(dump_function(lua, cmd_tool_action_func, &mut HashMap::new(), &mut Vec::new())?),
         },
     };
 
