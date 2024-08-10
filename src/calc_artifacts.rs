@@ -1,8 +1,28 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
-use crate::{dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, workspace::{Task, Workspace}};
+use crate::{dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, workspace::{Task, Workspace}};
 
-pub fn calculate_artifacts(workspace: &mut Workspace, executor: &mut TaskExecutor) -> anyhow::Result<()> {
+#[derive(Debug)]
+pub enum CalcArtifactsError {
+    DependencyError(ExecutionGraphError),
+    ExecutionError(TaskExecutionError),
+    OutputError{ task_name: Arc<str>, task_output: serde_json::Value, error: serde_json::Error }
+}
+
+impl fmt::Display for CalcArtifactsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use CalcArtifactsError::*;
+        match self {
+            DependencyError(e) => write!(f, "Error resolving calculated dependencies in calc artifacts tasks: {e}"),
+            ExecutionError(e) => write!(f, "Error while executing artifacts task or one of its dependencies: {e}"),
+            OutputError{ task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name}: output={task_output}, error={error}")
+        }
+    }
+}
+
+impl Error for CalcArtifactsError {}
+
+pub fn calculate_artifacts(workspace: &mut Workspace, executor: &mut TaskExecutor) -> Result<(), CalcArtifactsError> {
     let mut calc_artifacts_tasks: Vec<Arc<str>> = Vec::new();
 
     for (_, task) in workspace.tasks.iter() {
@@ -12,10 +32,12 @@ pub fn calculate_artifacts(workspace: &mut Workspace, executor: &mut TaskExecuto
     }
 
     // First need to make sure all calculated dependencies in the dependency trees of the calc artifacts tasks are resolved
-    resolve_calculated_dependencies_in_subtrees(calc_artifacts_tasks.iter(), workspace, executor)?;
+    resolve_calculated_dependencies_in_subtrees(calc_artifacts_tasks.iter(), workspace, executor)
+        .map_err(|e| CalcArtifactsError::DependencyError(e))?;
 
     // Execute the tasks
-    executor.execute_tasks(&workspace, calc_artifacts_tasks.iter())?;
+    executor.execute_tasks(&workspace, calc_artifacts_tasks.iter())
+        .map_err(|e| CalcArtifactsError::ExecutionError(e))?;
 
     // Swap the calc artifacts for the task outputs of that task
     let mut new_tasks: HashMap<Arc<str>, Arc<Task>> = HashMap::new();
@@ -24,8 +46,9 @@ pub fn calculate_artifacts(workspace: &mut Workspace, executor: &mut TaskExecuto
         let mut calc_artifacts: Vec<Arc<str>> = Vec::new();
         for calc_artifact in task.artifacts.calc.iter() {
             let task_outputs = executor_cache.task_outputs.read().unwrap();
-            let mut task_output: Vec<String> = serde_json::from_value(task_outputs[calc_artifact].clone())?;
-            for artifact in task_output.drain(..) {
+            let task_output: HashMap<i64, String> = serde_json::from_value(task_outputs[calc_artifact].clone())
+                .map_err(|e| CalcArtifactsError::OutputError { task_name: task.name.clone(), task_output: task_outputs[calc_artifact].clone(), error: e })?;
+            for (_i, artifact) in task_output {
                 calc_artifacts.push(artifact.into());
             }
         }
