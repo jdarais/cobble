@@ -1,0 +1,5 @@
+root_projects = [
+    ".",
+    "packages/pkg1",
+    "packages/pkg2",
+]

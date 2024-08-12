@@ -1,3 +1,4 @@
+use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
@@ -11,6 +12,7 @@ use crate::project_def::{
 #[derive(Debug)]
 pub enum NameResolutionError {
     InvalidName(String),
+    PathNotInWorkspace(String),
     InvalidProjectName(String),
     PathToStringError(PathBuf),
     PathToNameError(PathBuf),
@@ -23,6 +25,7 @@ impl fmt::Display for NameResolutionError {
         use NameResolutionError::*;
         match self {
             InvalidName(s) => write!(f, "Invalid name: {}", s),
+            PathNotInWorkspace(s) => write!(f, "Path is not in the workspace: {}", s),
             InvalidProjectName(s) => write!(f, "Invalid project name: {}", s),
             PathToStringError(p) => write!(
                 f,
@@ -36,6 +39,19 @@ impl fmt::Display for NameResolutionError {
             ),
         }
     }
+}
+
+pub fn path_relative_to_workspace_dir(path: &Path) -> Result<PathBuf, NameResolutionError> {
+    if path.is_relative() {
+        return Ok(PathBuf::from(path));
+    }
+
+    // Here we assume that cwd is the workspace root
+    let cwd = current_dir().expect("current working directory must be set and exist");
+
+    path.strip_prefix(cwd)
+        .map(|p| PathBuf::from(p))
+        .map_err(|_e| NameResolutionError::PathNotInWorkspace(path.to_string_lossy().to_string()))
 }
 
 pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameResolutionError> {
@@ -104,9 +120,22 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
     }
 }
 
-pub fn resolve_name(project_name: &str, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
+pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
     if name.starts_with("/") {
         return Ok(name.clone());
+    }
+
+    if name.starts_with("[") {
+        let path_prefix_end_index = name.find("]");
+        let path_prefix = match path_prefix_end_index {
+            None => { return Err(NameResolutionError::InvalidName(String::from(name.as_ref()))); },
+            Some(idx) => &name[1..idx]
+        };
+
+        let path_prefix_rel_to_workspace = path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
+        let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
+        resolved_name.push_str(&name[path_prefix.len()+2..]);
+        return Ok(resolved_name.into());
     }
 
     if !project_name.starts_with("/") {
@@ -160,11 +189,11 @@ pub fn resolve_names_in_dependency_list(
     }
 
     for (_, t_name) in deps.tasks.iter_mut() {
-        *t_name = resolve_name(project_name, t_name)?;
+        *t_name = resolve_name(project_name, project_path, t_name)?;
     }
 
     for c_name in deps.calc.iter_mut() {
-        *c_name = resolve_name(project_name, c_name)?;
+        *c_name = resolve_name(project_name, project_path, c_name)?;
     }
 
     Ok(())
@@ -172,12 +201,13 @@ pub fn resolve_names_in_dependency_list(
 
 fn resolve_names_in_action(
     project_name: &str,
+    project_path: &Path,
     action: &mut Action,
 ) -> Result<(), NameResolutionError> {
     // Tool names are global, no need to resolve tool names
 
     for (_, env_name) in action.build_envs.iter_mut() {
-        *env_name = resolve_name(project_name, &env_name)?;
+        *env_name = resolve_name(project_name, project_path, &env_name)?;
     }
 
     Ok(())
@@ -188,34 +218,35 @@ fn resolve_names_in_build_env(
     project_path: &Path,
     build_env: &mut BuildEnvDef,
 ) -> Result<(), NameResolutionError> {
-    build_env.name = resolve_name(project_name, &build_env.name)?;
+    build_env.name = resolve_name(project_name, project_path, &build_env.name)?;
     
     if let Some(setup_task) = &mut build_env.setup_task {
         match setup_task {
-            EnvSetupTask::Ref(name) => { *name = resolve_name(project_name, &name.clone())?; }
+            EnvSetupTask::Ref(name) => { *name = resolve_name(project_name, project_path, &name.clone())?; }
             EnvSetupTask::Inline(task) => { resolve_names_in_task(project_name, project_path, task)?; }
         }
     }
 
-    resolve_names_in_action(project_name, &mut build_env.action)?;
+    resolve_names_in_action(project_name, project_path, &mut build_env.action)?;
 
     Ok(())
 }
 
 fn resolve_names_in_tool(
     project_name: &str,
+    project_path: &Path,
     tool: &mut ExternalTool,
 ) -> Result<(), NameResolutionError> {
     // External tool names are global, no need to resolve the name field
     if let Some(install) = &mut tool.install {
-        resolve_names_in_action(project_name, install)?;
+        resolve_names_in_action(project_name, project_path, install)?;
     }
 
     if let Some(check) = &mut tool.check {
-        resolve_names_in_action(project_name, check)?;
+        resolve_names_in_action(project_name, project_path, check)?;
     }
 
-    resolve_names_in_action(project_name, &mut tool.action)?;
+    resolve_names_in_action(project_name, project_path, &mut tool.action)?;
 
     Ok(())
 }
@@ -231,7 +262,7 @@ fn resolve_names_in_artifacts(
     }
 
     for c in artifacts.calc.iter_mut() {
-        *c = resolve_name(project_name, &c)?;
+        *c = resolve_name(project_name, project_path, &c)?;
     }
 
     Ok(())
@@ -242,14 +273,14 @@ fn resolve_names_in_task(
     project_path: &Path,
     task: &mut TaskDef,
 ) -> Result<(), NameResolutionError> {
-    task.name = resolve_name(project_name, &task.name)?;
+    task.name = resolve_name(project_name, project_path, &task.name)?;
 
     if let Some((_, env_name)) = &mut task.build_env {
-        *env_name = resolve_name(project_name, &env_name)?;
+        *env_name = resolve_name(project_name, project_path, &env_name)?;
     }
 
     for action in task.actions.iter_mut() {
-        resolve_names_in_action(project_name, action)?;
+        resolve_names_in_action(project_name, project_path, action)?;
     }
 
     resolve_names_in_dependency_list(project_name, project_path, &mut task.deps)?;
@@ -267,7 +298,7 @@ pub fn resolve_names_in_project(project: &mut Project) -> Result<(), NameResolut
     }
 
     for tool in project.tools.iter_mut() {
-        resolve_names_in_tool(&project.name, tool)?;
+        resolve_names_in_tool(&project.name, &project.path, tool)?;
     }
 
     for task in project.tasks.iter_mut() {
@@ -284,14 +315,23 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_resolve_name() {
-        let full_name = resolve_name("/subproject", &Arc::<str>::from("myname")).unwrap();
+        let full_name = resolve_name("/subproject", Path::new("./subproject"), &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/subproject/myname");
     }
 
     #[test]
     #[cfg(unix)]
+    fn test_resolve_name_with_path_prefix() {
+        let cwd = current_dir().unwrap();
+        let name = format!("[{}/otherproject]/myname", cwd.to_str().unwrap());
+        let full_name = resolve_name("/subproject", Path::new("./subproject"), &Arc::<str>::from(name)).unwrap();
+        assert_eq!(full_name.as_ref(), "/otherproject/myname");
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_resolve_name_from_root() {
-        let full_name = resolve_name("/", &Arc::<str>::from("myname")).unwrap();
+        let full_name = resolve_name("/", Path::new("."), &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/myname");
     }
 

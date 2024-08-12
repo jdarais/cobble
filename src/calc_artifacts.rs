@@ -1,12 +1,13 @@
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
-use crate::{dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, workspace::{Task, Workspace}};
+use crate::{dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, resolve::{resolve_path, NameResolutionError}, workspace::{Task, Workspace}};
 
 #[derive(Debug)]
 pub enum CalcArtifactsError {
     DependencyError(ExecutionGraphError),
     ExecutionError(TaskExecutionError),
-    OutputError{ task_name: Arc<str>, task_output: serde_json::Value, error: serde_json::Error }
+    OutputError{ task_name: Arc<str>, task_output: serde_json::Value, error: serde_json::Error },
+    NameResolutionError{ task_name: Arc<str>, path: String, error: NameResolutionError }
 }
 
 impl fmt::Display for CalcArtifactsError {
@@ -15,7 +16,8 @@ impl fmt::Display for CalcArtifactsError {
         match self {
             DependencyError(e) => write!(f, "Error resolving calculated dependencies in calc artifacts tasks: {e}"),
             ExecutionError(e) => write!(f, "Error while executing artifacts task or one of its dependencies: {e}"),
-            OutputError{ task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name}: output={task_output}, error={error}")
+            OutputError{ task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name}: output={task_output}, error={error}"),
+            NameResolutionError{ task_name, path, error } => write!(f, "Error resolving calc artifact path returned by task {task_name}: path={path}, error={error}")
         }
     }
 }
@@ -49,7 +51,9 @@ pub fn calculate_artifacts(workspace: &mut Workspace, executor: &mut TaskExecuto
             let task_output: HashMap<i64, String> = serde_json::from_value(task_outputs[calc_artifact].clone())
                 .map_err(|e| CalcArtifactsError::OutputError { task_name: task.name.clone(), task_output: task_outputs[calc_artifact].clone(), error: e })?;
             for (_i, artifact) in task_output {
-                calc_artifacts.push(artifact.into());
+                let artifact_path = resolve_path(task.project_path.as_ref(), artifact.as_str())
+                    .map_err(|e| CalcArtifactsError::NameResolutionError{ task_name: task.name.clone(), path: artifact.clone(), error: e })?;
+                calc_artifacts.push(artifact_path.clone());
             }
         }
 
