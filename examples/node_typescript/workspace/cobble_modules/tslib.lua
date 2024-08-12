@@ -10,7 +10,7 @@ local npm = require("cobble_modules.npm")
 local exports = {}
 
 function exports.yarn_typescript_lib ()
-    if PROJECT.build_envs["npm"] == nil then
+    if not PROJECT.build_envs["npm"] then
         npm.npm_package()
     end
 

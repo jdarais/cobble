@@ -55,21 +55,23 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         &config.workspace_dir,
     )?;
 
-    // Resolve calculated dependencies
+    // Resolve calculated artifacts and dependencies
     let mut executor = TaskExecutor::new(
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
+    println!("# Computing calculated artifacts #");
     calculate_artifacts(&mut workspace, &mut executor)?;
 
+    println!("# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
     )?;
 
-    // Execute the tasks
+    println!("# Executing tasks #");    
     executor.execute_tasks(&workspace, selected_tasks.iter())?;
 
     Ok(())
