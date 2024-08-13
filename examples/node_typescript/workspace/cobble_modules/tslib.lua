@@ -9,7 +9,7 @@ local npm = require("cobble_modules.npm")
 
 local exports = {}
 
-function exports.yarn_typescript_lib ()
+function exports.npm_typescript_lib ()
     if not PROJECT.build_envs["npm"] then
         npm.npm_package()
     end
@@ -52,7 +52,10 @@ function exports.yarn_typescript_lib ()
         name = "build",
         env = "npm",
         actions = {{ env = "npm", "tsc" }},
-        deps = { calc = { "calc_build_inputs", "calc_package_dep_build_tasks" } },
+        deps = {
+            files = { "tsconfig.json" },
+            calc = { "calc_build_inputs", "calc_package_dep_build_tasks" }
+        },
         artifacts = { calc = { "calc_build_outputs" } }
     }
 

@@ -1,11 +1,3 @@
-local npm = require("cobble_modules.npm")
+local tslib = require("cobble_modules.tslib")
 
-npm.npm_package()
-
-task {
-    name = "build",
-    actions = { { tool = "cmd", "echo", "building..." } },
-    deps = {
-        calc = { "calc_package_dep_build_tasks" }
-    }
-}
+tslib.npm_typescript_lib()

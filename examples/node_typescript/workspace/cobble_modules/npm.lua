@@ -17,6 +17,14 @@ function exports.npm_package ()
     }
 
     task {
+        name = "version",
+        always_run = true,
+        actions = {
+            { env = "npm", "version" }
+        }
+    }
+
+    task {
         name = "calc_package_dep_build_tasks",
         always_run = true,
         actions = {
@@ -26,7 +34,8 @@ function exports.npm_package ()
                     local package_json = json.load(path.join(c.project.dir, "package.json"))
                     local deps = package_json["dependencies"] or {}
 
-                    local workspace_deps_result = c.tool.npm { "query", ".workspace" }
+                    -- This task assumes that the npm workspace root is the same as the cobble workspace root
+                    local workspace_deps_result = c.tool.npm { cwd = WORKSPACE.dir, "query", "--", ".workspace" }
                     local workspace_deps_list = json.loads(workspace_deps_result.stdout)
                     
                     local task_deps = { tasks = {} }

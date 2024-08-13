@@ -12,3 +12,4 @@ node_modules/
 
 #!.yarn/cache
 .pnp.*
+lib/

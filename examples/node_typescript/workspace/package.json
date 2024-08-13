@@ -1,5 +1,5 @@
 {
-  "name": "node_yarn_workspaces",
+  "name": "node_typescript",
   "private": true,
   "workspaces": [
     "packages/pkg1", "packages/pkg2"
