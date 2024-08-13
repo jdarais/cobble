@@ -42,6 +42,7 @@ function exports.npm_package ()
 
                     for i, ws_dep in ipairs(workspace_deps_list) do
                         if deps[ws_dep["name"]] ~= nil then
+                            -- This task assumes each dependency's cobble project has a build task that builds the project
                             table.insert(task_deps.tasks, "["..ws_dep["path"].."]/build")
                         end
                     end
