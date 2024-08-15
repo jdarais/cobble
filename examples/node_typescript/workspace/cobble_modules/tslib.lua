@@ -16,11 +16,11 @@ function exports.npm_typescript_lib ()
 
     task {
         name = "calc_build_inputs",
-        env = "npm",
+        env = "npm_env",
         always_run = true,
         actions = {
             function (c)
-                local tsc_config_result = c.env.npm { "tsc", "--showConfig" }
+                local tsc_config_result = c.env.npm_env { "tsc", "--showConfig" }
                 local tsc_config = json.loads(tsc_config_result.stdout)
                 return { files = tsc_config["files"] }
             end
@@ -29,11 +29,11 @@ function exports.npm_typescript_lib ()
 
     task {
         name = "calc_build_outputs",
-        env = "npm",
+        env = "npm_env",
         always_run = true,
         actions = {
             function (c)
-                local tsc_config_result = c.env.npm { "tsc", "--showConfig" }
+                local tsc_config_result = c.env.npm_env { "tsc", "--showConfig" }
                 local tsc_config = json.loads(tsc_config_result.stdout)
 
                 local root_dir = maybe(tsc_config)["compilerOptions"]["rootDir"].value or "./"
@@ -50,8 +50,8 @@ function exports.npm_typescript_lib ()
 
     task {
         name = "build",
-        env = "npm",
-        actions = {{ env = "npm", "tsc" }},
+        env = "npm_env",
+        actions = {{ env = "npm_env", "tsc" }},
         deps = {
             files = { "tsconfig.json" },
             calc = { "calc_build_inputs", "calc_package_dep_build_tasks" }

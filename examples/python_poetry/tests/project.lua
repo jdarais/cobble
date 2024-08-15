@@ -9,7 +9,7 @@ task {
             files = iter(ipairs(path.glob(c.project.dir, "../workspace/**/*")))
                 :filter(function (i, f) return not f:match(".mypy_cache") end)
                 :filter(function (i, f) return not f:match(".venv") end)
-                :filter(function (i, f) return path.is_file(f) end)
+                :filter(function (i, f) return path.is_file(path.join(c.project.dir, f)) end)
                 :to_table()
         }
     end }

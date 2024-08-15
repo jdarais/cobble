@@ -8,7 +8,7 @@ local exports = {}
 
 function exports.npm_package ()
     env {
-        name = "npm",
+        name = "npm_env",
         setup_task = {
             actions = { { tool = "npm", "install" } },
             deps = { files = { "package.json" } }
@@ -20,7 +20,7 @@ function exports.npm_package ()
         name = "version",
         always_run = true,
         actions = {
-            { env = "npm", "version" }
+            { env = "npm_env", "version" }
         }
     }
 
