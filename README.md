@@ -175,7 +175,9 @@ File paths can also be provided as an absolute path.  To specify an absolute fil
 
 #### Current Working Directory and File References
 
-Note that while task and file references in a task declaration are interpreted as being relative to the project directory, the CWD used when running any task is the workspace root.  Since tasks run in parallel threads within the same process, Cobble is not able to set a CWD for each task.  This means that within a function-based action implementation, any functions that interact with files will interpret relative file paths as being relative to the workspace root, not the project.  You can use the action context variable `c.project.dir` to get the project directory relative to the workspace root.
+Note that while task and file references in a task declaration are interpreted as being relative to the project directory, the CWD used when running any task is the workspace root.  Since tasks run in parallel threads within the same process, Cobble is not able to set a CWD for each task.  This means that within a function-based action implementation, any functions that directly interact with files will interpret relative file paths as being relative to the workspace root, not the project.  You can use the action context variable `c.project.dir` to get the project directory relative to the workspace root.
+
+Paths passed as arguments to environments or tools are generally still interpreted as being relative to the project directory.  Bulit-in tools like the `cmd` tool follow this behavior, and user-defined environments and tools should follow this pattern as well. 
 
 ### Modules
 
