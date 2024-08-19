@@ -415,6 +415,6 @@ end -- prints "function complete" upon exiting the function
 
 #### Module `script_dir`
 
-Provides a function for getting the directory containing the lua script file currently being run
+Provides a function for getting the directory that contains the lua script file currently being run
 
-- `script_dir()`: function - returns the directory containing the lua script file currently being run
+- `script_dir()`: function - returns the directory that contains the lua script file currently being run
