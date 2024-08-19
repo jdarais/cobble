@@ -46,11 +46,17 @@ task {
 
 #### Task Dependencies and Artifacts
 
-Task dependencies are declared using the `deps` property.  A task can depend on files, other tasks, or variables.  Additionally, a task can declare any files that it generates as artifacts.  When a task is selected to be run, if none of the dependencies have changed since the last time a task was run, and the artifact files' content hashes match what was output by the last run, the task will be considered "up to date".  If a task selected to run is found to be up to date, it will simply be skipped, and the last output of the task will be used.
+Task dependencies are declared using the `deps` property.  A task can depend on files, other tasks, or variables.  Additionally, a task can declare any files that it generates as artifacts.  When a task invoked with `cobl run`, its full dependency tree is scanned.  Any tasks that are directly depended on, or that declare files that are depended on as artifacts, will also be selected to run.  All task ependencies are executed first before executing the task that depends on them.
+
+When a task is selected to be run, if none of the dependencies have changed since the last time a task was run, and the artifact files' content hashes match what was output by the last run, the task will be considered "up to date".  If a task selected to run is found to be up to date, it will simply be skipped, and the last output of the task will be used.
 
 #### Task Outputs
 
 A task also produces an "output", which is the value returned by the last action in the task's actions list. The outputs of a task can be used for various purposes, including dynamically calculated dependencies, or as input to other tasks.
+
+#### Calculated Dependencies and Artifacts
+
+Dependencies for a task can be calculated dynamically.  This is useful, for example, if the dependency information for a task is contained in a project file or requires scanning a directory for files.
 
 ### Action
 
@@ -177,7 +183,7 @@ File paths can also be provided as an absolute path.  To specify an absolute fil
 
 Note that while task and file references in a task declaration are interpreted as being relative to the project directory, the CWD used when running any task is the workspace root.  Since tasks run in parallel threads within the same process, Cobble is not able to set a CWD for each task.  This means that within a function-based action implementation, any functions that directly interact with files will interpret relative file paths as being relative to the workspace root, not the project.  You can use the action context variable `c.project.dir` to get the project directory relative to the workspace root.
 
-Paths passed as arguments to environments or tools are generally still interpreted as being relative to the project directory.  Bulit-in tools like the `cmd` tool follow this behavior, and user-defined environments and tools should follow this pattern as well. 
+Note that the built-in `cmd` tool interprets file paths as relative to the project directory.  It is recommended for user-defined tools and build environments to do so as well. 
 
 ### Modules
 
@@ -195,12 +201,49 @@ Cobble provides additional modules on top of the Lua standard library to provide
 
 The following global variables are available in any lua environment:
 
-- __WORKSPACE__: a table containing information about the workspace:
-  - __dir__: absolute path to the workspace directory
-- __PLATFORM__: a table containing information about the platform
-  - __arch__: the platform architecture, as detected by Rust in [std::env::consts::ARCH](https://doc.rust-lang.org/std/env/consts/index.html)
-  - __os_family__: the platform OS family, as detected by Rust in [std::env::consts::FAMILY](https://doc.rust-lang.org/std/env/consts/constant.FAMILY.html)
-  - __os__: the platform OS, as detected by Rust in [std::env::consts::OS](https://doc.rust-lang.org/std/env/consts/constant.OS.html)
+- `WORKSPACE`: a table containing information about the workspace:
+  - `dir`: absolute path to the workspace directory
+- `PLATFORM`: a table containing information about the platform
+  - `arch`: the platform architecture, as detected by Rust in [std::env::consts::ARCH](https://doc.rust-lang.org/std/env/consts/index.html)
+  - `os_family`: the platform OS family, as detected by Rust in [std::env::consts::FAMILY](https://doc.rust-lang.org/std/env/consts/constant.FAMILY.html)
+  - `os`: the platform OS, as detected by Rust in [std::env::consts::OS](https://doc.rust-lang.org/std/env/consts/constant.OS.html)
+
+#### Project Definition Globals (Only available during project definition phase)
+
+- `task(task_def)`: function - define a task
+  - `task_def`: table - task definition properties
+    - `name`: string - the task name
+    - `default`: bool | nil - whether the task is a default task for the project.  When `cobl run` is given a project name, the default tasks for that project are run.  If no tasks are defined as default for a project, passing the project name to `cobl run` runs all tasks in the project. (default=false)
+    - `always_run`: bool | nil - If true, the task will always be run if selected, regardless of whether its dependencies and artifacts are up-to-date. (default=false)
+    - `interactive`: bool | nil - If true, child processes launched by this task can attach to stdin.  Note that interactive tasks cannot run in parallel. (default=false)
+    - `stdout`: "always" | "never" | "on_fail" | nil - When to display stdout output from the task (default="on_fail")
+    - `stderr`: "always" | "never" | "on_fail" | nil - When to display stderr output from the task (default="on_fail")
+    - `output`: "always" | "never" | "on_fail" | nil - Setting this property will set both `stdout` and `stderr` properties.  If either `stdout` or `stderr` properties are present, they will take precedence over the value provided by `output`.
+    - `env`: string | table | nil - If provided, the named environment is available to all actions in the task.  A table mapping an environment alias to an environment name is also valid, however only a single environment can be specified at the task level.
+    - `actions`: table - A list of actions that contain the execution logic for the task.
+    - `clean`: table | nil - A list of actions to run when the task is selected in a `cobl clean` command.
+    - `deps`: table | nil - A mapping of dependency type to a list of dependencies
+      - `files`: table | nil - A list of file dependency paths
+      - `tasks`: table | nil - A list of task dependency names
+      - `calc`: table | nil - A list of tasks to execute for calculating dependencies.  The calc task's output, (i.e. the return value of the tasks last action,) should match the same structure as the `deps` property for task definitions, with the exception that calc dependencies producing additional calc dependencies is not supported.  Calculated results will be combined and added to the statically declared dependencies.
+    - `artifacts`: table | nil - A mapping of artifact type to a list of artifacts
+      - `files`: table | nil - A list of file artifact paths
+      - `calc`: table | nil - A list of tasks to execute for calculating artifacts.  The calc task's output should be a list of file paths.
+- `env(env_def)`: function - define a build environment
+  - `env_def`: table - build environment definition properties
+    - `name`: string - the build environment name
+    - `setup_task`: `task_def` - the task to execute to set up the build environment, (e.g. "npm install").  All `task_def` properties are supported except for `name`.  The setup task will be given the same name as the build environment.
+    - `action`: table | function - an action that will run a command in the build environment, (e.g. "npm exec").  For function actions, the arguments passed to the action are available in `c.args`.  For actions defined using a table, the args are appended to the table and passed to the tool or build environment referenced by the action.
+- `tool(tool_def)`: function - define an external tool
+  - `tool_def`: table - tool definition properties
+    - `name`: string - the tool name.  Unlike tasks and build environments, tool names are global, and are not combined with a project name to create a full name.
+    - `check`: table - an action for checking whether the tool is correctly installed, (correct version, etc.).  If the check fails, the check action should call `error` to raise an error.
+    - `action`: table | function - an action that will execute the tool. For function actions, the arguments passed to the action are available in `c.args`.  For actions defined using a table, the args are appended to the table and passed to the tool or build environment referenced by the action.
+- `project_dir(path)`: function - add a project in a subdirectory
+  - `path`: string - the path to the project
+- `project(name, project_def_cb)`: function - add a named project in the same directory as the current project 
+  - `name`: string - the name of the subproject
+  - `project_def_cb`: function - a function definition that, when called, creates `task`, `env`, and `tool` definitions for the subproject.
 
 ### Cobble Modules
 
@@ -246,13 +289,132 @@ The `path` module contains basic path manipulation functionality.
 
 #### Module `iter`
 
-The `iter` module provides a convenient, functional interface for manipulating lists lazily and efficiently
+The `iter` module provides a convenient, functional interface for manipulating lists lazily and efficiently.
 
 - `iter(iter_fn, state, init_ctrl_var, close)`: function - wrap a set of iterator functions in an `iter` object.
   - Arguments: This constructor function is intended to be used with Lua's `ipairs` or `pairs` functions, or any source of values intended to used with Lua's [generic for](https://www.lua.org/manual/5.4/manual.html#3.3.5) loop.  (Example: `local it = iter(ipairs(some_list)))`)
   - Return Value: iter object
+- `iter.map(map_fn, iter_fn, state, init_ctrl_var, close)`: function - apply a map operation to an iterator
+  - Arguments:
+    - `map_fn`: function - a function that takes in a value produced by the original iterator, and returns a new value
+    - `iter_fn, state, init_ctrl_var, close`: iterator vars - variable sequence provided by `ipairs`, `pairs`, or any other source of values intended to be used with Lua's generic for loop.
+- `iter.enumerate(iter_fn, state, inti_ctrl_var, close)`: function - add an index at the beginning of the value sequence returned by the iterator.  For example, if the third value the original iterator produces is "a", `enumerate` will produce an iterator that returns 3, "a" as its third value.
+  - Arguments:
+    - `iter_fn, state, init_ctrl_var, close`: iterator vars - variable sequence provided by `ipairs`, `pairs`, or any other source of values intended to be used with Lua's generic for loop.
+- `iter.filter(filter_fn, iter_fn, state, init_ctrl_var, close)`: function - filter values in an iterator.
+  - Arguments:
+    - `filter_fn`: function - the filter test.  The resulting iterator will only produce values for which `filter_fn` returns true.
+    - `iter_fn, state, init_ctrl_var, close`: iterator vars - variable sequence provided by `ipairs`, `pairs`, or any other source of values intended to be used with Lua's generic for loop.
+- `iter.reduce(init_accum, reduce_fn, iter_fn, state, init_ctrl_var, close)`: function - reduce values produced by the iterator using a reduce function
+  - Arguments:
+    - `init_accum`: any - the initial accumulator value
+    - `reduce_fn`: function - a function that takes as arguments the current accumulator value and the next value produced by the iterator, and returns the new accumulator value.
+    - `iter_fn, state, init_ctrl_var, close`: iterator vars - variable sequence provided by `ipairs`, `pairs`, or any other source of values intended to be used with Lua's generic for loop.
 
+iter object methods
+- `map(map_fn)`: function - apply the map function and return a new iter object
+- `enumerate()`: function - apply the enumerate function and return a new iter object
+- `filter(filter_fn)`: function - apply the filter function and return a new iter object
+- `reduce(init_accum, reduce_fn)`: function - apply the reduce function and return a new iter object
+- `for_each(fn)`: function - iterate through the iter object's values and call `fn` for each item
+- `to_table()`: function - return a list containing all the values produced by the iterator
 
+Example usage:
 
+```lua
+local iter = require("iter")
 
+local original_words = { "dais", "squirrel", "fort", "part" }
+local new_words = iter(ipairs(original_words))
+                    :filter(function(i, w) return w ~= "squirrel" end)
+                    :map(function(i, w) return i, w.."y")
+                    :to_table()
+assert(new_words[1] == "daisy" and new_words[2] == "forty" and new_words[3] == "party")
+```
 
+#### Module `json`
+
+Module for (de)serializing json values.  Value types are mapped using the following (json -> lua) mapping:
+
+- `object` -> `table`
+- `array` -> `table`
+- `number` -> `float`
+- `bool` -> `bool`
+- `string` -> `string`
+- `null` -> `nil`
+
+Module contents:
+
+- `json.load(path)`: function - open file at `path` and parse its contents as json, returning the parsed lua value
+- `json.loads(json_str)`: function - parse the given string as json, returning the parsed lua value
+- `json.dump(path, val)`: function - serialize the lua value `val` to json and write it to the file at `path`
+- `json.dumps(val)`: function - serialize the lua value `val` to json and return the json string
+
+#### Module `toml`
+
+Module for (de)serializing toml values.  Value types are mapped using the following (toml -> lua) mapping:
+
+- `table` -> `table`
+- `array` -> `table`
+- `integer` -> `integer`
+- `float` -> `float`
+- `bool` -> `bool`
+- `string` -> `string`
+- `datetime` -> `userdata` (which implements the `__tostring` metamethod, and can be serialized back to a toml `datetime`)
+
+Module contents:
+
+- `toml.load(path)`: function - open file at `path` and parse its contents as toml, returning the parsed lua value
+- `toml.loads(toml_str)`: function - parse the given string as toml, returning the parsed lua value
+- `toml.dump(path, val)`: function - serialize the lua value `val` to toml and write it to the file at `path`
+- `toml.dumps(val)`: function - serialize the lua value `val` to toml and return the toml string
+
+#### Module `maybe`
+
+Object type for elegantly handling values that might be `nil`.  The maybe object implements nearly all metamethods, (it does not implement `__newindex`,) allowing for use with most operators.
+
+- `maybe(val)`: function - create a maybe object wrapping `val`
+
+`maybe` object methods:
+- `and_then(fn)`: function - if this wrapped value is `nil`, return `maybe(nil)`, else return `maybe(fn(self.value))`
+- `or_else(fn)`: function - if this wrapped value is `nil`, return `maybe(fn())`, else return `self`
+- `value`: any - the value wrapped by this maybe object 
+
+Example usage:
+
+```lua
+(maybe(nil) + 5).value -- nil
+(maybe(5) + 5).value -- 10
+(maybe({chapter_1={section_1="this is section 1"}})["chapter_1"]["section_1"]).value -- "this is section 1"
+(maybe({chapter_1={section_1="this is section 1"}})["chapter_2"]["section_7"]).value -- nil
+(maybe(nil)["chapter_1"]).value -- nil
+(maybe("hello world"):and_then(function(v) return v:gsub("world", "universe") end)).value -- "hello universe"
+(maybe(nil):and_then(function(v) return v:gsub("world", "universe") end)).value -- nil
+(maybe(nil)
+  :or_else(function () return "hello world" end)
+  :and_then(function (v) return v:gsub("world", "universe") end)
+).value -- "hello universe"
+```
+
+#### Module `scope`
+
+Provides functionality for executing some logic when a scope is exited
+
+- `scope.on_exit(fn)`: function - create an object that will execute `fn` when it goes out of scope
+
+Example usage:
+
+```lua
+local scope = require("scope")
+
+function ()
+  local scoped = scope.on_exit(function() print("function complete") end)
+  -- do some stuff
+end -- prints "function complete" upon exiting the function
+```
+
+#### Module `script_dir`
+
+Provides a function for getting the directory containing the lua script file currently being run
+
+- `script_dir()`: function - returns the directory containing the lua script file currently being run
