@@ -1,7 +1,7 @@
 # Cobble
 Cobble is a multi-project, multi-environment build automation tool
 
-Cobble allows you to define projects and tasks in your repository, which are contained in a single Cobble "workspace".  Tasks can depend on assets and tasks from other projects in the workspace, allowing for the creation of a full-workspace task dependency graph, thus always ensuring that a task's dependencies are up-to-date before running.
+Cobble allows you to define projects and tasks in your repository, which are contained in a single Cobble "workspace".  Tasks can depend on assets and tasks from other projects in the workspace, allowing for the creation of a full-workspace task dependency graph, thus always ensuring that a task's dependencies are up-to-date before it runs.
 
 Cobble is:
 
@@ -23,11 +23,11 @@ The world of software project and repository management seems to be stratified b
 
 A workspace is defined by the presence of a `cobble.toml` file at the root of the workspace.  The `cobble.toml` file can contain configuration for the workspace, or it can be empty, simply acting as a marker file to point to the root of the workspace.
 
-### Project
+### Projects
 
 A project is defined in Lua in a `project.lua` file at the root of the project.  There can be many projects in a single workspace.  A project can define tasks, build environments, external tools, or additional sub-projects.
 
-### Task
+### Tasks
 
 A task defines a unit of work to be done.  It defines file artifacts and tasks that it depends on, as well as the file artifacts, (if any,) that it produces.  It also defines a list of "Actions" that should be invoked when the task is executed
 
@@ -58,7 +58,7 @@ A task also produces an "output", which is the value returned by the last action
 
 Dependencies for a task can be calculated dynamically.  This is useful, for example, if the dependency information for a task is contained in a project file or requires scanning a directory for files.
 
-### Action
+### Actions
 
 An action can be defined either as a list of command parameters to be sent to the command line, (or a user-defined "tool": more on that later,) or a Lua function.  Actions defined as lists provide a nice shorthand for simple actions, while actions defined as functions grant a lot of power and flexibility in what the action can do.  The action defined in the task above as a list could also be defined as a function:
 
@@ -85,7 +85,7 @@ Function actions are passed an "Action Context" object, which provides the actio
 - __out__: A function to send text to stdout.  (Note that this function is preferred over the Lua `print` function, since it manages buffering and ensuring that a task's output gets printed out together in the console, instead of being interleaved with the output of other tasks being run in parallel.)
 - __err__: A function to send text to stderr.  (Note that this function is preferred over the Lua `print` function for the same reasons as with the `out` function.)
 
-### Build Environment
+### Build Environments
 
 A build environment combines an install task, which sets up the environment, with an action, which can be used to invoke commands in that environment.  If an action references a build environment, the build environment's install task is automatically added as a dependency to the task that the action belongs to.  This is helpful when working with build environments that support running commands in an isolated environment, such as npm or python virtual environments.  A build environment definition for running commands in a python virtual environment managed by poetry may look something like this:
 
@@ -114,7 +114,7 @@ task {
 ```
 
 
-### External Tool
+### External Tools
 
 A software project's tooling should be as self-contained as possible, (e.g. by leveraging isolated environments to install and run tools,) but at some point, a project has to rely on some tools being externally available to run build and analysis tasks.  Cobble provides a way to define what those external tools are, and optionally define an action to check that the tool is correctly installed.  External tool definitions also provide a convenient abstraction layer, where you can include platform-specific tool invocation logic so that the tasks throughout your project don't have to.  The action property on a tool defines what the tool does when invoked.  An external tool definition for poetry might look like this:
 
@@ -418,3 +418,18 @@ end -- prints "function complete" upon exiting the function
 Provides a function for getting the directory that contains the lua script file currently being run
 
 - `script_dir()`: function - returns the directory that contains the lua script file currently being run
+
+#### Module `version`
+
+Provides logic for comparing version numbers.  A version object, created with the `version` constructor function, supports comparison operators `<`, `>`, `==`, `~=` to compare with other version objects or string representations of versions.
+
+Version comparison should work for most dot-delimited version numbers.
+
+- `version(version_str)`: function - creates a version object
+
+#### Module `tblext`
+
+Provides additional table manipulation functionality on top of Lua's `table` module.  Unlike the `table`module, `tblext` is intended for use with tables both used as sequences or maps.
+
+- `tblext.extend(target, source, [start_index])`: function - merge properties from `source` into `target`.  If a key exists in both `source` and `target`, the value from `source` overwrites the value in `target`. Integer keys behave differently from other keys.  Integer keys are offset by `start_index-1` and then merged.  The default value for `start_index` is `#target+1`, meaning sequence values in `source` will be appended to the existing sequence values in `target`.  If you'd like sequence values in `source` to be merged into `target` just like any other key type, pass in `1` for `start_index`.
+- `tblext.format(value)`: function - Returns a string representation for provided table `value`
