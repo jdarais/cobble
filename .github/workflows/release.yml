@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release_windows_exe:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build --release --verbose
+    - name: Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "target/release/cobl.exe"
+        allowUpdates: true
+  release_macos_bin:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "target/release/cobl"
+          allowUpdates: true
+  release_linux_bin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "target/release/cobl"
+          allowUpdates: true
