@@ -2,7 +2,7 @@ name: Release
 
 on:
   release:
-    types: [ "created" ]
+    types: [ "published" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -37,7 +37,7 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "target/release/cobble_macos.tgz"
+          artifacts: "cobble_macos.tgz"
           allowUpdates: true
   release_linux_bin:
     runs-on: ubuntu-latest
@@ -52,5 +52,5 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "target/release/cobble_linux.tgz"
+          artifacts: "cobble_linux.tgz"
           allowUpdates: true
