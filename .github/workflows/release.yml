@@ -16,10 +16,13 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --verbose
+    - name: Package
+      run: 7z.exe a -tzip cobble_win.zip cobl.exe
+      working-directory: ./target/release
     - name: Release
       uses: ncipollo/release-action@v1
       with:
-        artifacts: "target/release/cobl.exe"
+        artifacts: "target/release/cobble_win.zip"
         allowUpdates: true
   release_macos_bin:
     runs-on: macos-latest
@@ -29,10 +32,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: cargo build --release --verbose
+      - name: Package
+        run: tar -C target/release -cvzf cobble_macos.tgz cobl
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "target/release/cobl"
+          artifacts: "target/release/cobble_macos.tgz"
           allowUpdates: true
   release_linux_bin:
     runs-on: ubuntu-latest
@@ -42,8 +47,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: cargo build --release --verbose
+      - name: Package
+        run: tar -C target/release -cvzf cobble_linux.tgz cobl
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "target/release/cobl"
+          artifacts: "target/release/cobble_linux.tgz"
           allowUpdates: true
