@@ -13,17 +13,20 @@ jobs:
     permissions:
       contents: write
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --release --verbose
-    - name: Package
-      run: 7z.exe a -tzip cobble_win.zip cobl.exe
-      working-directory: ./target/release
-    - name: Release
-      uses: ncipollo/release-action@v1
-      with:
-        artifacts: "target/release/cobble_win.zip"
-        allowUpdates: true
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Package
+        run: 7z.exe a -tzip cobble_win.zip cobl.exe
+        working-directory: ./target/release
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "target/release/cobble_win.zip"
+          allowUpdates: true
+          prerelease: true
+          makeLatest: false
+
   release_macos_bin:
     runs-on: macos-latest
     permissions:
@@ -39,6 +42,9 @@ jobs:
         with:
           artifacts: "cobble_macos.tgz"
           allowUpdates: true
+          prerelease: true
+          makeLatest: false
+
   release_linux_bin:
     runs-on: ubuntu-latest
     permissions:
@@ -54,3 +60,20 @@ jobs:
         with:
           artifacts: "cobble_linux.tgz"
           allowUpdates: true
+          prerelease: true
+          makeLatest: false
+
+  publish_release:
+    runs-on: ubuntu-latest
+    needs:
+      - release_windows_exe
+      - release_macos_bin
+      - release_linux_bin
+    permissions:
+      contents: write
+    steps:
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          prerelease: false
