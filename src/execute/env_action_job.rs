@@ -1,3 +1,8 @@
+// Cobble Build Automation
+// Copyright (C) 2024 Jeremiah Darais
+//
+// This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
+
 use std::{collections::HashMap, sync::{mpsc::Sender, Arc, Condvar, Mutex}};
 
 use crate::{execute::{action::{create_action_context, invoke_action_protected, ActionContextArgs}, execute::{EnvActionJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult}}, lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED};

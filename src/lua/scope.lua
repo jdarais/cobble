@@ -1,3 +1,8 @@
+-- Cobble Build Automation
+-- Copyright (C) 2024 Jeremiah Darais
+--
+-- This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
+
 local on_exit_metatable = {
     __close = function(to_be_closed, err)
         to_be_closed.close_fn(err)

@@ -433,3 +433,11 @@ Provides additional table manipulation functionality on top of Lua's `table` mod
 
 - `tblext.extend(target, source, [start_index])`: function - merge properties from `source` into `target`.  If a key exists in both `source` and `target`, the value from `source` overwrites the value in `target`. Integer keys behave differently from other keys.  Integer keys are offset by `start_index-1` and then merged.  The default value for `start_index` is `#target+1`, meaning sequence values in `source` will be appended to the existing sequence values in `target`.  If you'd like sequence values in `source` to be merged into `target` just like any other key type, pass in `1` for `start_index`.
 - `tblext.format(value)`: function - Returns a string representation for provided table `value`
+
+## License
+
+This project, with the exception of the `examples` directory, is licensed under the GPLv3.0 license.  See [COPYING](https://github.com/jdarais/cobble/blob/main/COPYING).  The contents of the `examples` directory are free to use without restrictions.
+
+This project includes libraries licensed under the [MIT License](https://github.com/jdarais/cobble/blob/main/licenses/MIT.txt).
+
+LMDB is licened under the [OpenLDAP Public License](https://github.com/jdarais/cobble/blob/main/licenses/OpenLDAP.txt)

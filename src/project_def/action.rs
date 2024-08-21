@@ -1,3 +1,8 @@
+// Cobble Build Automation
+// Copyright (C) 2024 Jeremiah Darais
+//
+// This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;

@@ -1,3 +1,8 @@
+// Cobble Build Automation
+// Copyright (C) 2024 Jeremiah Darais
+//
+// This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
+
 use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc}};
 
 use crate::{config::WorkspaceConfig, db::delete_task_record, execute::{action::{create_action_context, invoke_action_protected, ActionContextArgs}, execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult}}, project_def::types::TaskVar, vars::get_var};
