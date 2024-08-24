@@ -1,0 +1,15 @@
+[tool.poetry]
+package-mode = false
+name = "docs"
+version = "0.1.0"
+description = "Docs for the cobble CLI"
+authors = ["Jeremiah Darais <jdarais@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+mkdocs-material = "^9.5.32"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

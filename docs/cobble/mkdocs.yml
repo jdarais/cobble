@@ -1,0 +1,22 @@
+site_name: Cobble Build Automation
+repo_url: https://github.com/jdarais/cobble
+nav:
+  - index.md
+  - concepts.md
+  - installation.md
+  - getting-started.md
+  - workspace-def.md
+  - project-def.md
+  - modules.md
+theme:
+  name: material
+  palette:
+    primary: blue grey
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences

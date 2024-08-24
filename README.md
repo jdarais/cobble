@@ -11,7 +11,7 @@ Cobble is:
 - __Easy to Install__: Download is a single executable binary
 - __Easy to Use__: Tasks are defined in Lua using a simple interface
 
-Note that Cobble is not a build, environment isolation, or package managemetn tool itself, nor does it prescribe any of these.  The examples directory provides some examples of what a workspace could look like using some popular tool configurations.
+Note that Cobble is not a build, environment isolation, or package management tool itself, nor does it prescribe any of these.  The examples directory provides some examples of what a workspace could look like using some popular tool configurations.
 
 ## Why Cobble?
 

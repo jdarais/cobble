@@ -3,8 +3,10 @@ local toml = require("toml")
 
 require("tools")
 
-local example_test_dirs = path.glob("examples/*/tests")
+project_dir("docs")
 
+-- Example projects
+local example_test_dirs = path.glob("examples/*/tests")
 for i, d in ipairs(example_test_dirs) do
     if path.is_file(path.join(d, "project.lua")) then
         project_dir(d)
