@@ -17,9 +17,10 @@ workspace_dir/
 
 ## Projects
 
-A project is defined in Lua in a `project.lua` file at the root of the project.  There can be many projects in a single workspace.  A project can define tasks, environments, external tools, or additional sub-projects.
+A project is defined in Lua in a `project.lua` file at the root of the project.  There can be many projects in a single workspace.  A project can define tasks, action environments, external tools, or additional sub-projects. While action environment and external tool definitions are not required to run tasks, they can provide a useful abstraction layer over tools and environments used by tasks.
 
-## Tasks
+
+### Tasks
 
 A task defines a unit of work to be done.  It defines file artifacts and tasks that it depends on, as well as the file artifacts, (if any,) that it produces.  It also defines a list of "Actions" that should be invoked when the task is executed
 
@@ -36,21 +37,21 @@ task {
 }
 ```
 
-### Task Dependencies and Artifacts
+#### Task Dependencies and Artifacts
 
 Task dependencies are declared using the `deps` property.  A task can depend on files, other tasks, or variables.  Additionally, a task can declare any files that it generates as artifacts.  When a task invoked with `cobl run`, its full dependency tree is scanned.  Any tasks that are directly depended on, or that declare files that are depended on as artifacts, will also be selected to run.  All task ependencies are executed first before executing the task that depends on them.
 
 When a task is selected to be run, if none of the dependencies have changed since the last time a task was run, and the artifact files' content hashes match what was output by the last run, the task will be considered "up to date".  If a task selected to run is found to be up to date, it will simply be skipped, and the last output of the task will be used.
 
-### Task Outputs
+#### Task Outputs
 
 A task also produces an "output", which is the value returned by the last action in the task's actions list. The outputs of a task can be used for various purposes, including dynamically calculated dependencies, or as input to other tasks.
 
-### Calculated Dependencies and Artifacts
+#### Calculated Dependencies and Artifacts
 
 Dependencies for a task can be calculated dynamically.  This is useful, for example, if the dependency information for a task is contained in a project file or requires scanning a directory for files.
 
-## Actions
+### Actions
 
 An action can be defined either as a list of command parameters to be sent to the command line, (or a user-defined "tool": more on that later,) or a Lua function.  Actions defined as lists provide a nice shorthand for simple actions, while actions defined as functions grant a lot of power and flexibility in what the action can do.  The action defined in the task above as a list could also be defined as a function:
 
@@ -60,23 +61,24 @@ actions = {
 }
 ```
 
-### Action Context
+#### Action Context
 
 Function actions are passed an "Action Context" object, which provides the action with declared tools and environments, as well as other information related to dependencies and the project context.  For example, all of the tools available to the action can be accessed in the context's `tool` property, as demonstrated in the action above.
 
-## Environments
+### Action Environments
 
-An environment combines a setup task, which sets up the environment, with an action, which can be used to invoke commands in that environment.  If an action references an environment, the environment's setup task is automatically added as a dependency to the task that the action belongs to.  This is helpful when working with environments that support running commands in an isolated environment, such as npm or python virtual environments.  An environment definition for running commands in a python virtual environment managed by poetry may look something like this:
+An action environment combines a setup task, which sets up the environment, with an action, which can be used to invoke commands in that environment.  If an action references an action environment, the environment's setup task is automatically added as a dependency to the task that the action belongs to.  This is helpful when working with tools that support running commands in an isolated environment, such as npm or python virtual environments.  An action environment definition for running commands in a python virtual environment managed by poetry may look something like this:
 
 ```lua
 env {
     name = "poetry_env",
     setup_task = {
         actions = {
+            { tool = "poetry", "lock" },
             { tool = "poetry", "install" }
         }
+        deps = { files = { "pyproject.toml", "poetry.lock" } },
     },
-    deps = { files = { "poetry.lock" } },
     action = { tool = "poetry", "run" }
 }
 ```
@@ -92,10 +94,11 @@ task {
 }
 ```
 
+When an action references an environment, the remaining properties of the action definition are passed to the environment's action as arguments.  In this case, the full command that would be executed is `poetry run python -m pylint mypackage/`.
 
-## External Tools
+### External Tools
 
-A software project's tooling should be as self-contained as possible, (e.g. by leveraging isolated environments to install and run tools,) but at some point, a project has to rely on some tools being externally available to run build and analysis tasks.  Cobble provides a way to define what those external tools are, and optionally define an action to check that the tool is correctly installed.  External tool definitions also provide a convenient abstraction layer, where you can include platform-specific tool invocation logic so that the tasks throughout your project don't have to.  The action property on a tool defines what the tool does when invoked.  An external tool definition for poetry might look like this:
+A software project's tooling should be as self-contained as possible, (e.g. by leveraging isolated environments to install and run tools,) but at some point, a project has to rely on some tools being externally available to run tasks.  Cobble provides a way to define what those external tools are, and optionally define an action to check that the tool is correctly installed.  External tool definitions also provide a convenient abstraction layer, where you can include platform-specific tool invocation logic so that the tasks throughout your project don't have to.  The action property on a tool defines what the tool does when invoked.  An external tool definition for poetry might look like this:
 
 ```lua
 -- Use some preloaded modules provided by Cobble

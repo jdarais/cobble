@@ -24,7 +24,42 @@ jobs:
       with:
         name: cobl-ci
         path: target/ci/cobl
+
+  docs-build:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: cobl-ci
+          path: target/ci
+      - name: Cobl Permissions
+        run: chmod a+x target/ci/cobl
+      - name: Docs
+        run:  target/ci/cobl run /docs/build
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: docs/cobble/site
   
+  docs-deploy:
+    runs-on: ubuntu-latest
+    needs: docs-build
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{steps.deployment.outputs.page_url}}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v1
+
   tag:
     runs-on: ubuntu-latest
     needs: build

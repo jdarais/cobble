@@ -25,7 +25,7 @@ _function_ - Execute a command
 
 `cmd(args)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `args`: _table_
     - `cwd`: _string | nil_ - Current working directory to run the command with
@@ -33,7 +33,7 @@ _function_ - Execute a command
     - `err`: _string | nil_ - Callback to be called with any stderr output
     - `...` _(sequence values)_: _string_ - Any positional (numeric index) table elements are interpreted as the command and command args to execute
 
-<h5>Returns</h5>
+##### Returns
 
 - _table_ - Status and output of the launched process
     - `status`: _int_ - The return status of the launched process
@@ -52,12 +52,12 @@ _function_ - Get files matching a pattern in a directory tree
 
 `path.glob([base], pattern)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `base` _(optional)_: _string_ - Base path to search from.  Returned file paths are relative to the base path.  (Default: CWD)
 - `pattern`: _string_ - Pattern to match files with.  Can include `*` or `**` wildcards.
 
-<h5>Returns</h5>
+##### Returns
 
 - _table_ - A list of paths found that match the given pattern
     - `...` _(sequence values)_: _string_
@@ -69,11 +69,11 @@ _function_ - Join path segments using the OS-specific path separator
 
 `path.join(...)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `...`: _string_ - path segments to join
 
-<h5>Returns</h5>
+##### Returns
 
 - _string_ - the joined path
 
@@ -84,11 +84,11 @@ _function_ - Test whether a path exists and is a directory
 
 `path.is_dir(path)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - The path to test
 
-<h5>Returns</h5>
+##### Returns
 
 - _boolean_ - True if the path exists and is a directory.  False otherwise.
 
@@ -99,11 +99,11 @@ _function_ - Test whether a path exists and is a file
 
 `path.is_file(path)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - The path to test
 
-<h5>Returns</h5>
+##### Returns
 
 - _boolean_ - True if the path exists and is a file.  False otherwise.
 
@@ -134,14 +134,14 @@ _function_ - Wrap a set of iterator functions in an `iter` object.
 
 `iter(iter_fn, state, init_val, close)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `iter_fn`: _function_ - Iterator function
 - `state`: _any_ - State to be passed to the iterator function at each iteration
 - `init_val`: _any_ - Initial value for the control variable
 - `close`: _to-be-closed_ - Variable that will be closed when the loop ends
 
-<h5>Returns</h5>
+##### Returns
 
 - _iter_ - An `iter` object
 
@@ -153,11 +153,11 @@ _function_ - Apply a map operation to the iterator
 
 `iter_obj:map(map_fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `map_fn`: _function_ - A function that takes in the value(s) produced by an iteration of the iterator and returns new values.
 
-<h5>Returns</h5>
+##### Returns
 
 _iter_ - A new `iter` object that produces values that are the result of applying `map_fn` to the original iterator's values
 
@@ -167,12 +167,12 @@ _function_ - Apply a reduce operation to the iterator
 
 `iter_obj:reduce(init, reduce_fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `init`: _any_ - Initial value to use as the accumulator
 - `reduce_fn`: _function_ - A function that takes the accumulator value as its first argument, followed by the value(s) produced by an iteration of the iterator, and returns a new accumulator value to be used with the next iteration.
 
-<h5>Returns</h5>
+##### Returns
 
 _any_ - The accumulator value returned by the `reduce_fn` call on the last iteration
 
@@ -182,11 +182,11 @@ _function_ - Apply a filter operation to the iterator
 
 `iter_obj:filter(filter_fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `filter_fn`: _function_ - A function that takes the value(s) produced by an iteration of the iterator, and returns a boolean value expressing whether or not the value(s) should be included in the resulting iterator.
 
-<h5>Returns</h5>
+##### Returns
 
 _iter_ - An `iter` object that produces all values produced by the original iterator for which `filter_fn` returns `true`
 
@@ -196,7 +196,7 @@ _function_ - Append an iteration count to the beginning of each set of values pr
 
 `iter_obj:enumerate()`
 
-<h5>Returns</h5>
+##### Returns
 
 _iter_ - An `iter` object that produces the same values as the original iterator, but with a counter value appended to the beginning, starting at 1 for the first iteration
 
@@ -206,11 +206,11 @@ _function_ - Execute a function for each value or set of values produced by the 
 
 `iter_obj:for_each(fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `fn`: _function_ - A function that takes in the value(s) produced by an iteration of the iterator
 
-<h5>Returns</h5>
+##### Returns
 
 _nil_
 
@@ -218,7 +218,7 @@ _nil_
 
 _function_ - Iterate over the iterator and collect the values into a table.  The iterator is expected to produce two values for each iteration: a key and a value.  This is the structure of values produced by `ipairs` and `pairs`, which produce a key and value pair on each iteration.
 
-<h5>Returns</h5>
+##### Returns
 
 _table_ - The table into which the iterator values were collected
 
@@ -236,11 +236,11 @@ _function_ - Read and parse json from a file
 
 `json.load(path)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - Path to the json file to read
 
-<h5>Returns</h5>
+##### Returns
 
 - _any_ - The json data converted to a Lua value
 
@@ -250,11 +250,11 @@ _function_ - Parse a json string
 
 `json.load(s)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `s`: _string_ - The json string to parse
 
-<h5>Returns</h5>
+##### Returns
 
 _any_ - The json data converted to a Lua value
 
@@ -264,12 +264,12 @@ _function_ - Convert a Lua value to json and write it to a file
 
 `json.dump(path, val)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - Path to the file where the json data should be written
 - `val`: _any_ - The Lua value to serialize to json
 
-<h5>Returns</h5>
+##### Returns
 
 _nil_
 
@@ -279,11 +279,11 @@ _function_ - Convert a Lua value to a json string
 
 `json.dumps(val)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `val`: _any_ - The Lua value to serialize to json
 
-<h5>Returns</h5>
+##### Returns
 
 _string_ - The serialized json value
 
@@ -300,11 +300,11 @@ _function_ - Read and parse toml from a file
 
 `toml.load(path)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - Path to the toml file to read
 
-<h5>Returns</h5>
+##### Returns
 
 _any_ - The toml data converted to a Lua value
 
@@ -314,11 +314,11 @@ _function_ - Parse a toml string
 
 `toml.load(s)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `s`: _string_ - The toml string to parse
 
-<h5>Returns</h5>
+##### Returns
 
 _any_ - The toml data converted to a Lua value
 
@@ -328,12 +328,12 @@ _function_ - Convert a Lua value to toml and write it to a file
 
 `toml.dump(path, val)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `path`: _string_ - Path to the file where the toml data should be written
 - `val`: _any_ - The Lua value to serialize to toml
 
-<h5>Returns</h5>
+##### Returns
 
 _nil_
 
@@ -343,11 +343,11 @@ _function_ - Convert a Lua value to a toml string
 
 `toml.dumps(val)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `val`: _any_ - The Lua value to serialize to toml
 
-<h5>Returns</h5>
+##### Returns
 
 _string_ - The serialized toml value
 
@@ -380,11 +380,11 @@ _function_ - Create a `maybe` object
 
 `maybe(val)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `val`: _any_ - The value to wrap in a `maybe` object
 
-<h5>Returns</h5>
+##### Returns
 
 - _maybe_ - A maybe object
 
@@ -400,11 +400,11 @@ _function_ - Perform an operation on the wrapped value if the wrapped value is n
 
 `maybe_obj:and_then(fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `fn`: _function_ - A function that will be called with the wrapped value if it is a non-nil value
 
-<h5>Returns</h5>
+##### Returns
 
 - _maybe_ - If the current wrapped value is `nil`, then `maybe(nil)` is returned, otherwise `maybe(fn(self.value))` is returned
 
@@ -414,11 +414,11 @@ _function_ - Call a function to provide a value if the wrapped value is nil
 
 `maybe_obj:or_else(fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `fn`: _function_ - A function that takes no arguments, and returns a value to be used if the current wrapped value is nil
 
-<h5>Returns</h5>
+##### Returns
 
 _maybe_ - If the current wrapped value is `nil`, then `maybe(fn())` is returned, otherwise `self` is returned
 
@@ -432,15 +432,15 @@ _function_ - Execute some logic on scope exit
 
 `scope.on_exit(fn)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `fn`: _function_ - The function to exit when the returned object goes out of scope
 
-<h5>Returns</h5>
+##### Returns
 
 - _any_ - A [to-be-closed](https://www.lua.org/manual/5.4/manual.html#3.3.8) variable that will execute `fn` when it goes out of scope
 
-<h5>Example</h5>
+##### Example
 
 ```lua
 local scope = require("scope")
@@ -459,7 +459,7 @@ _function_ - returns the directory that contains the lua script file currently b
 
 `script_dir()`
 
-<h5>Returns</h5>
+##### Returns
 
 _string_ - Path of the directory containing the lua script file currently being executed
 
@@ -475,11 +475,11 @@ _function_ - Create a `version` object
 
 `version(version_str)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 `version_str`: _string_ - A string representation of a version number
 
-<h5>Returns</h5>
+##### Returns
 
 _version_ - A `version` object
 
@@ -495,13 +495,13 @@ If a key exists in both `source` and `target`, the value from `source` overwrite
 
 `tblext.extend(target, source, [start_index])`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `target`: _table_ - The table into which entries will be merged
 - `source`: _table_ - The source table for entries to be merged from
 - `start_index` _(optional)_: _int_ - The index at which to start appending values with integer keys.
 
-<h5>Returns</h5>
+##### Returns
 
 _table_ - This function returns the table that was passed in as `target`
 
@@ -511,10 +511,10 @@ _function_ - Create a string representation of a table value that includes all o
 
 `tblext.format(value)`
 
-<h5>Arguments</h5>
+##### Arguments
 
 - `value`: _table_ - The table value to format
 
-<h5>Returns</h5>
+##### Returns
 
 _string_ - A string representation of the table

@@ -291,7 +291,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                     1 => { /* no action needed */ }
                     _ => {
                         return Err(mlua::Error::runtime(
-                            "Can only use one build_env or tool with argument list action",
+                            "Can only use one env or tool with argument list action",
                         ));
                     }
                 };
