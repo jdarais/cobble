@@ -1,14 +1,17 @@
 # Cobble
+
+## What is Cobble?
+
 Cobble is a multi-project, multi-environment build automation tool
 
-Cobble allows you to define projects and tasks in your repository, which are contained in a single Cobble "workspace".  Tasks can depend on assets and tasks from other projects in the workspace, allowing for the creation of a full-workspace task dependency graph, thus always ensuring that a task's dependencies are up-to-date before it runs.
+Cobble allows you to define tasks across a collection of projects, which are contained in a single Cobble "workspace".  Tasks can depend on assets and tasks from other projects in the workspace, allowing for the creation of a full-workspace task dependency graph.  When executing any task, Cobble ensures that all of the task's dependencies have been executed first.
 
 Cobble is:
 
 - __Fast__: Cobble is built with technologies that are well-suited for writing fast native applications, including Rust and Lua, and can run tasks in parallel for fast builds.
-- __Multi-platform__: Cobble runs on Linux, Mac, and Windows
+- __Cross-platform__: Cobble runs on Linux, Mac, and Windows
 - __Small__: Download size is <5MB
-- __Easy to Install__: Download is a single executable binary
+- __Easy to Install__: Download is a single executable binary, with no library or script environment dependencies
 - __Easy to Use__: Tasks are defined in Lua using a simple interface
 
 ## Why Cobble?
