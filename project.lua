@@ -59,9 +59,12 @@ task {
 
 --------- Tasks for managing release automation -----------
 
+local noop = function () end
+
 task {
     name = "version_tag",
     output = "always",
+    always_run = true,
     actions = {
         {
             tool = "git",
@@ -70,8 +73,8 @@ task {
                 local version_tag = "v" .. cargo_toml["package"]["version"]
                 c.out("Verison tag from Cargo.toml: " .. version_tag .. "\n")
                 c.out("Getting latest version tag...\n")
-                local existing_version_tag = c.tool.git { "tag", "-l", version_tag }.stdout:gmatch("%S+")
-                if not existing_version_tag == version_tag then
+                local version_tag_exists, cmd_result = pcall(c.tool.git, { out=noop, err=noop, "rev-parse", version_tag })
+                if not version_tag_exists then
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
                 end
