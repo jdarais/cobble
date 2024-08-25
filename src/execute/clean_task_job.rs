@@ -47,7 +47,7 @@ fn execute_clean_actions(
             }
         ).map_err(|e| TaskExecutionError::LuaError(e))?;
 
-        invoke_action_protected(lua, action, action_context)?;
+        invoke_action_protected(lua, action, action_context, false)?;
     }
 
     // Delete artifacts

@@ -112,6 +112,9 @@ The remaining table entries are passed to the referenced tool or environment as 
 
 If the action itself receives arguments, (e.g. if the action is defined in a tool or action environment,) those arguments are appended to the arguments defined by the action before passing them to the referenced tool or environment.  This allows easy definition of tools or environments that simply accept arguments and append them to a particular command to be executed.
 
+
+When an action is defined using an arg-list, the resulting action will only return a value if it is invoked as part of a tool or action environment.  This is to avoid excess information from unintentionally being included in the task output.  If a task should have outputs, its last action must be an action function.
+
 ##### Example
 
 ```lua

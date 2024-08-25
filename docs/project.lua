@@ -1,16 +1,30 @@
 local path = require("path")
 local iter = require("iter")
 local tblext = require("tblext")
+local script_dir = require("script_dir")
+
+local venv_python = PLATFORM.os_family == "windows"
+    and path.join(".venv", "Scripts", "python.exe")
+    or path.join(".venv", "bin", "python")
 
 env {
-    name = "poetry_env",
+    name = "venv",
     setup_task = {
-        actions = { { tool = "poetry", "install" } },
+        actions = { { tool = "python", "-m", "virtualenv", ".venv" } },
+        artifacts = { files = { ".venv/pyvenv.cfg" } }
+    },
+    action = { tool = "cmd", path.join(script_dir(), venv_python), "-m" }
+}
+
+env {
+    name = "mkdocs_env",
+    setup_task = {
+        actions = { { env = "venv", "pip", "install", "-c", "constraints.txt", "mkdocs-material" } },
         deps = {
-            files = { "poetry.lock" }
+            files = { "constraints.txt" }
         }
     },
-    action = { tool = "poetry", "run" }
+    action = { env = "venv", "mkdocs" }
 }
 
 task {
@@ -30,9 +44,9 @@ task {
     name = "build",
     actions = {
         {
-            env = "poetry_env",
+            env = "mkdocs_env",
             function (c)
-                c.env.poetry_env { cwd = path.join(c.project.dir, "cobble"), "mkdocs", "build" }
+                c.env.mkdocs_env { cwd = path.join(c.project.dir, "cobble"), "build" }
             end
         }
     },

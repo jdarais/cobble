@@ -18,4 +18,4 @@ tool { name = "git", action = {"git"} }
 
 tool { name = "wsl", action = {"wsl"} }
 
-tool { name = "poetry", action = {"poetry"} }
+tool { name = "python", action = {"python"} }

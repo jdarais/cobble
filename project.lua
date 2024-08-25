@@ -1,5 +1,6 @@
 local path = require("path")
 local toml = require("toml")
+local tblext = require("tblext")
 
 require("tools")
 
@@ -69,8 +70,9 @@ task {
                 local version_tag = "v" .. cargo_toml["package"]["version"]
                 c.out("Verison tag from Cargo.toml: " .. version_tag .. "\n")
                 c.out("Getting latest version tag...\n")
-                local last_version_tag = c.tool.git { "describe", "--tags", "--abbrev=0" }.stdout:match("%S+")
-                if version_tag ~= last_version_tag then
+                local version_check_result = c.tool.git { "rev-parse", version_tag }
+                local version_tag_exists = version_check_result.status == 0
+                if not version_tag_exists then
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
                 end

@@ -17,7 +17,7 @@ impl UserData for ScriptDirLib {
 
 fn script_dir<'lua>(lua: &'lua Lua, _args: MultiValue) -> mlua::Result<Value<'lua>> {
     let info = lua
-        .inspect_stack(1)
+        .inspect_stack(2)
         .ok_or_else(|| Error::runtime("Error retrieving stack information"))?;
 
     let source = info

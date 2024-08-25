@@ -52,7 +52,7 @@ fn execute_env_action(
     lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, true)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
-    let result_res = invoke_action_protected(lua, &job.env.action, action_context);
+    let result_res = invoke_action_protected(lua, &job.env.action, action_context, true);
 
     lua.set_named_registry_value(COBBLE_JOB_INTERACTIVE_ENABLED, true)
         .map_err(|e| TaskExecutionError::LuaError(e))?;

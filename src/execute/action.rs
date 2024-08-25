@@ -61,8 +61,9 @@ pub fn invoke_action_protected<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
+    return_arg_list_action_result: bool
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
-    let (success, result) = execute_action_pcall(lua, action, action_context)
+    let (success, result) = execute_action_pcall(lua, action, action_context, return_arg_list_action_result)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
     if success {
@@ -111,7 +112,7 @@ fn invoke_tool_by_name<'lua>(
         cache,
         task_event_sender,
     )?;
-    let (success, result) = execute_action_pcall(lua, tool_action, action_context)?;
+    let (success, result) = execute_action_pcall(lua, tool_action, action_context, true)?;
 
     if success {
         Ok(result)
@@ -160,7 +161,7 @@ fn invoke_env_by_name<'lua>(
         cache,
         task_event_sender,
     )?;
-    let (success, result) = execute_action_pcall(lua, env_action, action_context)?;
+    let (success, result) = execute_action_pcall(lua, env_action, action_context, true)?;
 
     if success {
         Ok(result)
@@ -491,11 +492,12 @@ pub fn execute_action_pcall<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
+    return_arg_list_action_result: bool
 ) -> mlua::Result<(bool, mlua::Value<'lua>)> {
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn = lua.load(&invoke_action_source[..]);
 
-    let action_result: mlua::MultiValue = invoke_action_fn.call((action.clone(), action_context))?;
+    let action_result: mlua::MultiValue = invoke_action_fn.call((action.clone(), action_context, return_arg_list_action_result))?;
 
     let mut action_result_iter = action_result.into_iter();
     let success = action_result_iter.next().unwrap_or(mlua::Value::Nil);

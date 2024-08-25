@@ -3,7 +3,7 @@
 --
 -- This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-local action, action_context = ...
+local action, action_context, return_arg_list_action_result = ...
 local tblext = require("tblext")
 
 if type(action[1]) == "function" then
@@ -20,7 +20,11 @@ else
             tblext.extend(args, action_context.args)
         end
         local success, result = pcall(action_context.tool[tool_alias], args)
-        return success, (not success and result or nil)
+        if success and not return_arg_list_action_result then
+            return success, nil
+        else
+            return success, result
+        end
     elseif env_alias then
         local args = tblext.extend({}, action)
         args.tool = nil
@@ -29,7 +33,11 @@ else
             tblext.extend(args, action_context.args)
         end
         local success, result = pcall(action_context.env[env_alias], args)
-        return success, (not success and result or nil)
+        if success and not return_arg_list_action_result then
+            return success, nil
+        else
+            return success, result
+        end
     else
         local args = tblext.extend({}, action)
         args.tool = nil
@@ -38,7 +46,11 @@ else
             tblext.extend(args, action_context.args)
         end
         local success, result = pcall(action_context.tool["cmd"], args)
-        return success, (not success and result or nil)
+        if success and not return_arg_list_action_result then
+            return success, nil
+        else
+            return success, result
+        end
     end
 end
 

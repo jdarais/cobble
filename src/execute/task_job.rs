@@ -49,7 +49,7 @@ fn execute_task_actions<'lua>(
         );
         let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 
-        args = invoke_action_protected(lua, action, action_context)?;
+        args = invoke_action_protected(lua, action, action_context, false)?;
     }
 
     Ok(args)

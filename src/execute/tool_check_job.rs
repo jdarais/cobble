@@ -78,7 +78,7 @@ fn execute_tool_check_action(
     );
     let action_context = action_context_res.map_err(|e| TaskExecutionError::LuaError(e))?;
 
-    invoke_action_protected(lua, &check_action, action_context)?;
+    invoke_action_protected(lua, &check_action, action_context, false)?;
 
     Ok(())
 }
