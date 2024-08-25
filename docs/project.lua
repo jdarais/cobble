@@ -10,7 +10,7 @@ local venv_python = PLATFORM.os_family == "windows"
 env {
     name = "venv",
     setup_task = {
-        actions = { { tool = "python", "-m", "virtualenv", ".venv" } },
+        actions = { { tool = "python", "-m", "venv", ".venv" } },
         artifacts = { files = { ".venv/pyvenv.cfg" } }
     },
     action = { tool = "cmd", path.join(script_dir(), venv_python), "-m" }
