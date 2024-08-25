@@ -70,9 +70,8 @@ task {
                 local version_tag = "v" .. cargo_toml["package"]["version"]
                 c.out("Verison tag from Cargo.toml: " .. version_tag .. "\n")
                 c.out("Getting latest version tag...\n")
-                local version_check_result = c.tool.git { "rev-parse", version_tag }
-                local version_tag_exists = version_check_result.status == 0
-                if not version_tag_exists then
+                local existing_version_tag = c.tool.git { "tag", "-l", version_tag }:stdout:gmatch("%S+")
+                if not existing_version_tag == version_tag then
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
                 end
