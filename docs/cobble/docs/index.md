@@ -2,7 +2,7 @@
 
 ## What is Cobble?
 
-Cobble is a multi-project, multi-environment build automation tool
+Cobble is a multi-project, multi-environment build automation tool.
 
 Cobble allows you to define tasks across a collection of projects, which are contained in a single Cobble "workspace".  Tasks can depend on assets and tasks from other projects in the workspace, allowing for the creation of a full-workspace task dependency graph.  When executing any task, Cobble ensures that all of the task's dependencies have been executed first.
 
