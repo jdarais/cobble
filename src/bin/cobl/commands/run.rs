@@ -60,6 +60,10 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         &config.workspace_dir,
     )?;
 
+    if selected_tasks.len() == 0 {
+        return Err(anyhow::anyhow!("No tasks found that match \"{}\"", tasks.join(" ")));
+    }
+
     // Resolve calculated artifacts and dependencies
     let mut executor = TaskExecutor::new(
         config.clone(),
