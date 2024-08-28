@@ -360,7 +360,7 @@ pub fn create_action_context<'lua>(
 
     let out_task_name_clone = task_name.clone();
     let out_sender_clone = sender.clone();
-    let out = lua.create_function(move |_lua, s: String| {
+    let print_fn = lua.create_function(move |_lua, s: String| {
         out_sender_clone
             .send(TaskJobMessage::Stdout {
                 task: out_task_name_clone.clone(),
@@ -370,7 +370,13 @@ pub fn create_action_context<'lua>(
                 mlua::Error::runtime(format!("Error sending output from executor thread: {}", e))
             })
     })?;
-    action_context.set("out", out)?;
+    action_context.set("print", print_fn.clone())?;
+
+    let println_fn: mlua::Function = lua.load(r#"
+        local print_fn = ...
+        return function (s) print_fn(s.."\n") end    
+    "#).call(print_fn)?;
+    action_context.set("println", println_fn)?;
 
     let err_task_name_clone = task_name.clone();
     let err_sender_clone = sender.clone();
@@ -384,7 +390,13 @@ pub fn create_action_context<'lua>(
                 mlua::Error::runtime(format!("Error sending output from executor thread: {}", e))
             })
     })?;
-    action_context.set("err", err)?;
+    action_context.set("eprint", err.clone())?;
+
+    let eprintln_fn: mlua::Function = lua.load(r#"
+        local eprint_fn = ...
+        return function (s) eprint_fn(s.."\n") end
+    "#).call(err)?;
+    action_context.set("eprintln", eprintln_fn)?;
 
     let tool_table = lua.create_table()?;
     for (tool_alias, tool_name) in extra_tools.iter().chain(action.tools.iter()) {

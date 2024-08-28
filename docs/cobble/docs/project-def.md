@@ -208,8 +208,8 @@ The action context passed to action functions has the following properties:
 - `project`: _table_ - A table containing information about the project in which the currently executing task is defined.
     - `dir`: _string_ - The project directory in which the currently executing task is defined.
 - `args`: A table containing arguments passed to the action.  If the action is part of a tool or action environment being invoked, `args` contains the arguments passed to the tool or environment.  If the action belongs to a task, `args` contains the return value of the previous action executed in the same task, if there is one.
-- `out`: A function to send text to stdout.  (Note that this function is preferred over the Lua `print` function, since it manages buffering and ensuring that a task's output gets printed out together in the console, instead of being interleaved with the output of other tasks being run in parallel.)
-- `err`: A function to send text to stderr.  (Note that this function is preferred over the Lua `print` function for the same reasons as with the `out` function.)
+- `print`/`println`: A function to send text to stdout.  (Note that this function is preferred over the Lua `print` function, since it manages buffering and ensuring that a task's output gets printed out together in the console, instead of being interleaved with the output of other tasks being run in parallel.)
+- `eprint`/`eprintln`: A function to send text to stderr.  (Note that this function is preferred over the Lua `print` function for the same reasons as with the `print` function.)
 
 #### Action Execution
 

@@ -71,12 +71,15 @@ task {
             function (c)
                 local cargo_toml = toml.load("Cargo.toml")
                 local version_tag = "v" .. cargo_toml["package"]["version"]
-                c.out("Verison tag from Cargo.toml: " .. version_tag .. "\n")
-                c.out("Getting latest version tag...\n")
+                c.println("Verison tag from Cargo.toml: " .. version_tag)
+                c.println("Getting latest version tag...")
                 local version_tag_exists, cmd_result = pcall(c.tool.git, { out=noop, err=noop, "rev-parse", version_tag })
                 if not version_tag_exists then
+                    c.println("Creating and pushing tag: " .. version_tag)
                     c.tool.git { "tag", version_tag }
                     c.tool.git { "push", "origin", version_tag }
+                else
+                    c.println("Tag " .. version_tag .. " already exists.")
                 end
             end
         }
