@@ -13,7 +13,6 @@ task {
                 :filter(function (i, f) return path.is_file(path.join(c.project.dir, f)) end)
                 :to_table()
         }
-        print(tblext.format(deps))
         return deps
     end }
 }
