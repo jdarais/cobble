@@ -9,6 +9,7 @@ Cobble allows you to define tasks across a collection of projects, which are con
 Cobble is:
 
 - __Fast__: Cobble is built with technologies that are well-suited for writing fast native applications, including Rust and Lua, and can run tasks in parallel for fast builds.
+- __Flexible__: Cobble is easy to customize to work with existing project structures and build environments.  Build a monorepo without sacrificing IDE integration.
 - __Cross-platform__: Cobble runs on Linux, Mac, and Windows
 - __Small__: Download size is <5MB
 - __Easy to Install__: Download is a single executable binary, with no library or script environment dependencies
