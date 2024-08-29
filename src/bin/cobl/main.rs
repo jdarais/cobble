@@ -18,6 +18,8 @@ use crate::commands::env::{run_env_command, RunEnvInput};
 use crate::commands::list::{list_command, ListCommandInput};
 use crate::commands::run::{run_command, RunCommandInput};
 use crate::commands::tool::{check_tool_command, CheckToolInput};
+use crate::commands::show::{show_task_command, ShowTaskInput};
+
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -78,6 +80,11 @@ enum CoblCommand {
     Env {
         #[command(subcommand)]
         env_cmd: EnvCommand,
+    },
+    /// Show details about a task
+    Show {
+        /// Task(s) to show info for
+        tasks: Vec<String>,
     },
 }
 
@@ -203,6 +210,12 @@ fn main() -> ExitCode {
                     show_stderr: show_stderr_enum.or(show_output_enum)
                 }),
             },
+            CoblCommand::Show { tasks } => show_task_command(ShowTaskInput {
+                cwd,
+                tasks,
+                vars: args.var,
+                num_threads: args.num_threads
+            }),
         },
         None => run_from_dir(cwd.as_path()),
     };
