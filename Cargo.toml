@@ -1,14 +1,13 @@
 [package]
 name = "cobble"
-version = "0.1.11"
+version = "0.1.12"
 edition = "2021"
 license = "GPL-3.0"
-license-file = "COPYING"
 authors = ["Jeremiah Darais <contact@jeremiahdarais.com>"]
 description = "A multi-environment, multi-project build automation tool"
 readme = "README.md"
 homepage = "https://jdarais.github.io/cobble/"
-repoeitory = "https://github.com/jdarais/cobble"
+repository = "https://github.com/jdarais/cobble"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

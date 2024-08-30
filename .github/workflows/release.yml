@@ -63,12 +63,31 @@ jobs:
           prerelease: true
           makeLatest: false
 
+  release_linux_deb:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+      - name: Package
+        run: cargo deb
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: target/debian/*.deb"
+          allowUpdates: true
+          prerelease: true
+          makeLatest: false
+
   publish_release:
     runs-on: ubuntu-latest
     needs:
       - release_windows_exe
       - release_macos_bin
       - release_linux_bin
+      - release_linux_deb
     permissions:
       contents: write
     steps:
