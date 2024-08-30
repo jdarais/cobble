@@ -24,6 +24,7 @@ jobs:
         with:
           artifacts: "target/release/cobble_win.zip"
           allowUpdates: true
+          omitBody: true
           prerelease: true
           makeLatest: false
 
@@ -42,6 +43,7 @@ jobs:
         with:
           artifacts: "cobble_macos.tgz"
           allowUpdates: true
+          omitBody: true
           prerelease: true
           makeLatest: false
 
@@ -60,6 +62,7 @@ jobs:
         with:
           artifacts: "cobble_linux.tgz"
           allowUpdates: true
+          omitBody: true
           prerelease: true
           makeLatest: false
 
@@ -76,8 +79,9 @@ jobs:
       - name: Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: target/debian/*.deb"
+          artifacts: "target/debian/*.deb"
           allowUpdates: true
+          omitBody: true
           prerelease: true
           makeLatest: false
 
