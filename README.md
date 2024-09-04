@@ -15,6 +15,21 @@ Cobble is:
 - __Easy to Install__: Download is a single executable binary, with no library or script environment dependencies
 - __Easy to Use__: Tasks are defined in Lua using a simple interface
 
+## Cobble Tasks
+
+Tasks are written in Lua, and can be used to automate just about any type of build step:
+
+```lua
+task {
+    name = "copy_file",
+    deps = { files = { "input.txt" } },
+    artifacts = { files = { "output.txt" } },
+    actions = {
+        { "cp", "input.txt", "output.txt" }
+    }
+}
+```
+
 ## Documentation
 
 Documentation is available [here](https://jdarais.github.io/cobble/).

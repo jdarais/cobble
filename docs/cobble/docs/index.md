@@ -15,6 +15,21 @@ Cobble is:
 - __Easy to Install__: Download is a single executable binary, with no library or script environment dependencies
 - __Easy to Use__: Tasks are defined in Lua using a simple interface
 
+## Cobble Tasks
+
+Tasks are written in Lua, and can be used to automate just about any type of build step:
+
+```lua
+task {
+    name = "copy_file",
+    deps = { files = { "input.txt" } },
+    artifacts = { files = { "output.txt" } },
+    actions = {
+        { "cp", "input.txt", "output.txt" }
+    }
+}
+```
+
 ## Why Cobble?
 
 The world of software project and repository management seems to be stratified between two extremes.  On one extreme, you may find yourself with a sea of small, single-project repositories based on the favored package management and build stack for that language, such as cargo, npm, yarn, poetry, go, etc.  On the other extreme, you may have a monorepo, with all projects combined into one repository, managed by a complex and restrictive monorepo tool such as bazel, pants, or nx.
