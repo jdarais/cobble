@@ -4,4 +4,4 @@ COPY target/release/cobl /usr/bin/cobl
 COPY examples/node_typescript/workspace/ /repo/
 
 WORKDIR /repo
-RUN cobl run npm_env
+RUN cobl run '*/npm_env'

@@ -170,10 +170,15 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
         function (c)
             local cmd = require("cmd")
             local tblext = require("tblext")
+            local path = require("path")
             
             c.println("cmd: "..table.concat(c.args, " "))
 
-            local result = cmd(tblext.extend({ cwd = c.project.dir, out = c.print, err = c.eprint }, c.args))
+            local args = tblext.extend({}, c.args)
+            if args.cwd ~= nil then
+                args.cwd = path.join(c.project.dir, args.cwd)
+            end
+            local result = cmd(tblext.extend({ cwd = c.project.dir, out = c.print, err = c.eprint }, args))
 
             if result.status ~= 0 then
                 error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
