@@ -125,47 +125,16 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
     }
 }
 
-pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
-    if name.starts_with("/") {
-        return Ok(name.clone());
-    }
-
-    if name.starts_with("[") {
-        let path_prefix_end_index = name.find("]");
-        let path_prefix = match path_prefix_end_index {
-            None => { return Err(NameResolutionError::InvalidName(String::from(name.as_ref()))); },
-            Some(idx) => &name[1..idx]
-        };
-
-        let path_prefix_rel_to_workspace = path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
-        let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
-        resolved_name.push_str(&name[path_prefix.len()+2..]);
-        return Ok(resolved_name.into());
-    }
-
-    if !project_name.starts_with("/") {
-        return Err(NameResolutionError::InvalidProjectName(
-            project_name.to_owned(),
-        ));
-    }
-
-    let project_name_segments = project_name.split("/").filter(|s| s.len() > 0);
-    let name_segments = name.split("/").filter(|s| s.len() > 0);
-
-    let mut full_name_segments: Vec<&str> = vec![""]
-        .into_iter()
-        .chain(project_name_segments)
-        .chain(name_segments)
-        .collect();
-
+fn canonicalize_name(mut full_name_segments: Vec<&str>) -> Arc<str> {
     let mut idx = 0;
     while idx < full_name_segments.len() {
         match full_name_segments[idx] {
             ".." => {
                 full_name_segments.remove(idx);
                 // Ignore ".." segments that would go past the root
-                if idx > 1 {
+                if idx > 0 {
                     full_name_segments.remove(idx - 1);
+                    idx -= 1;
                 }
             }
             "." => {
@@ -177,11 +146,55 @@ pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) ->
         }
     }
 
-    let resolved_name = match full_name_segments.len() {
+    match full_name_segments.len() {
         0 | 1 => Arc::<str>::from("/"),
         _ => Arc::<str>::from(full_name_segments.join("/")),
-    };
-    Ok(resolved_name)
+    }
+}
+
+pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
+    if name.starts_with("/") {
+        return Ok(canonicalize_name(
+            name.split("/")
+                .filter(|s| s.len() > 0)
+                .collect()
+            ));
+    }
+
+
+    if name.starts_with("[") {
+        let path_prefix_end_index = name.find("]");
+        let path_prefix = match path_prefix_end_index {
+            None => { return Err(NameResolutionError::InvalidName(String::from(name.as_ref()))); },
+            Some(idx) => &name[1..idx]
+        };
+
+        let path_prefix_rel_to_workspace = path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
+        let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
+        resolved_name.push_str(&name[path_prefix.len()+2..]);
+        return Ok(canonicalize_name(
+            resolved_name.split("/")
+                .filter(|s| s.len() > 0)
+                .collect()
+        ));
+    }
+
+    if !project_name.starts_with("/") {
+        return Err(NameResolutionError::InvalidProjectName(
+            project_name.to_owned(),
+        ));
+    }
+
+    let project_name_segments = project_name.split("/").filter(|s| s.len() > 0);
+    let name_segments = name.split("/").filter(|s| s.len() > 0);
+
+    let full_name_segments: Vec<&str> =vec![""]
+        .into_iter()
+        .chain(project_name_segments)
+        .chain(name_segments)
+        .collect();
+
+    Ok(canonicalize_name(full_name_segments))
 }
 
 pub fn resolve_names_in_dependency_list(
