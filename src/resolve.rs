@@ -64,6 +64,11 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
     for c in project_path.components() {
         match c {
             Component::CurDir => { /* do nothing */ }
+            Component::ParentDir => {
+                if project_name_components.len() > 0 {
+                    project_name_components.pop();
+                }
+            }
             Component::Normal(s) => {
                 let name_segment = s.to_str().ok_or_else(|| {
                     NameResolutionError::PathToStringError(project_path.to_owned())
@@ -141,24 +146,29 @@ fn canonicalize_name(mut full_name_segments: Vec<&str>) -> Arc<str> {
                 full_name_segments.remove(idx);
             }
             _ => {
-                idx += 1;
+                if full_name_segments[idx].len() == 0 {
+                    full_name_segments.remove(idx);
+                } else {
+                    idx += 1;
+                }
             }
         }
     }
 
     match full_name_segments.len() {
-        0 | 1 => Arc::<str>::from("/"),
-        _ => Arc::<str>::from(full_name_segments.join("/")),
+        0 => Arc::<str>::from("/"),
+        _ => {
+            let mut full_name = String::from("/");
+            let joined_path = full_name_segments.join("/");
+            full_name.push_str(joined_path.as_str());
+            full_name.into()
+        },
     }
 }
 
 pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
     if name.starts_with("/") {
-        return Ok(canonicalize_name(
-            name.split("/")
-                .filter(|s| s.len() > 0)
-                .collect()
-            ));
+        return Ok(canonicalize_name(name.split("/").collect()));
     }
 
 
@@ -172,11 +182,7 @@ pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) ->
         let path_prefix_rel_to_workspace = path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
         let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
         resolved_name.push_str(&name[path_prefix.len()+2..]);
-        return Ok(canonicalize_name(
-            resolved_name.split("/")
-                .filter(|s| s.len() > 0)
-                .collect()
-        ));
+        return Ok(canonicalize_name(resolved_name.split("/").collect()));
     }
 
     if !project_name.starts_with("/") {
@@ -331,23 +337,20 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(unix)]
     fn test_resolve_name() {
-        let full_name = resolve_name("/subproject", Path::new("./subproject"), &Arc::<str>::from("myname")).unwrap();
+        let full_name = resolve_name("/subproject", &Path::new(".").join("subproject"), &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/subproject/myname");
     }
 
     #[test]
-    #[cfg(unix)]
     fn test_resolve_name_with_path_prefix() {
-        let cwd = current_dir().unwrap();
-        let name = format!("[{}/otherproject]/myname", cwd.to_str().unwrap());
-        let full_name = resolve_name("/subproject", Path::new("./subproject"), &Arc::<str>::from(name)).unwrap();
+        let sep = std::path::MAIN_SEPARATOR;
+        let name = format!("[..{sep}otherproject]/myname");
+        let full_name = resolve_name("/subproject", &Path::new(".").join("subproject"), &Arc::<str>::from(name)).unwrap();
         assert_eq!(full_name.as_ref(), "/otherproject/myname");
     }
 
     #[test]
-    #[cfg(unix)]
     fn test_resolve_name_from_root() {
         let full_name = resolve_name("/", Path::new("."), &Arc::<str>::from("myname")).unwrap();
         assert_eq!(full_name.as_ref(), "/myname");
