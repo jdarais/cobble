@@ -49,13 +49,6 @@ task {
 
 task {
     name = "build",
-    actions = {
-        {
-            env = "mkdocs_env",
-            function (c)
-                c.env.mkdocs_env { cwd = "cobble", "build" }
-            end
-        }
-    },
+    actions = { { env = "mkdocs_env", cwd = "cobble", "build" } },
     deps = { calc = { "calc_docs_src_files" } }
 }
