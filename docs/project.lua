@@ -53,7 +53,7 @@ task {
         {
             env = "mkdocs_env",
             function (c)
-                c.env.mkdocs_env { cwd = path.join(c.project.dir, "cobble"), "build" }
+                c.env.mkdocs_env { cwd = "cobble", "build" }
             end
         }
     },
