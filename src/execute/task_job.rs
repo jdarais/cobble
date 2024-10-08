@@ -157,6 +157,26 @@ fn get_current_task_input(
             .insert(String::from(task_alias.as_ref()), current_task_output);
     }
 
+    for (env_alias, env_dep) in task.build_envs.iter() {
+        let cached_env_output = cache.task_outputs.read().unwrap().get(env_dep).cloned();
+        let current_env_output = match cached_env_output {
+            Some(output) => output,
+            None => {
+                let task_record = get_task_record(&db_env, db.clone(), env_dep)
+                    .map_err(|e| TaskExecutionError::DBGetError(e))?;
+                cache
+                    .task_outputs
+                    .write()
+                    .unwrap()
+                    .insert(env_dep.clone(), task_record.output.task_output.clone());
+                task_record.output.task_output
+            }
+        };
+        current_task_input
+            .task_outputs
+            .insert(String::from(env_alias.as_ref()), current_env_output);
+    }
+
     for (var_alias, var_name) in task.var_deps.iter() {
         let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
             .map_err(|e| TaskExecutionError::VarLookupError(e))?;
@@ -230,7 +250,7 @@ fn get_up_to_date_task_record(
         }
     }
 
-    // Check outputs of task dependencies
+    // Check outputs of task and env dependencies
     if current_task_input.task_outputs.len() != task_record.input.task_outputs.len() {
         return None;
     }
