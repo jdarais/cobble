@@ -22,6 +22,13 @@ env {
         actions = { { env = "venv", "pip", "install", "-c", "constraints.txt", "mkdocs-material" } },
         deps = {
             files = { "constraints.txt" }
+        },
+        artifacts = {
+            files = {
+                (PLATFORM.os_family == "windows"
+                    and path.join(".venv", "Scripts", "mkdocs.exe")
+                    or path.join(".venv", "bin", "mkdocs"))
+            }
         }
     },
     action = { env = "venv", "mkdocs" }
