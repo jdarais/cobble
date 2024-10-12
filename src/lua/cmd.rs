@@ -107,6 +107,9 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     }
 
     if let Some(d) = cwd {
+        if !d.is_dir() {
+            return Err(Error::runtime(format!("CWD '{}' is not a directory", d.display())));
+        }
         cmd.current_dir(d);
     }
 
