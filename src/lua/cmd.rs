@@ -3,6 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::ffi::OsStr;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -91,13 +92,19 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
         return Err(Error::runtime("No command given"));
     }
 
-    let cmd_cmd = &cmd_with_args[0];
-    let cmd_args = &cmd_with_args[1..];
-
-    let mut cmd = Command::new(cmd_cmd);
+    let mut cmd = match std::env::consts::FAMILY {
+        "windows" => Command::new("cmd"),
+        _ => Command::new(&cmd_with_args[0])
+    };
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    cmd.args(cmd_args);
+
+    if std::env::consts::FAMILY == "windows" {
+        cmd.arg("/c");
+        cmd.args(&cmd_with_args);
+    } else {
+        cmd.args(&cmd_with_args[1..]);
+    }
 
     if let Some(d) = cwd {
         cmd.current_dir(d);
@@ -113,7 +120,11 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
     let child_res = cmd.spawn();
 
     match child_res {
-        Err(e) => Err(Error::runtime(format!("Error executing command '{} {}': {}", cmd_cmd, cmd_args.join(" "), e))),
+        Err(e) => {
+            let program = cmd.get_program();
+            let args: Vec<&OsStr> = cmd.get_args().collect();
+            Err(Error::runtime(format!("Error executing command '{} {}': {}", program.to_string_lossy(), args.join(OsStr::new(" ")).to_string_lossy(), e)))
+        }
         Ok(mut child) => {
             let (tx, rx) = channel();
 
