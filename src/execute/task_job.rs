@@ -4,7 +4,9 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
+use std::io;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
@@ -55,6 +57,25 @@ fn execute_task_actions<'lua>(
     Ok(args)
 }
 
+fn get_directory_tree_max_mtime<P>(dir_path: P) -> Result<u128, io::Error> where P: AsRef<Path> {
+    let dir_metadata = fs::metadata(dir_path.as_ref())?;
+    let dir_mtime = dir_metadata.modified()?;
+    let mut max_mtime_millis = dir_mtime
+                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                    .map(|d| d.as_millis())
+                                    .unwrap_or(0);
+
+    for f_res in fs::read_dir(dir_path)? {
+        let f = f_res?;
+        if f.file_type()?.is_dir() {
+            let subdir_max_mtime_millis = get_directory_tree_max_mtime(f.path())?;
+            max_mtime_millis = std::cmp::max(max_mtime_millis, subdir_max_mtime_millis);
+        }
+    }
+
+    Ok(max_mtime_millis)
+}
+
 fn get_current_task_input(
     workspace_config: &WorkspaceConfig,
     task: &Arc<Task>,
@@ -64,6 +85,7 @@ fn get_current_task_input(
 ) -> Result<TaskInput, TaskExecutionError> {
     let mut current_task_input = TaskInput {
         project_source_hashes: HashMap::new(),
+        dir_mtimes: HashMap::new(),
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
         vars: HashMap::new(),
@@ -99,6 +121,30 @@ fn get_current_task_input(
         current_task_input
             .project_source_hashes
             .insert(String::from(project_source.as_ref()), current_hash);
+    }
+
+    for (dir_alias, dir_path) in task.dir_deps.iter() {
+        let cached_mtime = cache.dir_mtimes.read().unwrap().get(dir_path).cloned();
+        let current_mtime = match cached_mtime {
+            Some(mtime) => mtime,
+            None => {
+                let dir_full_path = workspace_config.workspace_dir.join(Path::new(dir_path.as_ref()));
+                let dir_max_mtime = get_directory_tree_max_mtime(dir_full_path).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: format!(
+                            "Task {}: Error reading directory tree metadata for {}", task.name, dir_path
+                        ),
+                        cause: e
+                    }
+                })?;
+
+                cache.dir_mtimes.write().unwrap().insert(dir_path.clone(), dir_max_mtime);
+
+                dir_max_mtime
+            }
+        };
+
+        current_task_input.dir_mtimes.insert(String::from(dir_alias.as_ref()), current_mtime);
     }
 
     for (file_alias, file_dep) in task.file_deps.iter() {
@@ -228,6 +274,24 @@ fn get_up_to_date_task_record(
         };
 
         if prev_hash != source_hash {
+            return None;
+        }
+    }
+
+    // Check directories
+    if current_task_input.dir_mtimes.len() != task_record.input.dir_mtimes.len() {
+        return None;
+    }
+
+    for (dir_alias, dir_mtime) in current_task_input.dir_mtimes.iter() {
+        let prev_mtime = match task_record.input.dir_mtimes.get(dir_alias) {
+            Some(mtime) => mtime,
+            None => {
+                return None;
+            }
+        };
+
+        if prev_mtime != dir_mtime {
             return None;
         }
     }
@@ -553,6 +617,7 @@ mod tests {
 
         let cache = Arc::new(TaskExecutorCache {
             project_source_hashes: RwLock::new(HashMap::new()),
+            dir_mtimes: RwLock::new(HashMap::new()),
             file_hashes: RwLock::new(HashMap::new()),
             task_outputs: RwLock::new(HashMap::new()),
         });

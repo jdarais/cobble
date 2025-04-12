@@ -477,6 +477,7 @@ fn has_missing_dependencies(
 
 pub struct TaskExecutorCache {
     pub project_source_hashes: RwLock<HashMap<Arc<str>, String>>,
+    pub dir_mtimes: RwLock<HashMap<Arc<str>, u128>>,
     pub file_hashes: RwLock<HashMap<Arc<str>, String>>,
     pub task_outputs: RwLock<HashMap<Arc<str>, serde_json::Value>>,
 }
@@ -509,6 +510,7 @@ impl TaskExecutor {
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
                 project_source_hashes: RwLock::new(HashMap::new()),
+                dir_mtimes: RwLock::new(HashMap::new()),
                 file_hashes: RwLock::new(HashMap::new()),
                 task_outputs: RwLock::new(HashMap::new()),
             }),

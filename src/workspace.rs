@@ -36,6 +36,7 @@ pub struct Task {
     pub dir: Arc<Path>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
     pub tools: HashMap<Arc<str>, Arc<str>>,
+    pub dir_deps: HashMap<Arc<str>, Arc<str>>,
     pub file_deps: HashMap<Arc<str>, FileDependency>,
     pub task_deps: HashMap<Arc<str>, Arc<str>>,
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
@@ -61,6 +62,7 @@ impl Default for Task {
             dir: PathBuf::from(".").into(),
             build_envs: HashMap::new(),
             tools: HashMap::new(),
+            dir_deps: HashMap::new(),
             file_deps: HashMap::new(),
             task_deps: HashMap::new(),
             var_deps: HashMap::new(),
@@ -99,6 +101,10 @@ pub fn add_dependency_list_to_task(
     file_providers: &HashMap<Arc<str>, Arc<str>>,
     task: &mut Task,
 ) {
+    for (d_alias, d_path) in deps.dirs.iter() {
+        task.dir_deps.insert(d_alias.clone(), d_path.clone());
+    }
+
     for (f_alias, f_path) in deps.files.iter() {
         task.file_deps.insert(
             f_alias.clone(),

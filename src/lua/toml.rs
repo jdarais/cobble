@@ -71,7 +71,7 @@ impl UserData for DateTimeUserData {
     }
 }
 
-fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value) -> mlua::Result<mlua::Value> {
+fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value) -> mlua::Result<mlua::Value<'lua>> {
     match toml_val {
         toml::Value::Array(arr) => {
             let tbl = lua.create_table()?;

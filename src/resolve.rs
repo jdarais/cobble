@@ -208,6 +208,10 @@ pub fn resolve_names_in_dependency_list(
     project_path: &Path,
     deps: &mut Dependencies,
 ) -> Result<(), NameResolutionError> {
+    for (_, d_path) in deps.dirs.iter_mut() {
+        *d_path = resolve_path(project_path, d_path.as_ref())?
+    }
+
     for (_, f_path) in deps.files.iter_mut() {
         *f_path = resolve_path(project_path, f_path.as_ref())?
     }

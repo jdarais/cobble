@@ -212,7 +212,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stdout(out) => {
                         stdout_buf.push_str(out.as_str());
                         if let Some(out_fn) = &out_func {
-                            out_fn.call(out)?;
+                            out_fn.call::<_, ()>(out)?;
                         }
                     }
                     ChildMessage::StdoutDone => {
@@ -221,7 +221,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stderr(err) => {
                         stderr_buf.push_str(err.as_str());
                         if let Some(err_fn) = &err_func {
-                            err_fn.call(err)?;
+                            err_fn.call::<_, ()>(err)?;
                         }
                     }
                     ChildMessage::StderrDone => {

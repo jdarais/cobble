@@ -302,7 +302,7 @@ pub fn hydrate_function_upvalues<'lua>(
     "#,
         )
         .eval()?;
-    hydrate.call((func, upvalues_table))?;
+    hydrate.call::<_, ()>((func, upvalues_table))?;
 
     Ok(())
 }

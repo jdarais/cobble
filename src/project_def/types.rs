@@ -147,7 +147,7 @@ impl From<toml::Value> for TaskVar {
 pub fn json_to_lua<'lua>(
     lua: &'lua mlua::Lua,
     value: serde_json::Value,
-) -> mlua::Result<mlua::Value> {
+) -> mlua::Result<mlua::Value<'lua>> {
     match value {
         serde_json::Value::Object(obj) => {
             let table = lua.create_table()?;

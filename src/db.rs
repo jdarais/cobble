@@ -15,6 +15,7 @@ const TASK_KEY_PREFIX: &str = "task:";
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskInput {
     pub project_source_hashes: HashMap<String, String>,
+    pub dir_mtimes: HashMap<String, u128>,
     pub file_hashes: HashMap<String, String>,
     pub task_outputs: HashMap<String, serde_json::Value>,
     pub vars: HashMap<String, TaskVar>,
