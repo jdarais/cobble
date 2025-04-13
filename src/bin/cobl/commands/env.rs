@@ -3,11 +3,16 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 use anyhow::anyhow;
+use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects,  task_selection::compute_selected_envs, workspace::create_workspace
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
+    dependency::resolve_calculated_dependencies_in_subtrees,
+    execute::execute::TaskExecutor,
+    load::load_projects,
+    task_selection::compute_selected_envs,
+    workspace::create_workspace,
 };
 
 pub struct RunEnvInput {
@@ -16,7 +21,7 @@ pub struct RunEnvInput {
     pub args: Vec<String>,
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
-    pub show_stderr: Option<TaskOutputCondition>
+    pub show_stderr: Option<TaskOutputCondition>,
 }
 
 pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
@@ -26,7 +31,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         args,
         num_threads,
         show_stdout,
-        show_stderr
+        show_stderr,
     } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
@@ -45,11 +50,19 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
     )?;
     let mut workspace = create_workspace(projects.values());
 
-    let selected_envs = compute_selected_envs(&envs.iter().map(|s| s.as_str()).collect(), &workspace, &cwd.as_path(), &config.workspace_dir)?;
-    
+    let selected_envs = compute_selected_envs(
+        &envs.iter().map(|s| s.as_str()).collect(),
+        &workspace,
+        &cwd.as_path(),
+        &config.workspace_dir,
+    )?;
+
     let mut setup_tasks: Vec<Arc<str>> = Vec::with_capacity(selected_envs.len());
     for env_name in &selected_envs {
-        let env = workspace.build_envs.get(env_name).ok_or_else(|| anyhow!("Environment {} not found", env_name))?;
+        let env = workspace
+            .build_envs
+            .get(env_name)
+            .ok_or_else(|| anyhow!("Environment {} not found", env_name))?;
         if let Some(setup_task) = &env.setup_task {
             setup_tasks.push(setup_task.clone());
         }
@@ -60,11 +73,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
-    resolve_calculated_dependencies_in_subtrees(
-        setup_tasks.iter(),
-        &mut workspace,
-        &mut executor,
-    )?;
+    resolve_calculated_dependencies_in_subtrees(setup_tasks.iter(), &mut workspace, &mut executor)?;
 
     let mut executor = TaskExecutor::new(
         config.clone(),

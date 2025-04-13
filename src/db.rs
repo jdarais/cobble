@@ -14,15 +14,32 @@ const TASK_KEY_PREFIX: &str = "task:";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskInput {
+    #[serde(default)]
     pub project_source_hashes: HashMap<String, String>,
+
+    #[serde(default)]
+    pub dir_mtimes: HashMap<String, u128>,
+
+    #[serde(default)]
     pub file_hashes: HashMap<String, String>,
+
+    #[serde(default)]
     pub task_outputs: HashMap<String, serde_json::Value>,
+
+    #[serde(default)]
     pub vars: HashMap<String, TaskVar>,
+}
+
+fn default_task_output() -> serde_json::Value {
+    serde_json::Value::Null
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskOutput {
+    #[serde(default)]
     pub file_hashes: HashMap<String, String>,
+
+    #[serde(default = "default_task_output")]
     pub task_output: serde_json::Value,
 }
 
@@ -131,7 +148,7 @@ impl fmt::Display for DeleteError {
 pub fn delete_task_record(
     db_env: &lmdb::Environment,
     db: lmdb::Database,
-    task_name: &str
+    task_name: &str,
 ) -> Result<(), DeleteError> {
     let task_key = get_task_key(task_name);
 
@@ -140,8 +157,10 @@ pub fn delete_task_record(
 
     if let Err(e) = res {
         match e {
-            lmdb::Error::NotFound => { /* Ok */}
-            _ => { return Err(DeleteError::DBError(e)); }
+            lmdb::Error::NotFound => { /* Ok */ }
+            _ => {
+                return Err(DeleteError::DBError(e));
+            }
         }
     }
 

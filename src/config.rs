@@ -26,7 +26,7 @@ pub struct WorkspaceConfig {
     pub force_run_tasks: bool,
     pub num_threads: u8,
     pub show_stdout: TaskOutputCondition,
-    pub show_stderr: TaskOutputCondition
+    pub show_stderr: TaskOutputCondition,
 }
 
 #[derive(Default)]
@@ -35,7 +35,7 @@ pub struct WorkspaceConfigArgs {
     pub force_run_tasks: Option<bool>,
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
-    pub show_stderr: Option<TaskOutputCondition>
+    pub show_stderr: Option<TaskOutputCondition>,
 }
 
 #[derive(Debug)]
@@ -70,13 +70,16 @@ pub enum TaskOutputCondition {
     OnFail,
 }
 
-impl <'lua> mlua::FromLua<'lua> for TaskOutputCondition {
+impl<'lua> mlua::FromLua<'lua> for TaskOutputCondition {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::String(s) => {
                 parse_output_condition(s.to_str()?).map_err(|e| mlua::Error::runtime(e))
-            },
-            invalid_value => Err(mlua::Error::runtime(format!("Expected a string value for output condition, but got a  {}.", invalid_value.type_name())))
+            }
+            invalid_value => Err(mlua::Error::runtime(format!(
+                "Expected a string value for output condition, but got a  {}.",
+                invalid_value.type_name()
+            ))),
         }
     }
 }
@@ -111,39 +114,50 @@ pub fn parse_workspace_config(
     // Num Threads
     let num_threads_opt: Option<toml::Value> = config.remove("num_threads");
     let num_threads: u8 = match num_threads_opt {
-        Some(val) => val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'num_threads': {}", e)))?,
-        None => DEFAULT_NUM_THREADS
+        Some(val) => val
+            .try_into()
+            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'num_threads': {}", e)))?,
+        None => DEFAULT_NUM_THREADS,
     };
 
     // Task Output
     let output_opt: Option<toml::Value> = config.remove("output");
     let output = match output_opt {
         Some(output_val) => {
-            let output_str: String = output_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
-            let output_enum = parse_output_condition(output_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
+            let output_str: String = output_val
+                .try_into()
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
+            let output_enum = parse_output_condition(output_str.as_str())
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'output': {}", e)))?;
             output_enum
         }
-        None => TaskOutputCondition::OnFail
+        None => TaskOutputCondition::OnFail,
     };
 
     let stdout_opt: Option<toml::Value> = config.remove("stdout");
     let stdout = match stdout_opt {
         Some(stdout_val) => {
-            let stdout_str: String = stdout_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
-            let stdout_enum = parse_output_condition(stdout_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
+            let stdout_str: String = stdout_val
+                .try_into()
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
+            let stdout_enum = parse_output_condition(stdout_str.as_str())
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stdout': {}", e)))?;
             stdout_enum
         }
-        None => output.clone()
+        None => output.clone(),
     };
 
     let stderr_opt: Option<toml::Value> = config.remove("stderr");
     let stderr = match stderr_opt {
         Some(stderr_val) => {
-            let stderr_str: String = stderr_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
-            let stderr_enum = parse_output_condition(stderr_str.as_str()).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
+            let stderr_str: String = stderr_val
+                .try_into()
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
+            let stderr_enum = parse_output_condition(stderr_str.as_str())
+                .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'stderr': {}", e)))?;
             stderr_enum
         }
-        None => output
+        None => output,
     };
 
     // Vars
@@ -178,7 +192,7 @@ pub fn parse_workspace_config(
         force_run_tasks: false,
         num_threads,
         show_stdout: stdout,
-        show_stderr: stderr
+        show_stderr: stderr,
     })
 }
 

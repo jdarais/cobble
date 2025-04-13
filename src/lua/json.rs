@@ -3,7 +3,11 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{fs::File, io::{Read, Write}, path::Path};
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
 
 use mlua::{Lua, UserData};
 
@@ -42,7 +46,7 @@ fn json_loads<'lua>(lua: &'lua Lua, val: String) -> mlua::Result<mlua::Value<'lu
 fn json_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Value<'lua>)) -> mlua::Result<()> {
     let (path, lua_val) = args;
     let json_str = json_dumps(lua, lua_val)?;
-    
+
     let mut f = File::create(Path::new(path.as_str()))
         .map_err(|e| mlua::Error::runtime(format!("Error opening file {}: {}", path, e)))?;
 

@@ -22,7 +22,7 @@ pub struct RunCommandInput {
     pub force_run_tasks: bool,
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
-    pub show_stderr: Option<TaskOutputCondition>
+    pub show_stderr: Option<TaskOutputCondition>,
 }
 
 pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
@@ -33,7 +33,7 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         force_run_tasks,
         num_threads,
         show_stdout,
-        show_stderr
+        show_stderr,
     } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
@@ -41,7 +41,7 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         force_run_tasks: Some(force_run_tasks),
         num_threads: num_threads,
         show_stdout,
-        show_stderr
+        show_stderr,
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
     set_current_dir(&config.workspace_dir)
@@ -61,7 +61,10 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
     )?;
 
     if selected_tasks.len() == 0 {
-        return Err(anyhow::anyhow!("No tasks found that match \"{}\"", tasks.join(" ")));
+        return Err(anyhow::anyhow!(
+            "No tasks found that match \"{}\"",
+            tasks.join(" ")
+        ));
     }
 
     // Resolve calculated artifacts and dependencies
@@ -80,7 +83,7 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         &mut executor,
     )?;
 
-    println!("# Executing tasks #");    
+    println!("# Executing tasks #");
     executor.execute_tasks(&workspace, selected_tasks.iter())?;
 
     Ok(())

@@ -16,8 +16,8 @@ end
 
 task {
     name = "find_cobble_source_files",
-    always_run = true,
-    actions = { function (c) return { files = path.glob("src/**/*.*") } end }
+    actions = { function (c) return { files = path.glob("src/**/*.*") } end },
+    deps = { dirs = { "src" } }
 }
 
 task {

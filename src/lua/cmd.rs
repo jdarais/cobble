@@ -94,7 +94,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
 
     let mut cmd = match std::env::consts::FAMILY {
         "windows" => Command::new("cmd"),
-        _ => Command::new(&cmd_with_args[0])
+        _ => Command::new(&cmd_with_args[0]),
     };
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -108,7 +108,10 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
 
     if let Some(d) = cwd {
         if !d.is_dir() {
-            return Err(Error::runtime(format!("CWD '{}' is not a directory", d.display())));
+            return Err(Error::runtime(format!(
+                "CWD '{}' is not a directory",
+                d.display()
+            )));
         }
         cmd.current_dir(d);
     }
@@ -126,7 +129,12 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
         Err(e) => {
             let program = cmd.get_program();
             let args: Vec<&OsStr> = cmd.get_args().collect();
-            Err(Error::runtime(format!("Error executing command '{} {}': {}", program.to_string_lossy(), args.join(OsStr::new(" ")).to_string_lossy(), e)))
+            Err(Error::runtime(format!(
+                "Error executing command '{} {}': {}",
+                program.to_string_lossy(),
+                args.join(OsStr::new(" ")).to_string_lossy(),
+                e
+            )))
         }
         Ok(mut child) => {
             let (tx, rx) = channel();
@@ -144,15 +152,17 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                             if bytes_read == 0 {
                                 break;
                             }
-                            match std::str::from_utf8(&buf[start_from..(start_from+bytes_read)]) {
+                            match std::str::from_utf8(&buf[start_from..(start_from + bytes_read)]) {
                                 Ok(out) => {
-                                    stdout_tx.send(ChildMessage::Stdout(String::from(out))).unwrap();
+                                    stdout_tx
+                                        .send(ChildMessage::Stdout(String::from(out)))
+                                        .unwrap();
                                     start_from = 0;
-                                },
+                                }
                                 Err(_) => {
                                     start_from = start_from + bytes_read;
                                     if start_from >= buf.len() {
-                                        buf.resize(buf.len()*2, 0);
+                                        buf.resize(buf.len() * 2, 0);
                                     }
                                 }
                             }
@@ -178,15 +188,17 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                             if bytes_read == 0 {
                                 break;
                             }
-                            match std::str::from_utf8(&buf[start_from..(start_from+bytes_read)]) {
+                            match std::str::from_utf8(&buf[start_from..(start_from + bytes_read)]) {
                                 Ok(err) => {
-                                    stderr_tx.send(ChildMessage::Stderr(String::from(err))).unwrap();
+                                    stderr_tx
+                                        .send(ChildMessage::Stderr(String::from(err)))
+                                        .unwrap();
                                     start_from = 0;
-                                },
+                                }
                                 Err(_) => {
                                     start_from = start_from + bytes_read;
                                     if start_from >= buf.len() {
-                                        buf.resize(buf.len()*2, 0);
+                                        buf.resize(buf.len() * 2, 0);
                                     }
                                 }
                             }
@@ -212,7 +224,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stdout(out) => {
                         stdout_buf.push_str(out.as_str());
                         if let Some(out_fn) = &out_func {
-                            out_fn.call(out)?;
+                            out_fn.call::<_, ()>(out)?;
                         }
                     }
                     ChildMessage::StdoutDone => {
@@ -221,7 +233,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stderr(err) => {
                         stderr_buf.push_str(err.as_str());
                         if let Some(err_fn) = &err_func {
-                            err_fn.call(err)?;
+                            err_fn.call::<_, ()>(err)?;
                         }
                     }
                     ChildMessage::StderrDone => {

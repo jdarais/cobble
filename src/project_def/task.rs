@@ -8,8 +8,8 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::config::TaskOutputCondition;
 use crate::project_def::action::validate_action_list;
-use crate::project_def::dependency::{validate_dep_list, Dependencies};
 use crate::project_def::artifact::{validate_artifacts, Artifacts};
+use crate::project_def::dependency::{validate_dep_list, Dependencies};
 use crate::project_def::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string,
     validate_is_table, validate_required_key,
@@ -123,7 +123,9 @@ pub fn validate_inline_task<'lua>(
                 validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut())
             }
             "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), prop_path.as_mut()),
-            "artifacts" => validate_artifacts(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut()),
+            "artifacts" => {
+                validate_artifacts(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut())
+            }
             unknown_key => key_validation_error(
                 unknown_key,
                 vec![

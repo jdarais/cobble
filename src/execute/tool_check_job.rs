@@ -58,8 +58,15 @@ fn execute_tool_check_action(
         }
     };
 
-    let project_dir = workspace_dir.to_str().map(|s| s.to_owned())
-        .ok_or_else(|| TaskExecutionError::ExecutorError(format!("Error converting path to string: {}", workspace_dir.display())))?;
+    let project_dir = workspace_dir
+        .to_str()
+        .map(|s| s.to_owned())
+        .ok_or_else(|| {
+            TaskExecutionError::ExecutorError(format!(
+                "Error converting path to string: {}",
+                workspace_dir.display()
+            ))
+        })?;
 
     let action_context_res = create_tool_action_context(
         lua,

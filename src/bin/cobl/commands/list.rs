@@ -7,10 +7,10 @@ use std::env::set_current_dir;
 use std::path::PathBuf;
 
 use cobble::config::{find_nearest_project_dir, get_workspace_config};
-use cobble::workspace::create_workspace;
 use cobble::load::load_projects;
 use cobble::query::{find_tasks_for_dir, find_tasks_for_query};
 use cobble::resolve::project_path_to_project_name;
+use cobble::workspace::create_workspace;
 
 pub struct ListCommandInput {
     pub cwd: PathBuf,

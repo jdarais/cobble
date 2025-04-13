@@ -65,7 +65,7 @@ pub enum TaskJobMessage {
         task: Arc<str>,
         stdin_ready: Arc<(Mutex<bool>, Condvar)>,
         show_stdout: TaskOutputCondition,
-        show_stderr: TaskOutputCondition        
+        show_stderr: TaskOutputCondition,
     },
     Stdout {
         task: Arc<str>,
@@ -151,9 +151,12 @@ fn get_env_action_job_id(env_name: &Arc<str>) -> Arc<str> {
     Arc::<str>::from(job_name)
 }
 
-fn get_task_job_dependencies(task: &Task, workspace: &Workspace) -> Result<Vec<Arc<str>>, TaskExecutionError> {
+fn get_task_job_dependencies(
+    task: &Task,
+    workspace: &Workspace,
+) -> Result<Vec<Arc<str>>, TaskExecutionError> {
     let mut deps_set: HashSet<Arc<str>> = HashSet::with_capacity(task.task_deps.len());
-    
+
     for task_dep in task.task_deps.values() {
         deps_set.insert(task_dep.clone());
     }
@@ -165,7 +168,9 @@ fn get_task_job_dependencies(task: &Task, workspace: &Workspace) -> Result<Vec<A
     }
 
     for env_name in task.build_envs.values() {
-        let env = workspace.build_envs.get(env_name)
+        let env = workspace
+            .build_envs
+            .get(env_name)
             .ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.clone()))?;
 
         if let Some(setup_task) = &env.setup_task {
@@ -312,14 +317,16 @@ fn add_env_action_jobs(
 ) -> Result<(), TaskExecutionError> {
     let env_action_job_id = get_env_action_job_id(env_name);
 
-    let env = workspace.build_envs.get(env_name)
+    let env = workspace
+        .build_envs
+        .get(env_name)
         .ok_or_else(|| TaskExecutionError::EnvLookupError(env_name.clone()))?;
 
     let env_action_job = EnvActionJob {
         job_id: env_action_job_id.clone(),
         env: env.clone(),
         args: args.clone(),
-        workspace: workspace.clone()
+        workspace: workspace.clone(),
     };
 
     jobs.insert(env_action_job_id, ExecutorJob::EnvAction(env_action_job));
@@ -333,7 +340,7 @@ fn add_env_action_jobs(
 
 fn compute_dependency_edges(
     jobs: &HashMap<Arc<str>, ExecutorJob>,
-    workspace: &Workspace
+    workspace: &Workspace,
 ) -> Result<HashMap<Arc<str>, Vec<Arc<str>>>, TaskExecutionError> {
     let mut dep_edges: HashMap<Arc<str>, Vec<Arc<str>>> = HashMap::new();
 
@@ -391,7 +398,10 @@ fn compute_dependency_edges(
             },
             ExecutorJob::EnvAction(env_action_job) => {
                 if let Some(setup_task) = &env_action_job.env.setup_task {
-                    dep_edges.entry(id.clone()).or_default().push(setup_task.clone());
+                    dep_edges
+                        .entry(id.clone())
+                        .or_default()
+                        .push(setup_task.clone());
                 }
             }
         };
@@ -477,6 +487,7 @@ fn has_missing_dependencies(
 
 pub struct TaskExecutorCache {
     pub project_source_hashes: RwLock<HashMap<Arc<str>, String>>,
+    pub dir_mtimes: RwLock<HashMap<Arc<str>, u128>>,
     pub file_hashes: RwLock<HashMap<Arc<str>, String>>,
     pub task_outputs: RwLock<HashMap<Arc<str>, serde_json::Value>>,
 }
@@ -509,6 +520,7 @@ impl TaskExecutor {
             message_channel: mpsc::channel(),
             cache: Arc::new(TaskExecutorCache {
                 project_source_hashes: RwLock::new(HashMap::new()),
+                dir_mtimes: RwLock::new(HashMap::new()),
                 file_hashes: RwLock::new(HashMap::new()),
                 task_outputs: RwLock::new(HashMap::new()),
             }),
@@ -605,8 +617,14 @@ impl TaskExecutor {
         self.execute_graph(jobs, &frozen_workspace)
     }
 
-    pub fn do_env_actions<'a, E>(&mut self, workspace: &Workspace, envs: E, args: &Vec<Arc<str>>) -> Result<(), TaskExecutionError>
-    where E: Iterator<Item = &'a Arc<str>>
+    pub fn do_env_actions<'a, E>(
+        &mut self,
+        workspace: &Workspace,
+        envs: E,
+        args: &Vec<Arc<str>>,
+    ) -> Result<(), TaskExecutionError>
+    where
+        E: Iterator<Item = &'a Arc<str>>,
     {
         self.ensure_worker_threads();
 
@@ -623,7 +641,7 @@ impl TaskExecutor {
     fn execute_graph(
         &mut self,
         nodes: HashMap<Arc<str>, ExecutorJob>,
-        workspace: &Arc<Workspace>
+        workspace: &Arc<Workspace>,
     ) -> Result<(), TaskExecutionError> {
         let dep_edges = &compute_dependency_edges(&nodes, workspace.as_ref())?;
 
@@ -677,7 +695,12 @@ impl TaskExecutor {
             })?;
 
             match message {
-                TaskJobMessage::Started { task, stdin_ready, show_stdout, show_stderr } => {
+                TaskJobMessage::Started {
+                    task,
+                    stdin_ready,
+                    show_stdout,
+                    show_stderr,
+                } => {
                     concurrent_io.job_started(&task, stdin_ready, show_stdout, show_stderr);
                 }
                 TaskJobMessage::Stdout { task, s } => {

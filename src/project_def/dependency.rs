@@ -16,6 +16,7 @@ use crate::project_def::validate::{
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct DependencyListByType {
+    pub dirs: Option<HashMap<StringOrInt, String>>,
     pub files: Option<HashMap<StringOrInt, String>>,
     pub tasks: Option<HashMap<StringOrInt, String>>,
     pub vars: Option<HashMap<StringOrInt, String>>,
@@ -24,6 +25,7 @@ pub struct DependencyListByType {
 
 #[derive(Clone, Debug, Default)]
 pub struct Dependencies {
+    pub dirs: HashMap<Arc<str>, Arc<str>>,
     pub files: HashMap<Arc<str>, Arc<str>>,
     pub tasks: HashMap<Arc<str>, Arc<str>>,
     pub vars: HashMap<Arc<str>, Arc<str>>,
@@ -64,6 +66,7 @@ fn alias_map_from_string_or_int_map(
 impl From<DependencyListByType> for Dependencies {
     fn from(value: DependencyListByType) -> Self {
         let DependencyListByType {
+            dirs,
             files,
             tasks,
             vars,
@@ -79,6 +82,9 @@ impl From<DependencyListByType> for Dependencies {
         }
 
         Dependencies {
+            dirs: dirs
+                .map(alias_map_from_string_or_int_map)
+                .unwrap_or_default(),
             files: files
                 .map(alias_map_from_string_or_int_map)
                 .unwrap_or_default(),
@@ -152,6 +158,15 @@ pub fn validate_dep_list<'lua>(
                 let (dep_type, dep_list): (mlua::Value, mlua::Value) = pair?;
                 let dep_type_str = validate_is_string(&dep_type, None, prop_path.as_mut())?;
                 match dep_type_str.to_str()? {
+                    "dirs" => validate_table_has_only_string_or_sequence_keys(
+                        validate_is_table(
+                            &dep_list,
+                            Some(Cow::Borrowed("dirs")),
+                            prop_path.as_mut(),
+                        )?,
+                        Some(Cow::Borrowed("dirs")),
+                        prop_path.as_mut(),
+                    ),
                     "files" => validate_table_has_only_string_or_sequence_keys(
                         validate_is_table(
                             &dep_list,
@@ -208,6 +223,7 @@ pub fn validate_dep_list<'lua>(
 impl<'lua> mlua::FromLua<'lua> for DependencyListByType {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         let mut deps = DependencyListByType {
+            dirs: None,
             files: None,
             tasks: None,
             vars: None,
@@ -218,6 +234,9 @@ impl<'lua> mlua::FromLua<'lua> for DependencyListByType {
         for pair in deps_table.pairs() {
             let (k, v): (String, mlua::Value) = pair?;
             match k.as_str() {
+                "dirs" => {
+                    deps.dirs = lua.unpack(v)?;
+                }
                 "files" => {
                     deps.files = lua.unpack(v)?;
                 }

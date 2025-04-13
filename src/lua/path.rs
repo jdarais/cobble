@@ -36,7 +36,10 @@ fn path_join<'lua>(_lua: &'lua Lua, components: mlua::Variadic<String>) -> mlua:
 
     match path.to_str() {
         Some(path_str) => Ok(path_str.to_owned()),
-        None => Err(mlua::Error::runtime(format!("Unable to convert path to a string: {}", path.display())))
+        None => Err(mlua::Error::runtime(format!(
+            "Unable to convert path to a string: {}",
+            path.display()
+        ))),
     }
 }
 
@@ -53,7 +56,9 @@ fn normalize_path_for_glob(path: &Path) -> PathBuf {
     for comp in path.components() {
         match comp {
             Component::CurDir => { /* Ignore */ }
-            _ => { norm_components.push(comp); }
+            _ => {
+                norm_components.push(comp);
+            }
         }
     }
 
@@ -64,19 +69,27 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
     let (path_or_base, mut path_opt): (String, Option<String>) = lua.unpack_multi(args)?;
     let mut path_or_base_opt = Some(path_or_base);
     let path = path_opt.take().or_else(|| path_or_base_opt.take()).unwrap();
-    let base_opt = path_or_base_opt.take().map(|s| normalize_path_for_glob(&Path::new(s.as_str())));
+    let base_opt = path_or_base_opt
+        .take()
+        .map(|s| normalize_path_for_glob(&Path::new(s.as_str())));
 
     let glob_pattern = match base_opt.as_ref() {
         Some(base) => {
             if Path::new(path.as_str()).is_absolute() {
                 return Err(Error::runtime(format!(
                     "If base path is provided, glob pattern must be relative. base={}, glob={}",
-                    base.display(), path
+                    base.display(),
+                    path
                 )));
             }
 
             let pattern_path = base.join(path);
-            let pattern = pattern_path.to_str().ok_or_else(|| mlua::Error::runtime(format!("Error converting path to utf-8: {}", pattern_path.display())))?;
+            let pattern = pattern_path.to_str().ok_or_else(|| {
+                mlua::Error::runtime(format!(
+                    "Error converting path to utf-8: {}",
+                    pattern_path.display()
+                ))
+            })?;
             pattern.to_owned()
         }
         None => path.clone(),
@@ -84,14 +97,15 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
 
     let result_table = lua.create_table()?;
 
-    let glob_iter = glob(glob_pattern.as_str()).map_err(|e| Error::runtime(format!("glob error: {}", e)))?;
+    let glob_iter =
+        glob(glob_pattern.as_str()).map_err(|e| Error::runtime(format!("glob error: {}", e)))?;
     for entry_res in glob_iter {
         if let Ok(entry) = entry_res {
             let path_rel_to_base_res = match base_opt.as_ref() {
                 Some(base) => entry.strip_prefix(base.as_path()),
-                None => Ok(entry.as_path())
+                None => Ok(entry.as_path()),
             };
-            
+
             if let Ok(path_rel_to_base) = path_rel_to_base_res {
                 if let Some(path_str) = path_rel_to_base.to_str() {
                     result_table.push(path_str)?;
@@ -106,7 +120,7 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use std::fs::{create_dir_all, File};
 
     use mktemp::Temp;
@@ -128,13 +142,16 @@ mod tests {
         let expected_paths = vec![
             format!("one{sep}two{sep}three{sep}foo.txt"),
             format!("one{sep}two{sep}foo.txt"),
-            format!("four{sep}five{sep}six{sep}foo.txt")
+            format!("four{sep}five{sep}six{sep}foo.txt"),
         ];
         assert_eq!(files.len().unwrap() as usize, expected_paths.len());
         for val_res in files.sequence_values() {
             let val: String = val_res.unwrap();
-            assert!(expected_paths.contains(&val), "Unexpected result path {}", val);
+            assert!(
+                expected_paths.contains(&val),
+                "Unexpected result path {}",
+                val
+            );
         }
     }
 }
-

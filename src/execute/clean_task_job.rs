@@ -3,9 +3,22 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{collections::HashMap, fs::remove_file, sync::{mpsc::Sender, Arc}};
+use std::{
+    collections::HashMap,
+    fs::remove_file,
+    sync::{mpsc::Sender, Arc},
+};
 
-use crate::{config::WorkspaceConfig, db::delete_task_record, execute::{action::{create_action_context, invoke_action_protected, ActionContextArgs}, execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult}}, project_def::types::TaskVar, vars::get_var};
+use crate::{
+    config::WorkspaceConfig,
+    db::delete_task_record,
+    execute::{
+        action::{create_action_context, invoke_action_protected, ActionContextArgs},
+        execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult},
+    },
+    project_def::types::TaskVar,
+    vars::get_var,
+};
 
 fn execute_clean_actions(
     lua: &mlua::Lua,
@@ -23,8 +36,12 @@ fn execute_clean_actions(
         vars.insert(var_alias.as_ref().to_owned(), var.clone());
     }
 
-    let project_dir = job.task.dir.to_str()
-        .ok_or_else(|| TaskExecutionError::ExecutorError(format!("Unable to convert path to a string: {}", job.task.dir.display())))?;
+    let project_dir = job.task.dir.to_str().ok_or_else(|| {
+        TaskExecutionError::ExecutorError(format!(
+            "Unable to convert path to a string: {}",
+            job.task.dir.display()
+        ))
+    })?;
 
     for action in &job.task.clean_actions {
         let action_context = create_action_context(
@@ -44,8 +61,9 @@ fn execute_clean_actions(
                 db: db.clone(),
                 cache: cache.clone(),
                 sender: sender.clone(),
-            }
-        ).map_err(|e| TaskExecutionError::LuaError(e))?;
+            },
+        )
+        .map_err(|e| TaskExecutionError::LuaError(e))?;
 
         invoke_action_protected(lua, action, action_context, false)?;
     }
@@ -65,11 +83,10 @@ fn execute_clean_actions(
     }
 
     delete_task_record(db_env.as_ref(), db.clone(), job.task.name.as_ref())
-        .map_err(|e| TaskExecutionError::DBDeleteError(e) )?;
+        .map_err(|e| TaskExecutionError::DBDeleteError(e))?;
 
     Ok(())
 }
-
 
 pub fn execute_clean_job(
     workspace_config: &Arc<WorkspaceConfig>,
@@ -80,20 +97,32 @@ pub fn execute_clean_job(
     task_result_sender: &Sender<TaskJobMessage>,
     cache: &Arc<TaskExecutorCache>,
 ) {
-    let result = execute_clean_actions(lua, job, workspace_config, db_env, db, cache, &task_result_sender);
+    let result = execute_clean_actions(
+        lua,
+        job,
+        workspace_config,
+        db_env,
+        db,
+        cache,
+        &task_result_sender,
+    );
 
     match result {
         Ok(_) => {
-            task_result_sender.send(TaskJobMessage::Complete{
-                task: job.job_id.clone(),
-                result: TaskResult::Success
-            }).unwrap();
+            task_result_sender
+                .send(TaskJobMessage::Complete {
+                    task: job.job_id.clone(),
+                    result: TaskResult::Success,
+                })
+                .unwrap();
         }
         Err(e) => {
-            task_result_sender.send(TaskJobMessage::Complete {
-                task: job.job_id.clone(),
-                result: TaskResult::Error(e)
-            }).unwrap();
+            task_result_sender
+                .send(TaskJobMessage::Complete {
+                    task: job.job_id.clone(),
+                    result: TaskResult::Error(e),
+                })
+                .unwrap();
         }
     }
 }

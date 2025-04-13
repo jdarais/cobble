@@ -97,10 +97,16 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
     let joined_path = project_path.join(path);
     for comp in joined_path.components() {
         match comp {
-            Prefix(pre) => { path_components.push(Prefix(pre)); }
-            RootDir => { path_components.push(RootDir); }
+            Prefix(pre) => {
+                path_components.push(Prefix(pre));
+            }
+            RootDir => {
+                path_components.push(RootDir);
+            }
             CurDir => { /* skip */ }
-            Normal(comp_str) => { path_components.push(Normal(comp_str)); }
+            Normal(comp_str) => {
+                path_components.push(Normal(comp_str));
+            }
             ParentDir => match path_components.pop() {
                 Some(parent_comp) => match parent_comp {
                     Prefix(_) | RootDir => {
@@ -111,13 +117,15 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
                         path_components.push(ParentDir);
                     }
                     Normal(_) => { /* ParentDir negates a Normal parent component */ }
-                    CurDir => { panic!("CurDir should never have been added to path_components"); }
+                    CurDir => {
+                        panic!("CurDir should never have been added to path_components");
+                    }
                 },
                 None => {
                     // There was nothing to pop, so this ".." component is at the beginning of the path, and we should leave it there
                     path_components.push(ParentDir);
                 }
-            }
+            },
         }
     }
     let full_path = PathBuf::from_iter(path_components.into_iter());
@@ -162,26 +170,34 @@ fn canonicalize_name(mut full_name_segments: Vec<&str>) -> Arc<str> {
             let joined_path = full_name_segments.join("/");
             full_name.push_str(joined_path.as_str());
             full_name.into()
-        },
+        }
     }
 }
 
-pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) -> Result<Arc<str>, NameResolutionError> {
+pub fn resolve_name(
+    project_name: &str,
+    project_path: &Path,
+    name: &Arc<str>,
+) -> Result<Arc<str>, NameResolutionError> {
     if name.starts_with("/") {
         return Ok(canonicalize_name(name.split("/").collect()));
     }
 
-
     if name.starts_with("[") {
         let path_prefix_end_index = name.find("]");
         let path_prefix = match path_prefix_end_index {
-            None => { return Err(NameResolutionError::InvalidName(String::from(name.as_ref()))); },
-            Some(idx) => &name[1..idx]
+            None => {
+                return Err(NameResolutionError::InvalidName(String::from(
+                    name.as_ref(),
+                )));
+            }
+            Some(idx) => &name[1..idx],
         };
 
-        let path_prefix_rel_to_workspace = path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
+        let path_prefix_rel_to_workspace =
+            path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
         let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
-        resolved_name.push_str(&name[path_prefix.len()+2..]);
+        resolved_name.push_str(&name[path_prefix.len() + 2..]);
         return Ok(canonicalize_name(resolved_name.split("/").collect()));
     }
 
@@ -194,7 +210,7 @@ pub fn resolve_name(project_name: &str, project_path: &Path, name: &Arc<str>) ->
     let project_name_segments = project_name.split("/").filter(|s| s.len() > 0);
     let name_segments = name.split("/").filter(|s| s.len() > 0);
 
-    let full_name_segments: Vec<&str> =vec![""]
+    let full_name_segments: Vec<&str> = vec![""]
         .into_iter()
         .chain(project_name_segments)
         .chain(name_segments)
@@ -208,6 +224,10 @@ pub fn resolve_names_in_dependency_list(
     project_path: &Path,
     deps: &mut Dependencies,
 ) -> Result<(), NameResolutionError> {
+    for (_, d_path) in deps.dirs.iter_mut() {
+        *d_path = resolve_path(project_path, d_path.as_ref())?
+    }
+
     for (_, f_path) in deps.files.iter_mut() {
         *f_path = resolve_path(project_path, f_path.as_ref())?
     }
@@ -243,11 +263,15 @@ fn resolve_names_in_build_env(
     build_env: &mut BuildEnvDef,
 ) -> Result<(), NameResolutionError> {
     build_env.name = resolve_name(project_name, project_path, &build_env.name)?;
-    
+
     if let Some(setup_task) = &mut build_env.setup_task {
         match setup_task {
-            EnvSetupTask::Ref(name) => { *name = resolve_name(project_name, project_path, &name.clone())?; }
-            EnvSetupTask::Inline(task) => { resolve_names_in_task(project_name, project_path, task)?; }
+            EnvSetupTask::Ref(name) => {
+                *name = resolve_name(project_name, project_path, &name.clone())?;
+            }
+            EnvSetupTask::Inline(task) => {
+                resolve_names_in_task(project_name, project_path, task)?;
+            }
         }
     }
 
@@ -338,7 +362,12 @@ mod tests {
 
     #[test]
     fn test_resolve_name() {
-        let full_name = resolve_name("/subproject", &Path::new(".").join("subproject"), &Arc::<str>::from("myname")).unwrap();
+        let full_name = resolve_name(
+            "/subproject",
+            &Path::new(".").join("subproject"),
+            &Arc::<str>::from("myname"),
+        )
+        .unwrap();
         assert_eq!(full_name.as_ref(), "/subproject/myname");
     }
 
@@ -346,7 +375,12 @@ mod tests {
     fn test_resolve_name_with_path_prefix() {
         let sep = std::path::MAIN_SEPARATOR;
         let name = format!("[..{sep}otherproject]/myname");
-        let full_name = resolve_name("/subproject", &Path::new(".").join("subproject"), &Arc::<str>::from(name)).unwrap();
+        let full_name = resolve_name(
+            "/subproject",
+            &Path::new(".").join("subproject"),
+            &Arc::<str>::from(name),
+        )
+        .unwrap();
         assert_eq!(full_name.as_ref(), "/otherproject/myname");
     }
 
@@ -359,28 +393,42 @@ mod tests {
     #[test]
     fn test_resolve_path_removes_curdir_components() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path = resolve_path(Path::new("./a/test/path"), "./a/./path/./with/./dots").unwrap();
-        assert_eq!(resolved_path.as_ref(), format!("a{sep}test{sep}path{sep}a{sep}path{sep}with{sep}dots").as_str());
+        let resolved_path =
+            resolve_path(Path::new("./a/test/path"), "./a/./path/./with/./dots").unwrap();
+        assert_eq!(
+            resolved_path.as_ref(),
+            format!("a{sep}test{sep}path{sep}a{sep}path{sep}with{sep}dots").as_str()
+        );
     }
 
     #[test]
     fn test_resolve_path_resolves_parent_dir_components() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path = resolve_path(Path::new("./a/test/path"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), format!("a{sep}path{sep}in{sep}other{sep}dir").as_str());
+        let resolved_path =
+            resolve_path(Path::new("./a/test/path"), "../../path/in/other/dir").unwrap();
+        assert_eq!(
+            resolved_path.as_ref(),
+            format!("a{sep}path{sep}in{sep}other{sep}dir").as_str()
+        );
     }
 
     #[test]
     fn test_resolve_path_leaves_parent_dir_at_start_of_path() {
         let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("./a"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), format!("..{sep}path{sep}in{sep}other{sep}dir").as_str());
+        assert_eq!(
+            resolved_path.as_ref(),
+            format!("..{sep}path{sep}in{sep}other{sep}dir").as_str()
+        );
     }
 
     #[test]
     fn test_resolve_path_remove_parent_dir_component_at_root_of_abs_path() {
         let sep = std::path::MAIN_SEPARATOR;
         let resolved_path = resolve_path(Path::new("/a"), "../../path/in/other/dir").unwrap();
-        assert_eq!(resolved_path.as_ref(), format!("{sep}path{sep}in{sep}other{sep}dir").as_str());
+        assert_eq!(
+            resolved_path.as_ref(),
+            format!("{sep}path{sep}in{sep}other{sep}dir").as_str()
+        );
     }
 }

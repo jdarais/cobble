@@ -6,9 +6,9 @@
 use std::{path::Path, sync::Arc};
 
 use crate::config::find_nearest_project_dir;
-use crate::workspace::Workspace;
 use crate::query::{find_envs_for_query, find_tasks_for_query};
 use crate::resolve::project_path_to_project_name;
+use crate::workspace::Workspace;
 
 pub fn compute_selected_tasks(
     task_queries: &Vec<&str>,
@@ -30,7 +30,6 @@ pub fn compute_selected_tasks(
 
     Ok(selected_tasks)
 }
-
 
 pub fn compute_selected_envs(
     env_queries: &Vec<&str>,

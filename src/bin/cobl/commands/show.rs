@@ -1,6 +1,14 @@
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
-use cobble::{calc_artifacts::calculate_artifacts, config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects, task_selection::compute_selected_tasks, workspace::create_workspace};
+use cobble::{
+    calc_artifacts::calculate_artifacts,
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
+    dependency::resolve_calculated_dependencies_in_subtrees,
+    execute::execute::TaskExecutor,
+    load::load_projects,
+    task_selection::compute_selected_tasks,
+    workspace::create_workspace,
+};
 
 const TAB: &str = "  ";
 
@@ -8,7 +16,7 @@ pub struct ShowTaskInput {
     pub cwd: PathBuf,
     pub tasks: Vec<String>,
     pub vars: Vec<String>,
-    pub num_threads: Option<u8>
+    pub num_threads: Option<u8>,
 }
 
 pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
@@ -16,7 +24,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         cwd,
         tasks,
         vars,
-        num_threads
+        num_threads,
     } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
@@ -45,7 +53,10 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
     )?;
 
     if selected_tasks.len() == 0 {
-        return Err(anyhow::anyhow!("No tasks found that match \"{}\"", tasks.join(" ")));
+        return Err(anyhow::anyhow!(
+            "No tasks found that match \"{}\"",
+            tasks.join(" ")
+        ));
     }
 
     // Resolve calculated artifacts and dependencies

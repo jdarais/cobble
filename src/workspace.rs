@@ -36,6 +36,7 @@ pub struct Task {
     pub dir: Arc<Path>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
     pub tools: HashMap<Arc<str>, Arc<str>>,
+    pub dir_deps: HashMap<Arc<str>, Arc<str>>,
     pub file_deps: HashMap<Arc<str>, FileDependency>,
     pub task_deps: HashMap<Arc<str>, Arc<str>>,
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
@@ -61,6 +62,7 @@ impl Default for Task {
             dir: PathBuf::from(".").into(),
             build_envs: HashMap::new(),
             tools: HashMap::new(),
+            dir_deps: HashMap::new(),
             file_deps: HashMap::new(),
             task_deps: HashMap::new(),
             var_deps: HashMap::new(),
@@ -83,7 +85,7 @@ pub struct BuildEnv {
     pub name: Arc<str>,
     pub dir: PathBuf,
     pub setup_task: Option<Arc<str>>,
-    pub action: Action
+    pub action: Action,
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +101,10 @@ pub fn add_dependency_list_to_task(
     file_providers: &HashMap<Arc<str>, Arc<str>>,
     task: &mut Task,
 ) {
+    for (d_alias, d_path) in deps.dirs.iter() {
+        task.dir_deps.insert(d_alias.clone(), d_path.clone());
+    }
+
     for (f_alias, f_path) in deps.files.iter() {
         task.file_deps.insert(
             f_alias.clone(),
@@ -145,26 +151,33 @@ fn add_build_env_to_workspace(
 ) {
     if let Some(setup_task) = &build_env.setup_task {
         if let EnvSetupTask::Inline(inline_setup_task) = setup_task {
-            add_task_to_workspace(inline_setup_task, project_name, dir, project_source_deps, workspace);
+            add_task_to_workspace(
+                inline_setup_task,
+                project_name,
+                dir,
+                project_source_deps,
+                workspace,
+            );
         }
     }
 
     let setup_task_name = match &build_env.setup_task {
         Some(setup_task) => match setup_task {
             EnvSetupTask::Inline(_) => Some(build_env.name.clone()),
-            EnvSetupTask::Ref(name) => Some(name.clone())
-        }
-        None => None
+            EnvSetupTask::Ref(name) => Some(name.clone()),
+        },
+        None => None,
     };
 
-    workspace
-        .build_envs
-        .insert(build_env.name.clone(), Arc::new(BuildEnv {
+    workspace.build_envs.insert(
+        build_env.name.clone(),
+        Arc::new(BuildEnv {
             name: build_env.name.clone(),
             dir: PathBuf::from(dir.as_ref()),
             setup_task: setup_task_name,
-            action: build_env.action.clone()
-        }));
+            action: build_env.action.clone(),
+        }),
+    );
 }
 
 fn add_task_to_workspace(

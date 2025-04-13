@@ -30,7 +30,7 @@ struct TrackedJob {
     stdin_ready: Arc<(Mutex<bool>, Condvar)>,
     show_stdout: TaskOutputCondition,
     show_stderr: TaskOutputCondition,
-    failed: bool
+    failed: bool,
 }
 
 pub struct ConcurrentIO {
@@ -62,7 +62,7 @@ impl ConcurrentIO {
                 stdin_ready,
                 show_stdout,
                 show_stderr,
-                failed: false
+                failed: false,
             },
         );
         self.print_status(&job_id, format!("-----> {}\n", job_id));
@@ -99,8 +99,12 @@ impl ConcurrentIO {
         if let Some(job) = job_opt {
             if is_active {
                 match job.show_stdout {
-                    TaskOutputCondition::Always => { print!("{}", text); }
-                    TaskOutputCondition::OnFail => { job.on_fail_buffer.push(Output::Stdout(text)); }
+                    TaskOutputCondition::Always => {
+                        print!("{}", text);
+                    }
+                    TaskOutputCondition::OnFail => {
+                        job.on_fail_buffer.push(Output::Stdout(text));
+                    }
                     TaskOutputCondition::Never => { /* Ignore */ }
                 }
             } else {
@@ -123,10 +127,14 @@ impl ConcurrentIO {
         if let Some(job) = job_opt {
             if is_active {
                 match job.show_stdout {
-                    TaskOutputCondition::Always => { eprint!("{}", text); }
-                    TaskOutputCondition::OnFail => { job.on_fail_buffer.push(Output::Stderr(text)); }
-                    TaskOutputCondition::Never => { /* Ignore */}
-                } 
+                    TaskOutputCondition::Always => {
+                        eprint!("{}", text);
+                    }
+                    TaskOutputCondition::OnFail => {
+                        job.on_fail_buffer.push(Output::Stderr(text));
+                    }
+                    TaskOutputCondition::Never => { /* Ignore */ }
+                }
             } else {
                 if let TrackedJobState::Complete = job.job_state {
                     return;
@@ -158,7 +166,10 @@ impl ConcurrentIO {
             }
             let job = self.jobs.get_mut(job_id).unwrap();
             job.job_state = TrackedJobState::Complete;
-            job.failed = match task_result { TaskResult::Error(_) => true, _ => false };
+            job.failed = match task_result {
+                TaskResult::Error(_) => true,
+                _ => false,
+            };
             self.update_active_job();
         }
     }
@@ -215,15 +226,23 @@ impl ConcurrentIO {
             for output in job.buffer.drain(..) {
                 match output {
                     Output::Stdout(s) => match job.show_stdout {
-                        TaskOutputCondition::Always => { print!("{}", s); }
-                        TaskOutputCondition::OnFail => { job.on_fail_buffer.push(Output::Stdout(s)); }
-                        TaskOutputCondition::Never => { /* Ignore */}
-                    }
-                    Output::Stderr(s) => match job.show_stderr {
-                        TaskOutputCondition::Always => { eprint!("{}", s); }
-                        TaskOutputCondition::OnFail => { job.on_fail_buffer.push(Output::Stderr(s)); }
+                        TaskOutputCondition::Always => {
+                            print!("{}", s);
+                        }
+                        TaskOutputCondition::OnFail => {
+                            job.on_fail_buffer.push(Output::Stdout(s));
+                        }
                         TaskOutputCondition::Never => { /* Ignore */ }
-                    }
+                    },
+                    Output::Stderr(s) => match job.show_stderr {
+                        TaskOutputCondition::Always => {
+                            eprint!("{}", s);
+                        }
+                        TaskOutputCondition::OnFail => {
+                            job.on_fail_buffer.push(Output::Stderr(s));
+                        }
+                        TaskOutputCondition::Never => { /* Ignore */ }
+                    },
                     Output::Status(s) => {
                         print!("{}", s);
                     }
@@ -232,9 +251,15 @@ impl ConcurrentIO {
             if job.failed {
                 for output in job.on_fail_buffer.drain(..) {
                     match output {
-                        Output::Stdout(s) => { print!("{}", s); }
-                        Output::Stderr(s) => { eprint!("{}", s); }
-                        Output::Status(s) => { print!("{}", s); }
+                        Output::Stdout(s) => {
+                            print!("{}", s);
+                        }
+                        Output::Stderr(s) => {
+                            eprint!("{}", s);
+                        }
+                        Output::Status(s) => {
+                            print!("{}", s);
+                        }
                     }
                 }
             }
