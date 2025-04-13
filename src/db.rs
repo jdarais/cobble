@@ -148,7 +148,7 @@ impl fmt::Display for DeleteError {
 pub fn delete_task_record(
     db_env: &lmdb::Environment,
     db: lmdb::Database,
-    task_name: &str
+    task_name: &str,
 ) -> Result<(), DeleteError> {
     let task_key = get_task_key(task_name);
 
@@ -157,8 +157,10 @@ pub fn delete_task_record(
 
     if let Err(e) = res {
         match e {
-            lmdb::Error::NotFound => { /* Ok */}
-            _ => { return Err(DeleteError::DBError(e)); }
+            lmdb::Error::NotFound => { /* Ok */ }
+            _ => {
+                return Err(DeleteError::DBError(e));
+            }
         }
     }
 

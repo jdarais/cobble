@@ -38,9 +38,12 @@ pub struct ActionContextArgs<'lua> {
 
 fn get_original_error(error: &mlua::Error) -> &mlua::Error {
     match error {
-        mlua::Error::CallbackError { traceback: _, cause } => get_original_error(cause.as_ref()),
+        mlua::Error::CallbackError {
+            traceback: _,
+            cause,
+        } => get_original_error(cause.as_ref()),
         mlua::Error::WithContext { context: _, cause } => get_original_error(cause.as_ref()),
-        e => e
+        e => e,
     }
 }
 
@@ -61,10 +64,11 @@ pub fn invoke_action_protected<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
-    return_arg_list_action_result: bool
+    return_arg_list_action_result: bool,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
-    let (success, result) = execute_action_pcall(lua, action, action_context, return_arg_list_action_result)
-        .map_err(|e| TaskExecutionError::LuaError(e))?;
+    let (success, result) =
+        execute_action_pcall(lua, action, action_context, return_arg_list_action_result)
+            .map_err(|e| TaskExecutionError::LuaError(e))?;
 
     if success {
         return Ok(result);
@@ -119,7 +123,6 @@ fn invoke_tool_by_name<'lua>(
     } else {
         Err(mlua::Error::external(get_error_message(&result)))
     }
-
 }
 
 fn invoke_env_by_name<'lua>(
@@ -372,10 +375,14 @@ pub fn create_action_context<'lua>(
     })?;
     action_context.set("print", print_fn.clone())?;
 
-    let println_fn: mlua::Function = lua.load(r#"
+    let println_fn: mlua::Function = lua
+        .load(
+            r#"
         local print_fn = ...
         return function (s) print_fn(s.."\n") end    
-    "#).call(print_fn)?;
+    "#,
+        )
+        .call(print_fn)?;
     action_context.set("println", println_fn)?;
 
     let err_task_name_clone = task_name.clone();
@@ -392,10 +399,14 @@ pub fn create_action_context<'lua>(
     })?;
     action_context.set("eprint", eprint_fn.clone())?;
 
-    let eprintln_fn: mlua::Function = lua.load(r#"
+    let eprintln_fn: mlua::Function = lua
+        .load(
+            r#"
         local eprint_fn = ...
         return function (s) eprint_fn(s.."\n") end
-    "#).call(eprint_fn)?;
+    "#,
+        )
+        .call(eprint_fn)?;
     action_context.set("eprintln", eprintln_fn)?;
 
     let tool_table = lua.create_table()?;
@@ -504,12 +515,16 @@ pub fn execute_action_pcall<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     action_context: mlua::Table<'lua>,
-    return_arg_list_action_result: bool
+    return_arg_list_action_result: bool,
 ) -> mlua::Result<(bool, mlua::Value<'lua>)> {
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn = lua.load(&invoke_action_source[..]);
 
-    let action_result: mlua::MultiValue = invoke_action_fn.call((action.clone(), action_context, return_arg_list_action_result))?;
+    let action_result: mlua::MultiValue = invoke_action_fn.call((
+        action.clone(),
+        action_context,
+        return_arg_list_action_result,
+    ))?;
 
     let mut action_result_iter = action_result.into_iter();
     let success = action_result_iter.next().unwrap_or(mlua::Value::Nil);
@@ -518,7 +533,6 @@ pub fn execute_action_pcall<'lua>(
     let success_bool: bool = lua.unpack(success)?;
     Ok((success_bool, result))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -530,10 +544,13 @@ mod tests {
 
         let error = mlua::Error::CallbackError {
             traceback: String::from("test traceback"),
-            cause: original_error.clone()
+            cause: original_error.clone(),
         };
 
-        assert_eq!(get_original_error(&error).to_string(), original_error.to_string());
+        assert_eq!(
+            get_original_error(&error).to_string(),
+            original_error.to_string()
+        );
     }
 
     #[test]
@@ -542,9 +559,12 @@ mod tests {
 
         let error = mlua::Error::CallbackError {
             traceback: String::from("test traceback"),
-            cause: original_error.clone()
+            cause: original_error.clone(),
         };
 
-        assert_eq!(get_error_message(&mlua::Value::Error(error)), original_error.to_string())
+        assert_eq!(
+            get_error_message(&mlua::Value::Error(error)),
+            original_error.to_string()
+        )
     }
 }

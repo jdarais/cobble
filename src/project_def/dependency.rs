@@ -82,7 +82,9 @@ impl From<DependencyListByType> for Dependencies {
         }
 
         Dependencies {
-            dirs: dirs.map(alias_map_from_string_or_int_map).unwrap_or_default(),
+            dirs: dirs
+                .map(alias_map_from_string_or_int_map)
+                .unwrap_or_default(),
             files: files
                 .map(alias_map_from_string_or_int_map)
                 .unwrap_or_default(),
@@ -159,8 +161,8 @@ pub fn validate_dep_list<'lua>(
                     "dirs" => validate_table_has_only_string_or_sequence_keys(
                         validate_is_table(
                             &dep_list,
-                            Some(Cow::Borrowed("dirs")), 
-                            prop_path.as_mut()
+                            Some(Cow::Borrowed("dirs")),
+                            prop_path.as_mut(),
                         )?,
                         Some(Cow::Borrowed("dirs")),
                         prop_path.as_mut(),

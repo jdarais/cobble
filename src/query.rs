@@ -56,7 +56,7 @@ where
                 s.push_str(query);
                 s.into()
             };
-            
+
             if workspace.tasks.contains_key(full_task_name.as_ref()) {
                 direct_name_matches.insert(full_task_name.clone());
                 result.push(full_task_name.clone());
@@ -125,15 +125,24 @@ mod tests {
 
     fn create_minimal_workspace() -> Workspace {
         let mut tasks: HashMap<Arc<str>, Arc<Task>> = HashMap::new();
-        tasks.insert(String::from("/project1/task1").into(), Arc::new(Default::default()));
-        tasks.insert(String::from("/project1/task2").into(), Arc::new(Default::default()));
-        tasks.insert(String::from("/project2/task1").into(), Arc::new(Default::default()));
+        tasks.insert(
+            String::from("/project1/task1").into(),
+            Arc::new(Default::default()),
+        );
+        tasks.insert(
+            String::from("/project1/task2").into(),
+            Arc::new(Default::default()),
+        );
+        tasks.insert(
+            String::from("/project2/task1").into(),
+            Arc::new(Default::default()),
+        );
 
         Workspace {
             tasks: tasks,
             build_envs: HashMap::new(),
             tools: HashMap::new(),
-            file_providers: HashMap::new()
+            file_providers: HashMap::new(),
         }
     }
 
@@ -141,11 +150,8 @@ mod tests {
     fn test_match_full_task_name() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["/project2/task1"].into_iter()
-        ).unwrap();
+        let matches =
+            find_tasks_for_query(&ws, "/project1", vec!["/project2/task1"].into_iter()).unwrap();
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].as_ref(), "/project2/task1");
@@ -155,11 +161,7 @@ mod tests {
     fn test_match_relative_task_name() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["task1"].into_iter()
-        ).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["task1"].into_iter()).unwrap();
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].as_ref(), "/project1/task1");
@@ -169,22 +171,16 @@ mod tests {
     fn test_direct_query_no_match_returns_error() {
         let ws = create_minimal_workspace();
 
-        find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["not_a_task"].into_iter()
-        ).expect_err("Expected 'not_a_task' query to return an error");
+        find_tasks_for_query(&ws, "/project1", vec!["not_a_task"].into_iter())
+            .expect_err("Expected 'not_a_task' query to return an error");
     }
 
     #[test]
     fn test_wildcard_with_no_matches_returns_empty_list() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["*/not_a_task"].into_iter()
-        ).unwrap();
+        let matches =
+            find_tasks_for_query(&ws, "/project1", vec!["*/not_a_task"].into_iter()).unwrap();
 
         assert_eq!(matches.len(), 0);
     }
@@ -193,11 +189,7 @@ mod tests {
     fn test_wildcard_with_multiple_matches() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["*/task1"].into_iter()
-        ).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["*/task1"].into_iter()).unwrap();
 
         assert_eq!(matches.len(), 2);
         assert!(matches.contains(&String::from("/project1/task1").into()));
@@ -208,11 +200,7 @@ mod tests {
     fn test_relative_wildcard() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(
-            &ws,
-            "/project1",
-            vec!["task?"].into_iter()
-        ).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["task?"].into_iter()).unwrap();
 
         assert_eq!(matches.len(), 2);
         assert!(matches.contains(&String::from("/project1/task1").into()));

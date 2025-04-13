@@ -8,7 +8,7 @@ pub mod lua_env;
 pub mod userdata;
 
 mod cmd;
-mod path;
 mod json;
+mod path;
 mod script_dir;
 mod toml;

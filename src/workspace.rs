@@ -85,7 +85,7 @@ pub struct BuildEnv {
     pub name: Arc<str>,
     pub dir: PathBuf,
     pub setup_task: Option<Arc<str>>,
-    pub action: Action
+    pub action: Action,
 }
 
 #[derive(Clone, Debug)]
@@ -151,26 +151,33 @@ fn add_build_env_to_workspace(
 ) {
     if let Some(setup_task) = &build_env.setup_task {
         if let EnvSetupTask::Inline(inline_setup_task) = setup_task {
-            add_task_to_workspace(inline_setup_task, project_name, dir, project_source_deps, workspace);
+            add_task_to_workspace(
+                inline_setup_task,
+                project_name,
+                dir,
+                project_source_deps,
+                workspace,
+            );
         }
     }
 
     let setup_task_name = match &build_env.setup_task {
         Some(setup_task) => match setup_task {
             EnvSetupTask::Inline(_) => Some(build_env.name.clone()),
-            EnvSetupTask::Ref(name) => Some(name.clone())
-        }
-        None => None
+            EnvSetupTask::Ref(name) => Some(name.clone()),
+        },
+        None => None,
     };
 
-    workspace
-        .build_envs
-        .insert(build_env.name.clone(), Arc::new(BuildEnv {
+    workspace.build_envs.insert(
+        build_env.name.clone(),
+        Arc::new(BuildEnv {
             name: build_env.name.clone(),
             dir: PathBuf::from(dir.as_ref()),
             setup_task: setup_task_name,
-            action: build_env.action.clone()
-        }));
+            action: build_env.action.clone(),
+        }),
+    );
 }
 
 fn add_task_to_workspace(

@@ -9,8 +9,8 @@ use std::path::Path;
 use mlua::{Lua, Table};
 
 use crate::lua::cmd::CmdLib;
-use crate::lua::path::FsLib;
 use crate::lua::json::JsonLib;
+use crate::lua::path::FsLib;
 use crate::lua::script_dir::ScriptDirLib;
 use crate::lua::toml::TomlLib;
 
@@ -18,7 +18,10 @@ pub const COBBLE_JOB_INTERACTIVE_ENABLED: &str = "COBBLE_JOB_INTERACTIVE_ENABLED
 
 pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let lua = unsafe { Lua::unsafe_new() };
-    let preload_table: mlua::Table = lua.globals().get::<_, mlua::Table>("package")?.get("preload")?;
+    let preload_table: mlua::Table = lua
+        .globals()
+        .get::<_, mlua::Table>("package")?
+        .get("preload")?;
 
     let workspace_table = lua.create_table()?;
     workspace_table.set("dir", workspace_dir.to_str())?;
@@ -59,7 +62,10 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
 
     let script_dir_lib = lua.create_userdata(ScriptDirLib)?;
     let script_dir_source = include_bytes!("script_dir.lua");
-    let script_dir_loader = lua.load(&script_dir_source[..]).into_function()?.bind(script_dir_lib)?;
+    let script_dir_loader = lua
+        .load(&script_dir_source[..])
+        .into_function()?
+        .bind(script_dir_lib)?;
     preload_table.set("script_dir", script_dir_loader)?;
 
     let toml_lib = lua.create_userdata(TomlLib)?;

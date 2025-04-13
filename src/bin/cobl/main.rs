@@ -17,9 +17,8 @@ use crate::commands::clean::{clean_command, CleanCommandInput};
 use crate::commands::env::{run_env_command, RunEnvInput};
 use crate::commands::list::{list_command, ListCommandInput};
 use crate::commands::run::{run_command, RunCommandInput};
-use crate::commands::tool::{check_tool_command, CheckToolInput};
 use crate::commands::show::{show_task_command, ShowTaskInput};
-
+use crate::commands::tool::{check_tool_command, CheckToolInput};
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -140,8 +139,8 @@ fn main() -> ExitCode {
                 eprintln!("For --task-output: {}.", e);
                 return ExitCode::from(1);
             }
-        }
-        None => None
+        },
+        None => None,
     };
 
     let show_stdout_enum = match &args.task_stdout {
@@ -151,8 +150,8 @@ fn main() -> ExitCode {
                 eprintln!("For --task-stdout: {}.", e);
                 return ExitCode::from(1);
             }
-        }
-        None => None
+        },
+        None => None,
     };
 
     let show_stderr_enum = match &args.task_stderr {
@@ -162,8 +161,8 @@ fn main() -> ExitCode {
                 eprintln!("For --task-stderr: {}.", e);
                 return ExitCode::from(1);
             }
-        }
-        None => None
+        },
+        None => None,
     };
 
     let result = match args.command {
@@ -179,14 +178,14 @@ fn main() -> ExitCode {
                 force_run_tasks: force,
                 num_threads: args.num_threads,
                 show_stdout: show_stdout_enum.or(show_output_enum.clone()),
-                show_stderr: show_stderr_enum.or(show_output_enum)
+                show_stderr: show_stderr_enum.or(show_output_enum),
             }),
             CoblCommand::Clean { tasks } => clean_command(CleanCommandInput {
                 cwd,
                 tasks,
                 num_threads: args.num_threads,
                 show_stdout: show_stdout_enum.or(show_output_enum.clone()),
-                show_stderr: show_stderr_enum.or(show_output_enum)
+                show_stderr: show_stderr_enum.or(show_output_enum),
             }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
                 ToolCommand::Check { names } => check_tool_command(CheckToolInput {
@@ -194,7 +193,7 @@ fn main() -> ExitCode {
                     tools: names,
                     num_threads: args.num_threads,
                     show_stdout: show_stdout_enum.or(show_output_enum.clone()),
-                    show_stderr: show_stderr_enum.or(show_output_enum)
+                    show_stderr: show_stderr_enum.or(show_output_enum),
                 }),
             },
             CoblCommand::Env { env_cmd } => match env_cmd {
@@ -207,14 +206,14 @@ fn main() -> ExitCode {
                     args: env_args,
                     num_threads: args.num_threads,
                     show_stdout: show_stdout_enum.or(show_output_enum.clone()),
-                    show_stderr: show_stderr_enum.or(show_output_enum)
+                    show_stderr: show_stderr_enum.or(show_output_enum),
                 }),
             },
             CoblCommand::Show { tasks } => show_task_command(ShowTaskInput {
                 cwd,
                 tasks,
                 vars: args.var,
-                num_threads: args.num_threads
+                num_threads: args.num_threads,
             }),
         },
         None => run_from_dir(cwd.as_path()),

@@ -8,10 +8,12 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use crate::lua::detached::{detach_value, dump_function, hydrate_value, DetachedLuaValue, FunctionDump};
+use crate::lua::detached::{
+    detach_value, dump_function, hydrate_value, DetachedLuaValue, FunctionDump,
+};
 use crate::project_def::validate::{
-    prop_path_string, push_prop_name_if_exists, validate_is_string,
-    validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+    prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table,
+    validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
 };
 
 #[derive(Clone, Debug)]
@@ -127,7 +129,7 @@ pub fn validate_action<'lua>(
             }
 
             if sequence_values.len() == 0 {
-                return Ok(())
+                return Ok(());
             }
 
             let first_seq_val = sequence_values.remove(0);
@@ -251,7 +253,8 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 }
                             },
                             kwarg => {
-                                let detached_v = detach_value(lua, v, &mut HashMap::new(), &mut Vec::new())?;
+                                let detached_v =
+                                    detach_value(lua, v, &mut HashMap::new(), &mut Vec::new())?;
                                 kwargs.insert(Arc::<str>::from(kwarg.to_owned()), detached_v);
                             }
                         }
@@ -275,7 +278,12 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 build_envs,
                                 tools,
                                 kwargs,
-                                cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new(), &mut Vec::new())?),
+                                cmd: ActionCmd::Func(dump_function(
+                                    lua,
+                                    func,
+                                    &mut HashMap::new(),
+                                    &mut Vec::new(),
+                                )?),
                             });
                         }
                         _ => { /* not a function action */ }
@@ -316,7 +324,12 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                         .into_iter()
                         .collect(),
                     kwargs: HashMap::new(),
-                    cmd: ActionCmd::Func(dump_function(lua, func, &mut HashMap::new(), &mut Vec::new())?),
+                    cmd: ActionCmd::Func(dump_function(
+                        lua,
+                        func,
+                        &mut HashMap::new(),
+                        &mut Vec::new(),
+                    )?),
                 })
             }
             _ => Err(mlua::Error::runtime(

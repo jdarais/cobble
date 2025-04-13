@@ -19,7 +19,7 @@ use super::TaskDef;
 #[derive(Clone, Debug)]
 pub enum EnvSetupTask {
     Ref(Arc<str>),
-    Inline(TaskDef)
+    Inline(TaskDef),
 }
 
 #[derive(Clone, Debug)]
@@ -43,9 +43,18 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
                     "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path)
                         .and(Ok(())),
                     "setup_task" => match v {
-                        mlua::Value::String(_s) => { Ok(()) }
-                        mlua::Value::Table(t) => validate_inline_task(lua, Some(Cow::Borrowed("setup_task")), &mlua::Value::Table(t), &mut prop_path),
-                        _ => Err(mlua::Error::runtime(format!("In {}: Expected a table or string for 'setup_task', but got a {}", prop_path_string(&prop_path), v.type_name())))
+                        mlua::Value::String(_s) => Ok(()),
+                        mlua::Value::Table(t) => validate_inline_task(
+                            lua,
+                            Some(Cow::Borrowed("setup_task")),
+                            &mlua::Value::Table(t),
+                            &mut prop_path,
+                        ),
+                        _ => Err(mlua::Error::runtime(format!(
+                            "In {}: Expected a table or string for 'setup_task', but got a {}",
+                            prop_path_string(&prop_path),
+                            v.type_name()
+                        ))),
                     },
                     "action" => {
                         validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path)
@@ -53,11 +62,7 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
 
                     s_str => key_validation_error(
                         s_str,
-                        vec![
-                            "name",
-                            "setup_task",
-                            "action",
-                        ],
+                        vec!["name", "setup_task", "action"],
                         &mut prop_path,
                     ),
                 }?;
@@ -82,9 +87,11 @@ impl fmt::Display for BuildEnvDef {
         match &self.setup_task {
             Some(setup_task) => match setup_task {
                 EnvSetupTask::Inline(t) => write!(f, "{}", t)?,
-                EnvSetupTask::Ref(s) => write!(f, "\"{}\"", s)?
+                EnvSetupTask::Ref(s) => write!(f, "\"{}\"", s)?,
+            },
+            None => {
+                write!(f, "None")?;
             }
-            None => { write!(f, "None")?; }
         };
         f.write_str(", ")?;
 
@@ -101,10 +108,16 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
 
                 let setup_task_val: mlua::Value = tbl.get("setup_task")?;
                 let setup_task = match setup_task_val {
-                    mlua::Value::String(s) => Some(EnvSetupTask::Ref(s.to_str()?.to_owned().into())),
-                    mlua::Value::Table(t) => Some(EnvSetupTask::Inline(dump_inline_task(name.clone(), t)?)),
+                    mlua::Value::String(s) => {
+                        Some(EnvSetupTask::Ref(s.to_str()?.to_owned().into()))
+                    }
+                    mlua::Value::Table(t) => {
+                        Some(EnvSetupTask::Inline(dump_inline_task(name.clone(), t)?))
+                    }
                     mlua::Value::Nil => None,
-                    val => { return Err(mlua::Error::runtime(format!("Expected table, string, or nil for 'setup_task' property, but got a {}", val.type_name()))); }
+                    val => {
+                        return Err(mlua::Error::runtime(format!("Expected table, string, or nil for 'setup_task' property, but got a {}", val.type_name())));
+                    }
                 };
 
                 let action: Action = tbl.get("action")?;

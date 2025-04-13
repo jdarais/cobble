@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::PROJECT_FILE_NAME;
-use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
 use crate::lua::detached::dump_function;
+use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
@@ -23,7 +23,7 @@ fn process_project(
     chunk: &Path,
     project_name: &str,
     workspace_dir: &Path,
-    project_dir: &str
+    project_dir: &str,
 ) -> mlua::Result<()> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
@@ -196,7 +196,12 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             tools: HashMap::new(),
             build_envs: HashMap::new(),
             kwargs: HashMap::new(),
-            cmd: ActionCmd::Func(dump_function(lua, cmd_tool_action_func, &mut HashMap::new(), &mut Vec::new())?),
+            cmd: ActionCmd::Func(dump_function(
+                lua,
+                cmd_tool_action_func,
+                &mut HashMap::new(),
+                &mut Vec::new(),
+            )?),
         },
     };
 

@@ -16,7 +16,7 @@ pub enum CobbleUserData {
     CmdLib,
     ScriptDirLib,
     TomlLib,
-    JsonLib
+    JsonLib,
 }
 
 impl CobbleUserData {
@@ -26,11 +26,14 @@ impl CobbleUserData {
             CobbleUserData::CmdLib => lua.create_userdata(CmdLib),
             CobbleUserData::ScriptDirLib => lua.create_userdata(ScriptDirLib),
             CobbleUserData::TomlLib => lua.create_userdata(TomlLib),
-            CobbleUserData::JsonLib => lua.create_userdata(JsonLib)
+            CobbleUserData::JsonLib => lua.create_userdata(JsonLib),
         }
     }
 
-    pub fn from_userdata<'lua>(_lua: &'lua mlua::Lua, userdata: mlua::AnyUserData<'lua>) -> mlua::Result<CobbleUserData> {
+    pub fn from_userdata<'lua>(
+        _lua: &'lua mlua::Lua,
+        userdata: mlua::AnyUserData<'lua>,
+    ) -> mlua::Result<CobbleUserData> {
         if mlua::AnyUserData::is::<FsLib>(&userdata) {
             return Ok(CobbleUserData::FsLib);
         } else if mlua::AnyUserData::is::<CmdLib>(&userdata) {
@@ -55,7 +58,7 @@ impl fmt::Display for CobbleUserData {
             CmdLib => write!(f, "CmdLib"),
             ScriptDirLib => write!(f, "ScriptDirLib"),
             TomlLib => write!(f, "TomlLib"),
-            JsonLib => write!(f, "JsonLib")
+            JsonLib => write!(f, "JsonLib"),
         }
     }
 }

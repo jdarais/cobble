@@ -5,16 +5,14 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use std::io;
+use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::SystemTime;
 
 use crate::config::WorkspaceConfig;
-use crate::db::{
-    get_task_record, put_task_record, GetError, TaskInput, TaskOutput, TaskRecord,
-};
+use crate::db::{get_task_record, put_task_record, GetError, TaskInput, TaskOutput, TaskRecord};
 use crate::execute::action::{create_task_action_context, invoke_action_protected};
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
@@ -57,13 +55,16 @@ fn execute_task_actions<'lua>(
     Ok(args)
 }
 
-fn get_directory_tree_max_mtime<P>(dir_path: P) -> Result<u128, io::Error> where P: AsRef<Path> {
+fn get_directory_tree_max_mtime<P>(dir_path: P) -> Result<u128, io::Error>
+where
+    P: AsRef<Path>,
+{
     let dir_metadata = fs::metadata(dir_path.as_ref())?;
     let dir_mtime = dir_metadata.modified()?;
     let mut max_mtime_millis = dir_mtime
-                                    .duration_since(SystemTime::UNIX_EPOCH)
-                                    .map(|d| d.as_millis())
-                                    .unwrap_or(0);
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
 
     for f_res in fs::read_dir(dir_path)? {
         let f = f_res?;
@@ -128,23 +129,32 @@ fn get_current_task_input(
         let current_mtime = match cached_mtime {
             Some(mtime) => mtime,
             None => {
-                let dir_full_path = workspace_config.workspace_dir.join(Path::new(dir_path.as_ref()));
+                let dir_full_path = workspace_config
+                    .workspace_dir
+                    .join(Path::new(dir_path.as_ref()));
                 let dir_max_mtime = get_directory_tree_max_mtime(dir_full_path).map_err(|e| {
                     TaskExecutionError::IOError {
                         message: format!(
-                            "Task {}: Error reading directory tree metadata for {}", task.name, dir_path
+                            "Task {}: Error reading directory tree metadata for {}",
+                            task.name, dir_path
                         ),
-                        cause: e
+                        cause: e,
                     }
                 })?;
 
-                cache.dir_mtimes.write().unwrap().insert(dir_path.clone(), dir_max_mtime);
+                cache
+                    .dir_mtimes
+                    .write()
+                    .unwrap()
+                    .insert(dir_path.clone(), dir_max_mtime);
 
                 dir_max_mtime
             }
         };
 
-        current_task_input.dir_mtimes.insert(String::from(dir_alias.as_ref()), current_mtime);
+        current_task_input
+            .dir_mtimes
+            .insert(String::from(dir_alias.as_ref()), current_mtime);
     }
 
     for (file_alias, file_dep) in task.file_deps.iter() {
@@ -354,11 +364,8 @@ fn get_up_to_date_task_record(
     let mut current_output_file_hashes: HashMap<Arc<str>, String> =
         HashMap::with_capacity(task.task.artifacts.files.len());
     for artifact in task.task.artifacts.files.iter() {
-        let output_file_hash_res = compute_file_hash(
-            workspace_dir
-                .join(Path::new(artifact.as_ref()))
-                .as_path(),
-        );
+        let output_file_hash_res =
+            compute_file_hash(workspace_dir.join(Path::new(artifact.as_ref())).as_path());
         match output_file_hash_res {
             Ok(hash) => {
                 current_output_file_hashes.insert(artifact.clone(), hash);
@@ -442,10 +449,7 @@ fn execute_task_actions_and_store_result(
             }
             Err(e) => {
                 return Err(TaskExecutionError::IOError {
-                    message: format!(
-                        "Failed to compute hash of declared artifact '{}'",
-                        artifact
-                    ),
+                    message: format!("Failed to compute hash of declared artifact '{}'", artifact),
                     cause: e,
                 });
             }
@@ -605,7 +609,7 @@ mod tests {
             force_run_tasks: false,
             num_threads: 1,
             show_stdout: TaskOutputCondition::Always,
-            show_stderr: TaskOutputCondition::Always
+            show_stderr: TaskOutputCondition::Always,
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
@@ -636,7 +640,9 @@ mod tests {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 kwargs: HashMap::new(),
-                cmd: ActionCmd::Func(dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap()),
+                cmd: ActionCmd::Func(
+                    dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap(),
+                ),
             },
         });
 

@@ -205,7 +205,6 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
             .ok_or_else(|| ExecutionGraphError::EnvLookupError(env_name.clone()))?;
 
         if let Some(setup_task) = &env.setup_task {
-
             changed = changed
                 || resolve_calculated_dependencies_in_subtree_once_with_history(
                     setup_task,

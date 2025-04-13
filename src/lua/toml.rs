@@ -3,7 +3,11 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{fs::File, io::{Read, Write}, path::Path};
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
 
 use mlua::{Lua, UserData};
 
@@ -42,7 +46,7 @@ fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Valu
 fn toml_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Table<'lua>)) -> mlua::Result<()> {
     let (path, table) = args;
     let toml_str = toml_dumps(lua, table)?;
-    
+
     let mut f = File::create(Path::new(path.as_str()))
         .map_err(|e| mlua::Error::runtime(format!("Error opening file {}: {}", path, e)))?;
 
@@ -101,7 +105,10 @@ fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value) -> mlua::Result<mlua
     }
 }
 
-fn lua_to_toml<'lua>(lua: &'lua mlua::Lua, lua_val: mlua::Value<'lua>) -> mlua::Result<toml::Value> {
+fn lua_to_toml<'lua>(
+    lua: &'lua mlua::Lua,
+    lua_val: mlua::Value<'lua>,
+) -> mlua::Result<toml::Value> {
     match lua_val {
         mlua::Value::Boolean(b) => Ok(toml::Value::Boolean(b)),
         mlua::Value::Number(n) => Ok(toml::Value::Float(n)),
@@ -127,18 +134,28 @@ fn lua_to_toml<'lua>(lua: &'lua mlua::Lua, lua_val: mlua::Value<'lua>) -> mlua::
                 }
                 Ok(toml::Value::Table(map))
             }
-        }
+        },
         mlua::Value::UserData(d) => {
             if let Ok(datetime) = d.borrow::<DateTimeUserData>() {
                 Ok(toml::Value::Datetime(datetime.0.clone()))
             } else {
-                Err(mlua::Error::runtime("Cannot convert non-DateTime userdata to a toml value"))
+                Err(mlua::Error::runtime(
+                    "Cannot convert non-DateTime userdata to a toml value",
+                ))
             }
         }
         mlua::Value::Nil => Err(mlua::Error::runtime("Cannot convert nil to a toml value")),
-        mlua::Value::Function(_) => Err(mlua::Error::runtime("Cannot convert a function to a toml value")),
-        mlua::Value::LightUserData(_) => Err(mlua::Error::runtime("Cannot convert a lightuserdata to a toml value")),
-        mlua::Value::Thread(_) => Err(mlua::Error::runtime("Cannot convert a thread to a toml value")),
-        mlua::Value::Error(_) => Err(mlua::Error::runtime("Cannot convert an error object to a toml value"))
+        mlua::Value::Function(_) => Err(mlua::Error::runtime(
+            "Cannot convert a function to a toml value",
+        )),
+        mlua::Value::LightUserData(_) => Err(mlua::Error::runtime(
+            "Cannot convert a lightuserdata to a toml value",
+        )),
+        mlua::Value::Thread(_) => Err(mlua::Error::runtime(
+            "Cannot convert a thread to a toml value",
+        )),
+        mlua::Value::Error(_) => Err(mlua::Error::runtime(
+            "Cannot convert an error object to a toml value",
+        )),
     }
 }
