@@ -26,6 +26,7 @@ _function_ - Define a task
     - `env`: _string | table | nil_ - If provided, the named action environment is available to all actions in the task.  A table mapping an environment alias to an environment name is also valid, however only a single environment can be specified at the task level.
     - `clean`: _table | nil_ - A list of `action`s to run when the task is selected in a `cobl clean` command.
     - `deps`: _table | nil_ - A mapping of dependency type to a list of dependencies
+        - `dirs`: _table | nil_ - A list of directory dependency paths.  When a task has a directory dependency, the directory tree is walked and modification time of directories are checked to detect any file additions or deletions within the directory tree.  The directory dependency is considered out of date if the most recent directory modification time differs from what was recorded from the last run of the task.
         - `files`: _table | nil_ - A list of file dependency paths
         - `tasks`: _table | nil_ - A list of task dependency names
         - `calc`: _table | nil_ - A list of tasks to execute for calculating dependencies.  The calc task's output, (i.e. the return value of the tasks last action,) should match the same structure as the `deps` property for task definitions, with the exception that calc dependencies producing additional calc dependencies is not supported.  Calculated results will be combined and added to the statically declared dependencies.
