@@ -33,3 +33,4 @@ task {
 ## Why Cobble?
 
 Software project tooling often centeres around a core tool, (such as npm, cargo, go,) that provides features such as package management, environment isolation, and task execution.  For many simple projects, the task execution capabilities of the core tool, if they exist, are sufficient.  For projects that require multiple build steps, that combine multiple language platforms, or for which the core tool doesn't provide any task execution features, a separate build automation tool is useful.  Existing build automation tools range from simple tools like make or doit, to more complex monorepo tools, like bazel or pants.  Cobble aims to fill a gap in the middle: it is a general purpose build automation tool that has a simple language and a low barrier to entry, but is also monorepo-aware, making it easy to define tasks and dependencies across multiple projects.
+
