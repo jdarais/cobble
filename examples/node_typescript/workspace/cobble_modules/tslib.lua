@@ -17,20 +17,22 @@ function exports.npm_typescript_lib ()
     task {
         name = "calc_build_inputs",
         env = "npm_env",
-        always_run = true,
         actions = {
             function (c)
                 local tsc_config_result = c.env.npm_env { "tsc", "--showConfig" }
                 local tsc_config = json.loads(tsc_config_result.stdout)
                 return { files = tsc_config["files"] }
             end
+        },
+        deps = {
+            files = { "tsconfig.json" },
+            dirs = { "." }
         }
     }
 
     task {
         name = "calc_build_outputs",
         env = "npm_env",
-        always_run = true,
         actions = {
             function (c)
                 local tsc_config_result = c.env.npm_env { "tsc", "--showConfig" }
@@ -43,8 +45,12 @@ function exports.npm_typescript_lib ()
                     :map(function(i, f) return i, f:gsub("^"..root_dir, out_dir) end)
                     :map(function(i, f) return i, f:gsub(".tsx?$", ".js") end)
                     :to_table()
-                return out_files
+                return { files = out_files }
             end
+        },
+        deps = {
+            files = { "tsconfig.json" },
+            dirs = { "." }
         }
     }
 

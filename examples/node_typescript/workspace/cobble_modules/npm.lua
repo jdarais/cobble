@@ -26,7 +26,6 @@ function exports.npm_package ()
 
     task {
         name = "calc_package_dep_build_tasks",
-        always_run = true,
         actions = {
             {
                 tool = "npm",
@@ -50,6 +49,10 @@ function exports.npm_package ()
                     return task_deps
                 end
             }
+        },
+        deps = {
+            files = { "package.json" },
+            dirs = { "." }
         }
     }
 end

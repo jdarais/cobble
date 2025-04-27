@@ -3,13 +3,10 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{collections::HashMap, error::Error, fmt, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, error::Error, fmt, sync::Arc};
 
 use crate::{
-    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError},
-    execute::execute::{TaskExecutionError, TaskExecutor},
-    resolve::{resolve_path, NameResolutionError},
-    workspace::{Task, Workspace},
+    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, project_def::{artifact::ArtifactsRecord, Artifacts}, resolve::{resolve_names_in_artifacts, NameResolutionError}, workspace::{Task, Workspace}
 };
 
 #[derive(Debug)]
@@ -23,7 +20,6 @@ pub enum CalcArtifactsError {
     },
     NameResolutionError {
         task_name: Arc<str>,
-        path: String,
         error: NameResolutionError,
     },
 }
@@ -35,12 +31,19 @@ impl fmt::Display for CalcArtifactsError {
             DependencyError(e) => write!(f, "Error resolving calculated dependencies in calc artifacts tasks: {e}"),
             ExecutionError(e) => write!(f, "Error while executing artifacts task or one of its dependencies: {e}"),
             OutputError{ task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name}: output={task_output}, error={error}"),
-            NameResolutionError{ task_name, path, error } => write!(f, "Error resolving calc artifact path returned by task {task_name}: path={path}, error={error}")
+            NameResolutionError{ task_name, error } => write!(f, "Error resolving calc artifact path returned by task {task_name}: error={error}")
         }
     }
 }
 
 impl Error for CalcArtifactsError {}
+
+fn combine_artifacts(lhs: &Artifacts, rhs: &Artifacts) -> Artifacts {
+    Artifacts {
+        files: lhs.files.iter().chain(rhs.files.iter()).cloned().collect(),
+        calc: lhs.calc.iter().chain(rhs.calc.iter()).cloned().collect(),
+    }
+}
 
 pub fn calculate_artifacts(
     workspace: &mut Workspace,
@@ -67,10 +70,10 @@ pub fn calculate_artifacts(
     let mut new_tasks: HashMap<Arc<str>, Arc<Task>> = HashMap::new();
     let executor_cache = executor.cache();
     for (_, task) in workspace.tasks.iter() {
-        let mut calc_artifacts: Vec<Arc<str>> = Vec::new();
+        let mut artifacts: Cow<Artifacts> = Cow::Borrowed(&task.artifacts);
         for calc_artifact in task.artifacts.calc.iter() {
             let task_outputs = executor_cache.task_outputs.read().unwrap();
-            let task_output: HashMap<i64, String> =
+            let task_output_record: ArtifactsRecord =
                 serde_json::from_value(task_outputs[calc_artifact].clone()).map_err(|e| {
                     CalcArtifactsError::OutputError {
                         task_name: task.name.clone(),
@@ -78,19 +81,19 @@ pub fn calculate_artifacts(
                         error: e,
                     }
                 })?;
-            for (_i, artifact) in task_output {
-                let artifact_path = resolve_path(task.project_path.as_ref(), artifact.as_str())
-                    .map_err(|e| CalcArtifactsError::NameResolutionError {
-                        task_name: task.name.clone(),
-                        path: artifact.clone(),
-                        error: e,
-                    })?;
-                calc_artifacts.push(artifact_path.clone());
-            }
+            let mut task_output_artifacts: Artifacts = task_output_record.into();
+            resolve_names_in_artifacts(&task.project_name, &task.project_path, &mut task_output_artifacts).map_err(|e| {
+                CalcArtifactsError::NameResolutionError {
+                    task_name: task.name.clone(),
+                    error: e,
+                }
+            })?;
+
+            artifacts = Cow::Owned(combine_artifacts(artifacts.as_ref(), &task_output_artifacts));
         }
 
         let mut new_task = Task::clone(task);
-        new_task.artifacts.files.append(&mut calc_artifacts);
+        new_task.artifacts = combine_artifacts(&new_task.artifacts, &artifacts);
         new_tasks.insert(task.name.clone(), Arc::new(new_task));
     }
 

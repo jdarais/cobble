@@ -3,9 +3,11 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 use std::fmt;
 use std::sync::Arc;
+
+use serde::{Serialize, Deserialize};
 
 use crate::project_def::validate::validate_is_string;
 
@@ -13,6 +15,15 @@ use super::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
 };
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ArtifactsRecord {
+    #[serde(default)]
+    pub files: HashMap<String, String>,
+
+    #[serde(default)]
+    pub calc: HashMap<String, String>,
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Artifacts {
@@ -82,10 +93,10 @@ pub fn validate_artifacts<'lua>(
                 }
                 "calc" => {
                     let calc_table =
-                        validate_is_table(&v, Some(Cow::Borrowed("files")), prop_path.as_mut())?;
+                        validate_is_table(&v, Some(Cow::Borrowed("calc")), prop_path.as_mut())?;
                     validate_table_is_sequence(
                         calc_table,
-                        Some(Cow::Borrowed("files")),
+                        Some(Cow::Borrowed("calc")),
                         prop_path.as_mut(),
                     )?;
                     for c_val in calc_table.clone().sequence_values() {
@@ -139,6 +150,15 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
                 "Expected a table, but got a {}",
                 value.type_name()
             ))),
+        }
+    }
+}
+
+impl From<ArtifactsRecord> for Artifacts {
+    fn from(value: ArtifactsRecord) -> Self {
+        Artifacts {
+            files: value.files.iter().map(|f| Arc::<str>::from(f.1.as_str())).collect(),
+            calc: value.calc.iter().map(|c| Arc::<str>::from(c.1.as_str())).collect()
         }
     }
 }

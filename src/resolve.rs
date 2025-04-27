@@ -299,7 +299,7 @@ fn resolve_names_in_tool(
     Ok(())
 }
 
-fn resolve_names_in_artifacts(
+pub fn resolve_names_in_artifacts(
     project_name: &str,
     project_path: &Path,
     artifacts: &mut Artifacts,
