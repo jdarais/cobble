@@ -32,7 +32,7 @@ _function_ - Define a task
         - `calc`: _table | nil_ - A list of tasks to execute for calculating dependencies.  The calc task's output, (i.e. the return value of the tasks last action,) should match the same structure as the `deps` property for task definitions, with the exception that calc dependencies producing additional calc dependencies is not supported.  Calculated results will be combined and added to the statically declared dependencies.
     - `artifacts`: _table | nil_ - A mapping of artifact type to a list of artifacts
         - `files`: _table | nil_ - A list of file artifact paths
-        - `calc`: _table | nil_ - A list of tasks to execute for calculating artifacts.  The calc task's output should be a list of file paths.
+        - `calc`: _table | nil_ - A list of tasks to execute for calculating artifacts.  The calc task's output should match the same structure as the `artifacts` property for task definitions, with the exception that calc artifacts producing additional calc artifacts is not supported.  Calculated results will be combined and added to the statically declared artifacts.
 
 ##### Returns
 
