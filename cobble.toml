@@ -1,5 +1,6 @@
-
-
+[init]
+config = cobble_init/cobble.toml
+task = /setup
 
 [vars]
 cobble.build = "release"

@@ -19,6 +19,13 @@ pub const PROJECT_FILE_NAME: &str = "project.lua";
 pub const DEFAULT_NUM_THREADS: u8 = 5;
 
 #[derive(Debug)]
+pub struct WorkspaceInit {
+    pub workspace_dir: PathBuf,
+    pub task: String,
+    pub cwd: Option<PathBuf>
+}
+
+#[derive(Debug)]
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
     pub root_projects: Vec<String>,
@@ -27,6 +34,7 @@ pub struct WorkspaceConfig {
     pub num_threads: u8,
     pub show_stdout: TaskOutputCondition,
     pub show_stderr: TaskOutputCondition,
+    pub init: Option<WorkspaceInit>
 }
 
 #[derive(Default)]
@@ -177,6 +185,39 @@ pub fn parse_workspace_config(
         vars.insert(k, v.into());
     }
 
+    let init_toml_opt: Option<toml::Value> = config.remove("init");
+    let init: Option<WorkspaceInit> = match init_toml_opt {
+        None => None,
+        Some(v) => match v {
+            toml::Value::Table(t) => {
+                let workspace_dir_val: toml::Value = t.get("workspace_dir")
+                    .cloned()
+                    .ok_or_else(|| WorkspaceConfigError::ValueError(String::from("init config variable missing 'workspace_dir' property")))?;
+                let workspace_dir_str: String = workspace_dir_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.workspace_dir must be a string")))?;
+
+                let task_val: toml::Value = t.get("task")
+                    .cloned()
+                    .ok_or_else(|| WorkspaceConfigError::ValueError(String::from("init config variable missing 'task' property")))?;
+                let task_str: String = task_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.task must be a string")))?;
+
+                let cwd_val_opt: Option<toml::Value> = t.get("task").cloned();
+                let cwd_str_opt: Option<String> = match cwd_val_opt {
+                    None => None,
+                    Some(cwd_val) => cwd_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.task must be a string")))?
+                };
+
+                Some(WorkspaceInit {
+                    workspace_dir: PathBuf::from(workspace_dir_str),
+                    task: task_str,
+                    cwd: cwd_str_opt.map(|v| PathBuf::from(v))
+                })
+            },
+            _ => {
+                return Err(WorkspaceConfigError::ValueError(String::from("init config variable must be a table")));
+            }
+        }
+    };
+
     // Raise an error if there are unrecognized keys in the config table
     if let Some((key, _)) = config.iter().next() {
         return Err(WorkspaceConfigError::ValueError(format!(
@@ -184,6 +225,7 @@ pub fn parse_workspace_config(
             key
         )));
     }
+
 
     Ok(WorkspaceConfig {
         workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
@@ -193,6 +235,7 @@ pub fn parse_workspace_config(
         num_threads,
         show_stdout: stdout,
         show_stderr: stderr,
+        init
     })
 }
 

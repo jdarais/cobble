@@ -36,6 +36,8 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         show_stderr,
     } = input;
 
+    // Run init workspace task
+
     let ws_config_args = WorkspaceConfigArgs {
         vars,
         force_run_tasks: Some(force_run_tasks),
