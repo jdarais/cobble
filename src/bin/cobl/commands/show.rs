@@ -2,13 +2,15 @@ use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
     calc_artifacts::calculate_artifacts,
-    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
+    config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfigArgs},
     dependency::resolve_calculated_dependencies_in_subtrees,
     execute::execute::TaskExecutor,
     load::load_projects,
     task_selection::compute_selected_tasks,
     workspace::create_workspace,
 };
+
+use crate::commands::run::run_init_task_if_defined;
 
 const TAB: &str = "  ";
 
@@ -27,8 +29,10 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         num_threads,
     } = input;
 
+    let parsed_vars = parse_cli_vars(vars.iter())?;
+
     let ws_config_args = WorkspaceConfigArgs {
-        vars,
+        vars: parsed_vars,
         num_threads: num_threads,
         show_stdout: Some(TaskOutputCondition::Never),
         show_stderr: Some(TaskOutputCondition::Never),
@@ -36,6 +40,10 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
     };
 
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 

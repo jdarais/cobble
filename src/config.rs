@@ -22,7 +22,8 @@ pub const DEFAULT_NUM_THREADS: u8 = 5;
 pub struct WorkspaceInit {
     pub workspace_dir: PathBuf,
     pub task: String,
-    pub cwd: Option<PathBuf>
+    pub show_stdout: TaskOutputCondition,
+    pub show_stderr: TaskOutputCondition
 }
 
 #[derive(Debug)]
@@ -34,12 +35,12 @@ pub struct WorkspaceConfig {
     pub num_threads: u8,
     pub show_stdout: TaskOutputCondition,
     pub show_stderr: TaskOutputCondition,
-    pub init: Option<WorkspaceInit>
+    pub init: Option<WorkspaceInit>,
 }
 
 #[derive(Default)]
 pub struct WorkspaceConfigArgs {
-    pub vars: Vec<String>,
+    pub vars: HashMap<String, TaskVar>,
     pub force_run_tasks: Option<bool>,
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
@@ -190,32 +191,60 @@ pub fn parse_workspace_config(
         None => None,
         Some(v) => match v {
             toml::Value::Table(t) => {
-                let workspace_dir_val: toml::Value = t.get("workspace_dir")
-                    .cloned()
-                    .ok_or_else(|| WorkspaceConfigError::ValueError(String::from("init config variable missing 'workspace_dir' property")))?;
-                let workspace_dir_str: String = workspace_dir_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.workspace_dir must be a string")))?;
+                let workspace_dir_val: toml::Value =
+                    t.get("workspace").cloned().ok_or_else(|| {
+                        WorkspaceConfigError::ValueError(String::from(
+                            "init config variable missing 'workspace' property",
+                        ))
+                    })?;
+                let workspace_dir_str: String = workspace_dir_val.try_into().map_err(|e| {
+                    WorkspaceConfigError::ValueError(String::from(
+                        "init.workspace must be a string",
+                    ))
+                })?;
 
-                let task_val: toml::Value = t.get("task")
-                    .cloned()
-                    .ok_or_else(|| WorkspaceConfigError::ValueError(String::from("init config variable missing 'task' property")))?;
-                let task_str: String = task_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.task must be a string")))?;
+                let task_val: toml::Value = t.get("task").cloned().ok_or_else(|| {
+                    WorkspaceConfigError::ValueError(String::from(
+                        "init config variable missing 'task' property",
+                    ))
+                })?;
+                let task_str: String = task_val.try_into().map_err(|e| {
+                    WorkspaceConfigError::ValueError(String::from("init.task must be a string"))
+                })?;
 
-                let cwd_val_opt: Option<toml::Value> = t.get("task").cloned();
-                let cwd_str_opt: Option<String> = match cwd_val_opt {
-                    None => None,
-                    Some(cwd_val) => cwd_val.try_into().map_err(|e| WorkspaceConfigError::ValueError(String::from("init.task must be a string")))?
+                let init_stdout_opt: Option<toml::Value> = t.get("stdout").cloned();
+                let init_stdout_enum: Option<TaskOutputCondition> = match init_stdout_opt {
+                    Some(show_stdout) => {
+                        let show_stdout_str: String = show_stdout.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
+                        let show_stdout_enum: TaskOutputCondition = parse_output_condition(&show_stdout_str).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
+                        Some(show_stdout_enum)
+                    },
+                    None => None
+                };
+
+                let init_stderr_opt: Option<toml::Value> = t.get("stderr").cloned();
+                let init_stderr_enum: Option<TaskOutputCondition> = match init_stderr_opt {
+                    Some(show_stdout) => {
+                        let show_stderr_str: String = show_stdout.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stderr': {}", e)))?;
+                        let show_stderr_enum: TaskOutputCondition = parse_output_condition(&show_stderr_str).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
+                        Some(show_stderr_enum)
+                    },
+                    None => None
                 };
 
                 Some(WorkspaceInit {
                     workspace_dir: PathBuf::from(workspace_dir_str),
                     task: task_str,
-                    cwd: cwd_str_opt.map(|v| PathBuf::from(v))
+                    show_stdout: init_stdout_enum.unwrap_or(TaskOutputCondition::OnFail),
+                    show_stderr: init_stderr_enum.unwrap_or(TaskOutputCondition::OnFail)
                 })
-            },
-            _ => {
-                return Err(WorkspaceConfigError::ValueError(String::from("init config variable must be a table")));
             }
-        }
+            _ => {
+                return Err(WorkspaceConfigError::ValueError(String::from(
+                    "init config variable must be a table",
+                )));
+            }
+        },
     };
 
     // Raise an error if there are unrecognized keys in the config table
@@ -226,7 +255,6 @@ pub fn parse_workspace_config(
         )));
     }
 
-
     Ok(WorkspaceConfig {
         workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
         root_projects,
@@ -235,7 +263,7 @@ pub fn parse_workspace_config(
         num_threads,
         show_stdout: stdout,
         show_stderr: stderr,
-        init
+        init,
     })
 }
 
@@ -323,19 +351,20 @@ pub fn get_workspace_config(
         config.show_stderr = show_stderr.clone();
     }
 
-    add_cli_vars_to_workspace_config(args.vars.iter().map(String::as_str), &mut config)?;
+    add_cli_vars_to_workspace_config(args.vars.iter(), &mut config)?;
 
     Ok(config)
 }
 
-fn add_cli_vars_to_workspace_config<'a, I>(
-    vars: I,
-    config: &mut WorkspaceConfig,
-) -> Result<(), WorkspaceConfigError>
+pub fn parse_cli_vars<I, S>(vars: I) -> Result<HashMap<String, TaskVar>, WorkspaceConfigError>
 where
-    I: Iterator<Item = &'a str>,
+    I: Iterator<Item = S>,
+    S: AsRef<str>,
 {
-    for var in vars {
+    let mut parsed_vars: HashMap<String, TaskVar> = HashMap::new();
+
+    for var_s in vars {
+        let var = var_s.as_ref();
         let eq_idx = match var.find("=") {
             Some(i) => i,
             None => {
@@ -348,12 +377,25 @@ where
         let var_name = &var[..eq_idx];
         let var_val = &var[eq_idx + 1..];
 
-        set_var(
-            var_name,
-            TaskVar::String(var_val.to_owned()),
-            &mut config.vars,
-        )
-        .map_err(|e| WorkspaceConfigError::SetVarError(e))?;
+        parsed_vars.insert(var_name.to_owned(), TaskVar::String(var_val.to_owned()));
+    }
+
+    Ok(parsed_vars)
+}
+
+fn add_cli_vars_to_workspace_config<'a, I, S>(
+    vars: I,
+    config: &mut WorkspaceConfig,
+) -> Result<(), WorkspaceConfigError>
+where
+    I: Iterator<Item = (&'a S, &'a TaskVar)>,
+    S: AsRef<str> + 'a,
+{
+    for (var_name_s, var_val) in vars {
+        let var_name = var_name_s.as_ref();
+
+        set_var(var_name, var_val.clone(), &mut config.vars)
+            .map_err(|e| WorkspaceConfigError::SetVarError(e))?;
     }
 
     Ok(())

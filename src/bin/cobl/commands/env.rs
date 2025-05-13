@@ -15,6 +15,8 @@ use cobble::{
     workspace::create_workspace,
 };
 
+use crate::commands::run::run_init_task_if_defined;
+
 pub struct RunEnvInput {
     pub cwd: PathBuf,
     pub envs: Vec<String>,
@@ -41,6 +43,9 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 

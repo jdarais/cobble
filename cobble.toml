@@ -1,6 +1,6 @@
 [init]
-config = cobble_init/cobble.toml
-task = /setup
+workspace = "cobble_init"
+task = "/setup"
 
 [vars]
 cobble.build = "release"

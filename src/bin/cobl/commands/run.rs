@@ -3,15 +3,17 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::collections::HashMap;
 use std::env::set_current_dir;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cobble::calc_artifacts::calculate_artifacts;
-use cobble::config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs};
+use cobble::config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfig, WorkspaceConfigArgs};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
+use cobble::project_def::types::TaskVar;
 use cobble::task_selection::compute_selected_tasks;
 use cobble::workspace::create_workspace;
 
@@ -36,7 +38,40 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         show_stderr,
     } = input;
 
-    // Run init workspace task
+    let parsed_vars = parse_cli_vars(vars.iter())?;
+
+    run(cwd, tasks, parsed_vars, force_run_tasks, num_threads, show_stdout, show_stderr)
+}
+
+pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig) -> anyhow::Result<()> {
+    match &config.init {
+        Some(init_workspace) => {
+            println!("# Running Init Task #");
+            run(
+                cwd.as_ref().join(init_workspace.workspace_dir.as_path()),
+                vec![init_workspace.task.clone()],
+                config.vars.clone(),
+                config.force_run_tasks,
+                Some(config.num_threads),
+                Some(init_workspace.show_stdout.clone()),
+                Some(init_workspace.show_stderr.clone()),
+            )?;
+            println!("# Done Running Init Task #");
+            Ok(())
+        }
+        None => Ok(())
+    }
+}
+
+pub fn run(
+    cwd: PathBuf,
+    tasks: Vec<String>,
+    vars: HashMap<String, TaskVar>,
+    force_run_tasks: bool,
+    num_threads: Option<u8>,
+    show_stdout: Option<TaskOutputCondition>,
+    show_stderr: Option<TaskOutputCondition>,
+) -> anyhow::Result<()> {
 
     let ws_config_args = WorkspaceConfigArgs {
         vars,
@@ -46,8 +81,12 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         show_stderr,
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
+    
     set_current_dir(&config.workspace_dir)
-        .expect("found the workspace directory, so we should be able to set that as the cwd");
+    .expect("found the workspace directory, so we should be able to set that as the cwd");
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
