@@ -2,6 +2,6 @@ task {
     name = "setup",
     always_run = true,
     actions = {
-        function (c) print("INITIALIZATION!!!") end
+        function (c) c.println("INITIALIZATION!!!") end
     }
 }

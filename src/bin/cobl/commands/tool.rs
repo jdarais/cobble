@@ -6,10 +6,7 @@
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
-    execute::execute::TaskExecutor,
-    load::load_projects,
-    workspace::create_workspace,
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, execute::execute::TaskExecutor, load::load_projects, util::process_io::{ProcessIO, StandardIO}, workspace::create_workspace
 };
 
 use crate::commands::run::run_init_task_if_defined;
@@ -58,7 +55,8 @@ pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    executor.check_tools(&workspace, selected_tools.iter())?;
+    let standard_io = StandardIO;
+    executor.check_tools(&workspace, selected_tools.iter(), standard_io.out(), standard_io.err())?;
 
     Ok(())
 }

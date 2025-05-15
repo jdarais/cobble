@@ -13,6 +13,7 @@ use crate::execute::execute::{TaskExecutionError, TaskExecutor};
 use crate::project_def::dependency::Dependencies;
 use crate::project_def::{DependencyListByType, Project};
 use crate::resolve::{resolve_names_in_dependency_list, NameResolutionError};
+use crate::util::process_io::ProcessIO;
 use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
 
 #[derive(Debug)]
@@ -73,26 +74,29 @@ where
     file_providers
 }
 
-pub fn resolve_calculated_dependencies_in_subtrees<'a, T>(
+pub fn resolve_calculated_dependencies_in_subtrees<'a, T, IO>(
     task_names: T,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
+    pio: &IO
 ) -> Result<(), ExecutionGraphError>
 where
     T: Iterator<Item = &'a Arc<str>>,
+    IO: ProcessIO
 {
     for task_name in task_names {
         // TODO: Track the names of tasks that have get visited with each invocation so we can skip
         // them if they show up in another subtree
-        resolve_calculated_dependencies_in_subtree(task_name, workspace, task_executor)?;
+        resolve_calculated_dependencies_in_subtree(task_name, workspace, task_executor, pio)?;
     }
     Ok(())
 }
 
-pub fn resolve_calculated_dependencies_in_subtree(
+pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
     task_name: &Arc<str>,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
+    pio: &IO
 ) -> Result<(), ExecutionGraphError> {
     let mut changed = true;
     while changed {
@@ -101,16 +105,18 @@ pub fn resolve_calculated_dependencies_in_subtree(
             workspace,
             &mut HashSet::new(),
             task_executor,
+            pio
         )?;
     }
     Ok(())
 }
 
-fn resolve_calculated_dependencies_in_subtree_once_with_history(
+fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
     task_name: &Arc<str>,
     workspace: &mut Workspace,
     visited: &mut HashSet<Arc<str>>,
     task_executor: &mut TaskExecutor,
+    pio: &IO
 ) -> Result<bool, ExecutionGraphError> {
     if visited.contains(task_name) {
         return Err(ExecutionGraphError::CycleError(task_name.clone()));
@@ -134,10 +140,11 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
             workspace,
             visited,
             task_executor,
+            pio
         )?;
 
         task_executor
-            .execute_tasks(workspace, Some(calc_dep.clone()).iter())
+            .execute_tasks(workspace, Some(calc_dep.clone()).iter(), pio.out(), pio.err())
             .map_err(|e| ExecutionGraphError::TaskExecutionError(e))?;
 
         let executor_cache = task_executor.cache();
@@ -182,6 +189,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
                 workspace,
                 visited,
                 task_executor,
+                pio
             )?;
     }
 
@@ -193,6 +201,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
                     workspace,
                     visited,
                     task_executor,
+                    pio
                 )?;
         }
     }
@@ -211,6 +220,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history(
                     workspace,
                     visited,
                     task_executor,
+                    pio
                 )?;
         }
     }

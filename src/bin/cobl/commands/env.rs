@@ -7,12 +7,7 @@ use anyhow::anyhow;
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
-    dependency::resolve_calculated_dependencies_in_subtrees,
-    execute::execute::TaskExecutor,
-    load::load_projects,
-    task_selection::compute_selected_envs,
-    workspace::create_workspace,
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects, task_selection::compute_selected_envs, util::process_io::{ProcessIO, StandardIO}, workspace::create_workspace
 };
 
 use crate::commands::run::run_init_task_if_defined;
@@ -78,7 +73,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
-    resolve_calculated_dependencies_in_subtrees(setup_tasks.iter(), &mut workspace, &mut executor)?;
+    resolve_calculated_dependencies_in_subtrees(setup_tasks.iter(), &mut workspace, &mut executor, &StandardIO)?;
 
     let mut executor = TaskExecutor::new(
         config.clone(),
@@ -87,7 +82,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
 
     let args_arcs: Vec<Arc<str>> = args.into_iter().map(|s| s.into()).collect();
 
-    executor.do_env_actions(&workspace, selected_envs.iter(), &args_arcs)?;
+    executor.do_env_actions(&workspace, selected_envs.iter(), &args_arcs, StandardIO.out(), StandardIO.err())?;
 
     Ok(())
 }

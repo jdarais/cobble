@@ -3,10 +3,10 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{borrow::Cow, collections::HashMap, error::Error, fmt, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, error::Error, fmt, io, sync::Arc};
 
 use crate::{
-    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, project_def::{artifact::ArtifactsRecord, Artifacts}, resolve::{resolve_names_in_artifacts, NameResolutionError}, workspace::{Task, Workspace}
+    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, project_def::{artifact::ArtifactsRecord, Artifacts}, resolve::{resolve_names_in_artifacts, NameResolutionError}, util::process_io::ProcessIO, workspace::{Task, Workspace}
 };
 
 #[derive(Debug)]
@@ -45,9 +45,10 @@ fn combine_artifacts(lhs: &Artifacts, rhs: &Artifacts) -> Artifacts {
     }
 }
 
-pub fn calculate_artifacts(
+pub fn calculate_artifacts<IO: ProcessIO>(
     workspace: &mut Workspace,
     executor: &mut TaskExecutor,
+    io: &IO
 ) -> Result<(), CalcArtifactsError> {
     let mut calc_artifacts_tasks: Vec<Arc<str>> = Vec::new();
 
@@ -58,12 +59,12 @@ pub fn calculate_artifacts(
     }
 
     // First need to make sure all calculated dependencies in the dependency trees of the calc artifacts tasks are resolved
-    resolve_calculated_dependencies_in_subtrees(calc_artifacts_tasks.iter(), workspace, executor)
+    resolve_calculated_dependencies_in_subtrees(calc_artifacts_tasks.iter(), workspace, executor, io)
         .map_err(|e| CalcArtifactsError::DependencyError(e))?;
 
     // Execute the tasks
     executor
-        .execute_tasks(&workspace, calc_artifacts_tasks.iter())
+        .execute_tasks(&workspace, calc_artifacts_tasks.iter(), io.out(), io.err())
         .map_err(|e| CalcArtifactsError::ExecutionError(e))?;
 
     // Swap the calc artifacts for the task outputs of that task

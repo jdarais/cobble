@@ -1,13 +1,7 @@
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    calc_artifacts::calculate_artifacts,
-    config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfigArgs},
-    dependency::resolve_calculated_dependencies_in_subtrees,
-    execute::execute::TaskExecutor,
-    load::load_projects,
-    task_selection::compute_selected_tasks,
-    workspace::create_workspace,
+    calc_artifacts::calculate_artifacts, config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects, task_selection::compute_selected_tasks, util::process_io::StandardIO, workspace::create_workspace
 };
 
 use crate::commands::run::run_init_task_if_defined;
@@ -73,12 +67,13 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    calculate_artifacts(&mut workspace, &mut executor)?;
+    calculate_artifacts(&mut workspace, &mut executor, &StandardIO)?;
 
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
+        &StandardIO
     )?;
 
     for task_name in selected_tasks.iter() {

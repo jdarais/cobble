@@ -557,13 +557,17 @@ impl TaskExecutor {
         }
     }
 
-    pub fn check_tools<'a, T>(
+    pub fn check_tools<'a, T, OW, EW>(
         &mut self,
         workspace: &Workspace,
         tools: T,
+        out: OW,
+        err: EW
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        OW: io::Write,
+        EW: io::Write
     {
         self.ensure_worker_threads();
 
@@ -574,16 +578,20 @@ impl TaskExecutor {
             add_tool_check_jobs(tool, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, out, err)
     }
 
-    pub fn execute_tasks<'a, T>(
+    pub fn execute_tasks<'a, T, OW, EW>(
         &mut self,
         workspace: &Workspace,
         tasks: T,
+        out: OW,
+        err: EW,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        OW: io::Write,
+        EW: io::Write
     {
         self.ensure_worker_threads();
 
@@ -594,16 +602,20 @@ impl TaskExecutor {
             add_task_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, out, err)
     }
 
-    pub fn clean_tasks<'a, T>(
+    pub fn clean_tasks<'a, T, OW, EW>(
         &mut self,
         workspace: &Workspace,
         tasks: T,
+        out: OW,
+        err: EW
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        OW: io::Write,
+        EW: io::Write
     {
         self.ensure_worker_threads();
 
@@ -614,17 +626,21 @@ impl TaskExecutor {
             add_clean_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, out, err)
     }
 
-    pub fn do_env_actions<'a, E>(
+    pub fn do_env_actions<'a, E, OW, EW>(
         &mut self,
         workspace: &Workspace,
         envs: E,
         args: &Vec<Arc<str>>,
+        out: OW,
+        err: EW
     ) -> Result<(), TaskExecutionError>
     where
         E: Iterator<Item = &'a Arc<str>>,
+        OW: io::Write,
+        EW: io::Write
     {
         self.ensure_worker_threads();
 
@@ -635,14 +651,20 @@ impl TaskExecutor {
             add_env_action_jobs(env, args, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, out, err)
     }
 
-    fn execute_graph(
+    fn execute_graph<OW, EW>(
         &mut self,
         nodes: HashMap<Arc<str>, ExecutorJob>,
         workspace: &Arc<Workspace>,
-    ) -> Result<(), TaskExecutionError> {
+        out: OW,
+        err: EW,
+    ) -> Result<(), TaskExecutionError>
+    where
+        OW: io::Write,
+        EW: io::Write
+    {
         let dep_edges = &compute_dependency_edges(&nodes, workspace.as_ref())?;
 
         if let Some(cyclic_node) = has_cycle(dep_edges) {
@@ -662,7 +684,7 @@ impl TaskExecutor {
 
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
-        let mut concurrent_io = ConcurrentIO::new();
+        let mut concurrent_io = ConcurrentIO::new(out, err);
 
         let mut remaining_jobs = nodes;
 

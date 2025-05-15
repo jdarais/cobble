@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::env::set_current_dir;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -15,6 +16,7 @@ use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::project_def::types::TaskVar;
 use cobble::task_selection::compute_selected_tasks;
+use cobble::util::process_io::{ProcessIO, StandardIO, IOBuffer};
 use cobble::workspace::create_workspace;
 
 pub struct RunCommandInput {
@@ -40,14 +42,16 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
 
     let parsed_vars = parse_cli_vars(vars.iter())?;
 
-    run(cwd, tasks, parsed_vars, force_run_tasks, num_threads, show_stdout, show_stderr)
+    run(cwd, tasks, parsed_vars, force_run_tasks, num_threads, show_stdout, show_stderr, &StandardIO)
 }
 
 pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig) -> anyhow::Result<()> {
     match &config.init {
         Some(init_workspace) => {
-            println!("# Running Init Task #");
-            run(
+            let mut io_buffer = IOBuffer::new();
+            let mut out = io_buffer.out();
+            writeln!(&mut out, "# Running Init Task #");
+            let run_res = run(
                 cwd.as_ref().join(init_workspace.workspace_dir.as_path()),
                 vec![init_workspace.task.clone()],
                 config.vars.clone(),
@@ -55,15 +59,19 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig
                 Some(config.num_threads),
                 Some(init_workspace.show_stdout.clone()),
                 Some(init_workspace.show_stderr.clone()),
-            )?;
-            println!("# Done Running Init Task #");
-            Ok(())
+                &io_buffer
+            );
+            writeln!(&mut out, "# Done Running Init Task #");
+            if let Err(_) = run_res {
+                let _ = io_buffer.flush();
+            }
+            run_res
         }
         None => Ok(())
     }
 }
 
-pub fn run(
+pub fn run<IO: ProcessIO>(
     cwd: PathBuf,
     tasks: Vec<String>,
     vars: HashMap<String, TaskVar>,
@@ -71,7 +79,9 @@ pub fn run(
     num_threads: Option<u8>,
     show_stdout: Option<TaskOutputCondition>,
     show_stderr: Option<TaskOutputCondition>,
+    pio: &IO
 ) -> anyhow::Result<()> {
+    let mut out = pio.out();
 
     let ws_config_args = WorkspaceConfigArgs {
         vars,
@@ -114,18 +124,19 @@ pub fn run(
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    println!("# Computing calculated artifacts #");
-    calculate_artifacts(&mut workspace, &mut executor)?;
+    writeln!(&mut out, "# Computing calculated artifacts #");
+    calculate_artifacts(&mut workspace, &mut executor, pio)?;
 
-    println!("# Computing calculated dependencies #");
+    writeln!(&mut out, "# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
+        pio
     )?;
 
-    println!("# Executing tasks #");
-    executor.execute_tasks(&workspace, selected_tasks.iter())?;
+    writeln!(&mut out, "# Executing tasks #");
+    executor.execute_tasks(&workspace, selected_tasks.iter(), pio.out(), pio.err())?;
 
     Ok(())
 }

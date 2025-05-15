@@ -4,4 +4,5 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 pub mod hash;
+pub mod process_io;
 pub mod onscopeexit;
