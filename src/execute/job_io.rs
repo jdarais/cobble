@@ -87,7 +87,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
         let job_opt = self.jobs.get_mut(job_id);
         if let Some(job) = job_opt {
             if is_active {
-                write!(self.out, "{}", text);
+                let _ = write!(self.out, "{}", text);
             } else {
                 if let TrackedJobState::Complete = job.job_state {
                     return;
@@ -109,7 +109,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
             if is_active {
                 match job.show_stdout {
                     TaskOutputCondition::Always => {
-                        write!(self.out, "{}", text);
+                        let _ = write!(self.out, "{}", text);
                     }
                     TaskOutputCondition::OnFail => {
                         job.on_fail_buffer.push(Output::Stdout(text));
@@ -137,7 +137,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
             if is_active {
                 match job.show_stdout {
                     TaskOutputCondition::Always => {
-                        write!(self.err, "{}", text);
+                        let _ = write!(self.err, "{}", text);
                     }
                     TaskOutputCondition::OnFail => {
                         job.on_fail_buffer.push(Output::Stderr(text));
@@ -236,7 +236,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
                 match output {
                     Output::Stdout(s) => match job.show_stdout {
                         TaskOutputCondition::Always => {
-                            write!(self.out, "{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                         TaskOutputCondition::OnFail => {
                             job.on_fail_buffer.push(Output::Stdout(s));
@@ -245,7 +245,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
                     },
                     Output::Stderr(s) => match job.show_stderr {
                         TaskOutputCondition::Always => {
-                            write!(self.err, "{}", s);
+                            let _ = write!(self.err, "{}", s);
                         }
                         TaskOutputCondition::OnFail => {
                             job.on_fail_buffer.push(Output::Stderr(s));
@@ -253,7 +253,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
                         TaskOutputCondition::Never => { /* Ignore */ }
                     },
                     Output::Status(s) => {
-                        write!(self.out, "{}", s);
+                        let _ = write!(self.out, "{}", s);
                     }
                 }
             }
@@ -261,13 +261,13 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
                 for output in job.on_fail_buffer.drain(..) {
                     match output {
                         Output::Stdout(s) => {
-                            write!(self.out, "{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                         Output::Stderr(s) => {
-                            write!(self.err, "{}", s);
+                            let _ = write!(self.err, "{}", s);
                         }
                         Output::Status(s) => {
-                            write!(self.out, "{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                     }
                 }

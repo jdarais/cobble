@@ -197,7 +197,7 @@ pub fn parse_workspace_config(
                             "init config variable missing 'workspace' property",
                         ))
                     })?;
-                let workspace_dir_str: String = workspace_dir_val.try_into().map_err(|e| {
+                let workspace_dir_str: String = workspace_dir_val.try_into().map_err(|_| {
                     WorkspaceConfigError::ValueError(String::from(
                         "init.workspace must be a string",
                     ))
@@ -208,7 +208,7 @@ pub fn parse_workspace_config(
                         "init config variable missing 'task' property",
                     ))
                 })?;
-                let task_str: String = task_val.try_into().map_err(|e| {
+                let task_str: String = task_val.try_into().map_err(|_| {
                     WorkspaceConfigError::ValueError(String::from("init.task must be a string"))
                 })?;
 

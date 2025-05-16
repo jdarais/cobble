@@ -144,7 +144,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
         )?;
 
         task_executor
-            .execute_tasks(workspace, Some(calc_dep.clone()).iter(), pio.out(), pio.err())
+            .execute_tasks(workspace, Some(calc_dep.clone()).iter(), pio)
             .map_err(|e| ExecutionGraphError::TaskExecutionError(e))?;
 
         let executor_cache = task_executor.cache();

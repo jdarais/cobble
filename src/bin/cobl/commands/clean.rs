@@ -13,7 +13,7 @@ use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
-use cobble::util::process_io::{ProcessIO, StandardIO};
+use cobble::util::process_io::StandardIO;
 use cobble::workspace::create_workspace;
 
 use crate::commands::run::run_init_task_if_defined;
@@ -77,7 +77,7 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
     )?;
 
     // Execute the tasks
-    executor.clean_tasks(&workspace, selected_tasks.iter(), StandardIO.out(), StandardIO.err())?;
+    executor.clean_tasks(&workspace, selected_tasks.iter(), &StandardIO)?;
 
     Ok(())
 }

@@ -50,7 +50,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig
         Some(init_workspace) => {
             let mut io_buffer = IOBuffer::new();
             let mut out = io_buffer.out();
-            writeln!(&mut out, "# Running Init Task #");
+            let _ = writeln!(&mut out, "# Running Init Task #");
             let run_res = run(
                 cwd.as_ref().join(init_workspace.workspace_dir.as_path()),
                 vec![init_workspace.task.clone()],
@@ -61,7 +61,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig
                 Some(init_workspace.show_stderr.clone()),
                 &io_buffer
             );
-            writeln!(&mut out, "# Done Running Init Task #");
+            let _ = writeln!(&mut out, "# Done Running Init Task #");
             if let Err(_) = run_res {
                 let _ = io_buffer.flush();
             }
@@ -124,10 +124,10 @@ pub fn run<IO: ProcessIO>(
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    writeln!(&mut out, "# Computing calculated artifacts #");
+    let _ = writeln!(&mut out, "# Computing calculated artifacts #");
     calculate_artifacts(&mut workspace, &mut executor, pio)?;
 
-    writeln!(&mut out, "# Computing calculated dependencies #");
+    let _ = writeln!(&mut out, "# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,
@@ -135,8 +135,8 @@ pub fn run<IO: ProcessIO>(
         pio
     )?;
 
-    writeln!(&mut out, "# Executing tasks #");
-    executor.execute_tasks(&workspace, selected_tasks.iter(), pio.out(), pio.err())?;
+    let _ = writeln!(&mut out, "# Executing tasks #");
+    executor.execute_tasks(&workspace, selected_tasks.iter(), pio)?;
 
     Ok(())
 }
