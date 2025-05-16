@@ -12,8 +12,11 @@ use cobble::{
     execute::execute::TaskExecutor,
     load::load_projects,
     task_selection::compute_selected_envs,
+    util::process_io::StandardIO,
     workspace::create_workspace,
 };
+
+use crate::commands::run::run_init_task_if_defined;
 
 pub struct RunEnvInput {
     pub cwd: PathBuf,
@@ -41,6 +44,9 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 
@@ -73,7 +79,12 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         config.clone(),
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
-    resolve_calculated_dependencies_in_subtrees(setup_tasks.iter(), &mut workspace, &mut executor)?;
+    resolve_calculated_dependencies_in_subtrees(
+        setup_tasks.iter(),
+        &mut workspace,
+        &mut executor,
+        &StandardIO,
+    )?;
 
     let mut executor = TaskExecutor::new(
         config.clone(),
@@ -82,7 +93,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
 
     let args_arcs: Vec<Arc<str>> = args.into_iter().map(|s| s.into()).collect();
 
-    executor.do_env_actions(&workspace, selected_envs.iter(), &args_arcs)?;
+    executor.do_env_actions(&workspace, selected_envs.iter(), &args_arcs, &StandardIO)?;
 
     Ok(())
 }

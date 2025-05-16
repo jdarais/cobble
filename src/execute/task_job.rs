@@ -603,6 +603,7 @@ mod tests {
         let tmpdir = mktemp::Temp::new_dir().unwrap();
 
         let workspace_config = Arc::new(WorkspaceConfig {
+            init: None,
             workspace_dir: PathBuf::from("."),
             root_projects: vec![String::from(".")],
             vars: HashMap::new(),

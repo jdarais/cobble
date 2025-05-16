@@ -9,8 +9,11 @@ use cobble::{
     config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
     execute::execute::TaskExecutor,
     load::load_projects,
+    util::process_io::StandardIO,
     workspace::create_workspace,
 };
+
+use crate::commands::run::run_init_task_if_defined;
 
 pub struct CheckToolInput {
     pub cwd: PathBuf,
@@ -36,6 +39,9 @@ pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 
@@ -53,7 +59,7 @@ pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    executor.check_tools(&workspace, selected_tools.iter())?;
+    executor.check_tools(&workspace, selected_tools.iter(), &StandardIO)?;
 
     Ok(())
 }

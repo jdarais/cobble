@@ -12,6 +12,8 @@ use cobble::query::{find_tasks_for_dir, find_tasks_for_query};
 use cobble::resolve::project_path_to_project_name;
 use cobble::workspace::create_workspace;
 
+use crate::commands::run::run_init_task_if_defined;
+
 pub struct ListCommandInput {
     pub cwd: PathBuf,
     pub tasks: Vec<String>,
@@ -19,6 +21,9 @@ pub struct ListCommandInput {
 
 pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
     let config = get_workspace_config(input.cwd.as_path(), &Default::default()).unwrap();
+
+    run_init_task_if_defined(&input.cwd, &config)?;
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 

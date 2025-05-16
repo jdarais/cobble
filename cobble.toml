@@ -1,5 +1,6 @@
-
-
+[init]
+workspace = "cobble_init"
+task = "/setup"
 
 [vars]
 cobble.build = "release"

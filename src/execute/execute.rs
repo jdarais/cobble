@@ -18,6 +18,7 @@ use crate::db::{new_db_env, DeleteError, GetError, PutError};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
 use crate::project_def::ExternalTool;
+use crate::util::process_io::ProcessIO;
 use crate::vars::VarLookupError;
 use crate::workspace::{BuildEnv, Task, TaskType, Workspace};
 
@@ -557,13 +558,15 @@ impl TaskExecutor {
         }
     }
 
-    pub fn check_tools<'a, T>(
+    pub fn check_tools<'a, T, IO>(
         &mut self,
         workspace: &Workspace,
         tools: T,
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -574,16 +577,18 @@ impl TaskExecutor {
             add_tool_check_jobs(tool, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, pio)
     }
 
-    pub fn execute_tasks<'a, T>(
+    pub fn execute_tasks<'a, T, IO>(
         &mut self,
         workspace: &Workspace,
         tasks: T,
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -594,16 +599,18 @@ impl TaskExecutor {
             add_task_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, pio)
     }
 
-    pub fn clean_tasks<'a, T>(
+    pub fn clean_tasks<'a, T, IO>(
         &mut self,
         workspace: &Workspace,
         tasks: T,
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -614,17 +621,19 @@ impl TaskExecutor {
             add_clean_jobs(task, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, pio)
     }
 
-    pub fn do_env_actions<'a, E>(
+    pub fn do_env_actions<'a, E, IO>(
         &mut self,
         workspace: &Workspace,
         envs: E,
         args: &Vec<Arc<str>>,
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         E: Iterator<Item = &'a Arc<str>>,
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -635,14 +644,18 @@ impl TaskExecutor {
             add_env_action_jobs(env, args, &frozen_workspace, &mut jobs)?;
         }
 
-        self.execute_graph(jobs, &frozen_workspace)
+        self.execute_graph(jobs, &frozen_workspace, pio)
     }
 
-    fn execute_graph(
+    fn execute_graph<IO>(
         &mut self,
         nodes: HashMap<Arc<str>, ExecutorJob>,
         workspace: &Arc<Workspace>,
-    ) -> Result<(), TaskExecutionError> {
+        pio: &IO,
+    ) -> Result<(), TaskExecutionError>
+    where
+        IO: ProcessIO,
+    {
         let dep_edges = &compute_dependency_edges(&nodes, workspace.as_ref())?;
 
         if let Some(cyclic_node) = has_cycle(dep_edges) {
@@ -662,7 +675,7 @@ impl TaskExecutor {
 
         let mut in_progress_jobs: HashSet<Arc<str>> = HashSet::new();
         let mut completed_jobs: HashSet<Arc<str>> = HashSet::new();
-        let mut concurrent_io = ConcurrentIO::new();
+        let mut concurrent_io = ConcurrentIO::new(pio.out(), pio.err());
 
         let mut remaining_jobs = nodes;
 

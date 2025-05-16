@@ -13,7 +13,10 @@ use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::task_selection::compute_selected_tasks;
+use cobble::util::process_io::StandardIO;
 use cobble::workspace::create_workspace;
+
+use crate::commands::run::run_init_task_if_defined;
 
 pub struct CleanCommandInput {
     pub cwd: PathBuf,
@@ -39,6 +42,9 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         ..Default::default()
     };
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
+
+    run_init_task_if_defined(&cwd, &config)?;
+
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
 
@@ -61,16 +67,17 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
-    calculate_artifacts(&mut workspace, &mut executor)?;
+    calculate_artifacts(&mut workspace, &mut executor, &StandardIO)?;
 
     resolve_calculated_dependencies_in_subtrees(
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
+        &StandardIO,
     )?;
 
     // Execute the tasks
-    executor.clean_tasks(&workspace, selected_tasks.iter())?;
+    executor.clean_tasks(&workspace, selected_tasks.iter(), &StandardIO)?;
 
     Ok(())
 }

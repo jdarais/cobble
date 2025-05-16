@@ -5,6 +5,7 @@
 
 use std::{
     collections::HashMap,
+    io,
     sync::{Arc, Condvar, Mutex},
 };
 
@@ -33,16 +34,24 @@ struct TrackedJob {
     failed: bool,
 }
 
-pub struct ConcurrentIO {
+pub struct ConcurrentIO<OW: io::Write, EW: io::Write> {
     jobs: HashMap<Arc<str>, TrackedJob>,
     active_job: Option<Arc<str>>,
+    out: OW,
+    err: EW,
 }
 
-impl ConcurrentIO {
-    pub fn new() -> ConcurrentIO {
+impl<OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
+    pub fn new(out: OW, err: EW) -> ConcurrentIO<OW, EW>
+    where
+        OW: io::Write,
+        EW: io::Write,
+    {
         ConcurrentIO {
             jobs: HashMap::new(),
             active_job: None,
+            out,
+            err,
         }
     }
 
@@ -78,7 +87,7 @@ impl ConcurrentIO {
         let job_opt = self.jobs.get_mut(job_id);
         if let Some(job) = job_opt {
             if is_active {
-                print!("{}", text);
+                let _ = write!(self.out, "{}", text);
             } else {
                 if let TrackedJobState::Complete = job.job_state {
                     return;
@@ -100,7 +109,7 @@ impl ConcurrentIO {
             if is_active {
                 match job.show_stdout {
                     TaskOutputCondition::Always => {
-                        print!("{}", text);
+                        let _ = write!(self.out, "{}", text);
                     }
                     TaskOutputCondition::OnFail => {
                         job.on_fail_buffer.push(Output::Stdout(text));
@@ -128,7 +137,7 @@ impl ConcurrentIO {
             if is_active {
                 match job.show_stdout {
                     TaskOutputCondition::Always => {
-                        eprint!("{}", text);
+                        let _ = write!(self.err, "{}", text);
                     }
                     TaskOutputCondition::OnFail => {
                         job.on_fail_buffer.push(Output::Stderr(text));
@@ -227,7 +236,7 @@ impl ConcurrentIO {
                 match output {
                     Output::Stdout(s) => match job.show_stdout {
                         TaskOutputCondition::Always => {
-                            print!("{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                         TaskOutputCondition::OnFail => {
                             job.on_fail_buffer.push(Output::Stdout(s));
@@ -236,7 +245,7 @@ impl ConcurrentIO {
                     },
                     Output::Stderr(s) => match job.show_stderr {
                         TaskOutputCondition::Always => {
-                            eprint!("{}", s);
+                            let _ = write!(self.err, "{}", s);
                         }
                         TaskOutputCondition::OnFail => {
                             job.on_fail_buffer.push(Output::Stderr(s));
@@ -244,7 +253,7 @@ impl ConcurrentIO {
                         TaskOutputCondition::Never => { /* Ignore */ }
                     },
                     Output::Status(s) => {
-                        print!("{}", s);
+                        let _ = write!(self.out, "{}", s);
                     }
                 }
             }
@@ -252,13 +261,13 @@ impl ConcurrentIO {
                 for output in job.on_fail_buffer.drain(..) {
                     match output {
                         Output::Stdout(s) => {
-                            print!("{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                         Output::Stderr(s) => {
-                            eprint!("{}", s);
+                            let _ = write!(self.err, "{}", s);
                         }
                         Output::Status(s) => {
-                            print!("{}", s);
+                            let _ = write!(self.out, "{}", s);
                         }
                     }
                 }
@@ -267,7 +276,7 @@ impl ConcurrentIO {
     }
 }
 
-impl Drop for ConcurrentIO {
+impl<OW: io::Write, EW: io::Write> Drop for ConcurrentIO<OW, EW> {
     fn drop(&mut self) {
         for (_job_id, job) in self.jobs.iter_mut() {
             match job.job_state {
