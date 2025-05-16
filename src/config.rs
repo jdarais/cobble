@@ -72,11 +72,11 @@ impl Display for WorkspaceConfigError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TaskOutputCondition {
-    Always,
-    Never,
-    OnFail,
+    Always = 2,
+    OnFail = 1,
+    Never = 0,
 }
 
 impl<'lua> mlua::FromLua<'lua> for TaskOutputCondition {
@@ -212,6 +212,21 @@ pub fn parse_workspace_config(
                     WorkspaceConfigError::ValueError(String::from("init.task must be a string"))
                 })?;
 
+                let init_output_opt: Option<toml::Value> = t.get("output").cloned();
+                let init_output_enum: Option<TaskOutputCondition> = match init_output_opt {
+                    Some(show_stdout) => {
+                        let show_stdout_str: String = show_stdout.try_into().map_err(|e| {
+                            WorkspaceConfigError::ValueError(format!("at 'init.output': {}", e))
+                        })?;
+                        let show_stdout_enum: TaskOutputCondition =
+                            parse_output_condition(&show_stdout_str).map_err(|e| {
+                                WorkspaceConfigError::ValueError(format!("at 'init.output': {}", e))
+                            })?;
+                        Some(show_stdout_enum)
+                    }
+                    None => None,
+                };
+
                 let init_stdout_opt: Option<toml::Value> = t.get("stdout").cloned();
                 let init_stdout_enum: Option<TaskOutputCondition> = match init_stdout_opt {
                     Some(show_stdout) => {
@@ -245,8 +260,12 @@ pub fn parse_workspace_config(
                 Some(WorkspaceInit {
                     workspace_dir: PathBuf::from(workspace_dir_str),
                     task: task_str,
-                    show_stdout: init_stdout_enum.unwrap_or(TaskOutputCondition::OnFail),
-                    show_stderr: init_stderr_enum.unwrap_or(TaskOutputCondition::OnFail),
+                    show_stdout: init_stdout_enum
+                        .or(init_output_enum.clone())
+                        .unwrap_or(TaskOutputCondition::OnFail),
+                    show_stderr: init_stderr_enum
+                        .or(init_output_enum)
+                        .unwrap_or(TaskOutputCondition::OnFail),
                 })
             }
             _ => {
