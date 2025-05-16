@@ -3,11 +3,11 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{borrow::Cow, collections::HashMap};
 use std::fmt;
 use std::sync::Arc;
+use std::{borrow::Cow, collections::HashMap};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::project_def::validate::validate_is_string;
 
@@ -157,8 +157,16 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
 impl From<ArtifactsRecord> for Artifacts {
     fn from(value: ArtifactsRecord) -> Self {
         Artifacts {
-            files: value.files.iter().map(|f| Arc::<str>::from(f.1.as_str())).collect(),
-            calc: value.calc.iter().map(|c| Arc::<str>::from(c.1.as_str())).collect()
+            files: value
+                .files
+                .iter()
+                .map(|f| Arc::<str>::from(f.1.as_str()))
+                .collect(),
+            calc: value
+                .calc
+                .iter()
+                .map(|c| Arc::<str>::from(c.1.as_str()))
+                .collect(),
         }
     }
 }

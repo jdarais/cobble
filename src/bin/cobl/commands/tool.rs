@@ -6,7 +6,11 @@
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs}, execute::execute::TaskExecutor, load::load_projects, util::process_io::StandardIO, workspace::create_workspace
+    config::{get_workspace_config, TaskOutputCondition, WorkspaceConfigArgs},
+    execute::execute::TaskExecutor,
+    load::load_projects,
+    util::process_io::StandardIO,
+    workspace::create_workspace,
 };
 
 use crate::commands::run::run_init_task_if_defined;

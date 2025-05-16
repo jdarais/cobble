@@ -16,22 +16,24 @@ enum Output {
 
 #[derive(Clone)]
 pub struct IOBuffer {
-    buffer: Arc<Mutex<Vec<Output>>>
+    buffer: Arc<Mutex<Vec<Output>>>,
 }
 
 #[derive(Clone)]
 pub struct IOBufferOut {
-    buffer: Arc<Mutex<Vec<Output>>>
+    buffer: Arc<Mutex<Vec<Output>>>,
 }
 
 #[derive(Clone)]
 pub struct IOBufferErr {
-    buffer: Arc<Mutex<Vec<Output>>>
+    buffer: Arc<Mutex<Vec<Output>>>,
 }
 
 impl IOBuffer {
     pub fn new() -> IOBuffer {
-        IOBuffer { buffer: Arc::new(Mutex::new(Vec::new())) }
+        IOBuffer {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     pub fn flush(&mut self) -> io::Result<()> {
@@ -57,11 +59,15 @@ impl ProcessIO for IOBuffer {
     type EW = IOBufferErr;
 
     fn out(&self) -> IOBufferOut {
-        IOBufferOut { buffer: self.buffer.clone() }
+        IOBufferOut {
+            buffer: self.buffer.clone(),
+        }
     }
 
     fn err(&self) -> IOBufferErr {
-        IOBufferErr { buffer: self.buffer.clone() }
+        IOBufferErr {
+            buffer: self.buffer.clone(),
+        }
     }
 }
 
@@ -104,4 +110,3 @@ impl ProcessIO for StandardIO {
         io::stderr()
     }
 }
-

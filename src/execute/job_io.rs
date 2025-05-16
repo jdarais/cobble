@@ -38,20 +38,20 @@ pub struct ConcurrentIO<OW: io::Write, EW: io::Write> {
     jobs: HashMap<Arc<str>, TrackedJob>,
     active_job: Option<Arc<str>>,
     out: OW,
-    err: EW
+    err: EW,
 }
 
-impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
+impl<OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
     pub fn new(out: OW, err: EW) -> ConcurrentIO<OW, EW>
     where
         OW: io::Write,
-        EW: io::Write
+        EW: io::Write,
     {
         ConcurrentIO {
             jobs: HashMap::new(),
             active_job: None,
             out,
-            err
+            err,
         }
     }
 
@@ -276,7 +276,7 @@ impl <OW: io::Write, EW: io::Write> ConcurrentIO<OW, EW> {
     }
 }
 
-impl <OW: io::Write, EW: io::Write> Drop for ConcurrentIO<OW, EW> {
+impl<OW: io::Write, EW: io::Write> Drop for ConcurrentIO<OW, EW> {
     fn drop(&mut self) {
         for (_job_id, job) in self.jobs.iter_mut() {
             match job.job_state {

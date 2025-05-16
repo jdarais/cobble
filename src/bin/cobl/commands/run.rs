@@ -10,13 +10,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use cobble::calc_artifacts::calculate_artifacts;
-use cobble::config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfig, WorkspaceConfigArgs};
+use cobble::config::{
+    get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfig, WorkspaceConfigArgs,
+};
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
 use cobble::project_def::types::TaskVar;
 use cobble::task_selection::compute_selected_tasks;
-use cobble::util::process_io::{ProcessIO, StandardIO, IOBuffer};
+use cobble::util::process_io::{IOBuffer, ProcessIO, StandardIO};
 use cobble::workspace::create_workspace;
 
 pub struct RunCommandInput {
@@ -42,10 +44,22 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
 
     let parsed_vars = parse_cli_vars(vars.iter())?;
 
-    run(cwd, tasks, parsed_vars, force_run_tasks, num_threads, show_stdout, show_stderr, &StandardIO)
+    run(
+        cwd,
+        tasks,
+        parsed_vars,
+        force_run_tasks,
+        num_threads,
+        show_stdout,
+        show_stderr,
+        &StandardIO,
+    )
 }
 
-pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig) -> anyhow::Result<()> {
+pub fn run_init_task_if_defined<P: AsRef<Path>>(
+    cwd: P,
+    config: &WorkspaceConfig,
+) -> anyhow::Result<()> {
     match &config.init {
         Some(init_workspace) => {
             let mut io_buffer = IOBuffer::new();
@@ -59,7 +73,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig
                 Some(config.num_threads),
                 Some(init_workspace.show_stdout.clone()),
                 Some(init_workspace.show_stderr.clone()),
-                &io_buffer
+                &io_buffer,
             );
             let _ = writeln!(&mut out, "# Done Running Init Task #");
             if let Err(_) = run_res {
@@ -67,7 +81,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(cwd: P, config: &WorkspaceConfig
             }
             run_res
         }
-        None => Ok(())
+        None => Ok(()),
     }
 }
 
@@ -79,7 +93,7 @@ pub fn run<IO: ProcessIO>(
     num_threads: Option<u8>,
     show_stdout: Option<TaskOutputCondition>,
     show_stderr: Option<TaskOutputCondition>,
-    pio: &IO
+    pio: &IO,
 ) -> anyhow::Result<()> {
     let mut out = pio.out();
 
@@ -94,9 +108,8 @@ pub fn run<IO: ProcessIO>(
 
     run_init_task_if_defined(&cwd, &config)?;
 
-    
     set_current_dir(&config.workspace_dir)
-    .expect("found the workspace directory, so we should be able to set that as the cwd");
+        .expect("found the workspace directory, so we should be able to set that as the cwd");
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
@@ -132,7 +145,7 @@ pub fn run<IO: ProcessIO>(
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
-        pio
+        pio,
     )?;
 
     let _ = writeln!(&mut out, "# Executing tasks #");

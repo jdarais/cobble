@@ -562,11 +562,11 @@ impl TaskExecutor {
         &mut self,
         workspace: &Workspace,
         tools: T,
-        pio: &IO
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
-        IO: ProcessIO
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -584,11 +584,11 @@ impl TaskExecutor {
         &mut self,
         workspace: &Workspace,
         tasks: T,
-        pio: &IO
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
-        IO: ProcessIO
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -606,11 +606,11 @@ impl TaskExecutor {
         &mut self,
         workspace: &Workspace,
         tasks: T,
-        pio: &IO
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         T: Iterator<Item = &'a Arc<str>>,
-        IO: ProcessIO
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -629,11 +629,11 @@ impl TaskExecutor {
         workspace: &Workspace,
         envs: E,
         args: &Vec<Arc<str>>,
-        pio: &IO
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
     where
         E: Iterator<Item = &'a Arc<str>>,
-        IO: ProcessIO
+        IO: ProcessIO,
     {
         self.ensure_worker_threads();
 
@@ -651,9 +651,10 @@ impl TaskExecutor {
         &mut self,
         nodes: HashMap<Arc<str>, ExecutorJob>,
         workspace: &Arc<Workspace>,
-        pio: &IO
+        pio: &IO,
     ) -> Result<(), TaskExecutionError>
-    where IO: ProcessIO
+    where
+        IO: ProcessIO,
     {
         let dep_edges = &compute_dependency_edges(&nodes, workspace.as_ref())?;
 

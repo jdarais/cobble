@@ -78,11 +78,11 @@ pub fn resolve_calculated_dependencies_in_subtrees<'a, T, IO>(
     task_names: T,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
-    pio: &IO
+    pio: &IO,
 ) -> Result<(), ExecutionGraphError>
 where
     T: Iterator<Item = &'a Arc<str>>,
-    IO: ProcessIO
+    IO: ProcessIO,
 {
     for task_name in task_names {
         // TODO: Track the names of tasks that have get visited with each invocation so we can skip
@@ -96,7 +96,7 @@ pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
     task_name: &Arc<str>,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
-    pio: &IO
+    pio: &IO,
 ) -> Result<(), ExecutionGraphError> {
     let mut changed = true;
     while changed {
@@ -105,7 +105,7 @@ pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
             workspace,
             &mut HashSet::new(),
             task_executor,
-            pio
+            pio,
         )?;
     }
     Ok(())
@@ -116,7 +116,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
     workspace: &mut Workspace,
     visited: &mut HashSet<Arc<str>>,
     task_executor: &mut TaskExecutor,
-    pio: &IO
+    pio: &IO,
 ) -> Result<bool, ExecutionGraphError> {
     if visited.contains(task_name) {
         return Err(ExecutionGraphError::CycleError(task_name.clone()));
@@ -140,7 +140,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
             workspace,
             visited,
             task_executor,
-            pio
+            pio,
         )?;
 
         task_executor
@@ -189,7 +189,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
                 workspace,
                 visited,
                 task_executor,
-                pio
+                pio,
             )?;
     }
 
@@ -201,7 +201,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
                     workspace,
                     visited,
                     task_executor,
-                    pio
+                    pio,
                 )?;
         }
     }
@@ -220,7 +220,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
                     workspace,
                     visited,
                     task_executor,
-                    pio
+                    pio,
                 )?;
         }
     }

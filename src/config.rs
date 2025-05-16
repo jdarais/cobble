@@ -23,7 +23,7 @@ pub struct WorkspaceInit {
     pub workspace_dir: PathBuf,
     pub task: String,
     pub show_stdout: TaskOutputCondition,
-    pub show_stderr: TaskOutputCondition
+    pub show_stderr: TaskOutputCondition,
 }
 
 #[derive(Debug)]
@@ -215,28 +215,38 @@ pub fn parse_workspace_config(
                 let init_stdout_opt: Option<toml::Value> = t.get("stdout").cloned();
                 let init_stdout_enum: Option<TaskOutputCondition> = match init_stdout_opt {
                     Some(show_stdout) => {
-                        let show_stdout_str: String = show_stdout.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
-                        let show_stdout_enum: TaskOutputCondition = parse_output_condition(&show_stdout_str).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
+                        let show_stdout_str: String = show_stdout.try_into().map_err(|e| {
+                            WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e))
+                        })?;
+                        let show_stdout_enum: TaskOutputCondition =
+                            parse_output_condition(&show_stdout_str).map_err(|e| {
+                                WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e))
+                            })?;
                         Some(show_stdout_enum)
-                    },
-                    None => None
+                    }
+                    None => None,
                 };
 
                 let init_stderr_opt: Option<toml::Value> = t.get("stderr").cloned();
                 let init_stderr_enum: Option<TaskOutputCondition> = match init_stderr_opt {
                     Some(show_stdout) => {
-                        let show_stderr_str: String = show_stdout.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stderr': {}", e)))?;
-                        let show_stderr_enum: TaskOutputCondition = parse_output_condition(&show_stderr_str).map_err(|e| WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e)))?;
+                        let show_stderr_str: String = show_stdout.try_into().map_err(|e| {
+                            WorkspaceConfigError::ValueError(format!("at 'init.stderr': {}", e))
+                        })?;
+                        let show_stderr_enum: TaskOutputCondition =
+                            parse_output_condition(&show_stderr_str).map_err(|e| {
+                                WorkspaceConfigError::ValueError(format!("at 'init.stdout': {}", e))
+                            })?;
                         Some(show_stderr_enum)
-                    },
-                    None => None
+                    }
+                    None => None,
                 };
 
                 Some(WorkspaceInit {
                     workspace_dir: PathBuf::from(workspace_dir_str),
                     task: task_str,
                     show_stdout: init_stdout_enum.unwrap_or(TaskOutputCondition::OnFail),
-                    show_stderr: init_stderr_enum.unwrap_or(TaskOutputCondition::OnFail)
+                    show_stderr: init_stderr_enum.unwrap_or(TaskOutputCondition::OnFail),
                 })
             }
             _ => {

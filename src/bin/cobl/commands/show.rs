@@ -1,7 +1,14 @@
 use std::{env::set_current_dir, path::PathBuf, sync::Arc};
 
 use cobble::{
-    calc_artifacts::calculate_artifacts, config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfigArgs}, dependency::resolve_calculated_dependencies_in_subtrees, execute::execute::TaskExecutor, load::load_projects, task_selection::compute_selected_tasks, util::process_io::StandardIO, workspace::create_workspace
+    calc_artifacts::calculate_artifacts,
+    config::{get_workspace_config, parse_cli_vars, TaskOutputCondition, WorkspaceConfigArgs},
+    dependency::resolve_calculated_dependencies_in_subtrees,
+    execute::execute::TaskExecutor,
+    load::load_projects,
+    task_selection::compute_selected_tasks,
+    util::process_io::StandardIO,
+    workspace::create_workspace,
 };
 
 use crate::commands::run::run_init_task_if_defined;
@@ -36,7 +43,6 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
     let config = Arc::new(get_workspace_config(cwd.as_path(), &ws_config_args)?);
 
     run_init_task_if_defined(&cwd, &config)?;
-
 
     set_current_dir(&config.workspace_dir)
         .expect("found the workspace directory, so we should be able to set that as the cwd");
@@ -73,7 +79,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
-        &StandardIO
+        &StandardIO,
     )?;
 
     for task_name in selected_tasks.iter() {

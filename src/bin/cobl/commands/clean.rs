@@ -73,7 +73,7 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,
-        &StandardIO
+        &StandardIO,
     )?;
 
     // Execute the tasks
