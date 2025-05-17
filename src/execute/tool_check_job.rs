@@ -10,17 +10,19 @@ use std::{collections::HashMap, path::Path};
 use crate::execute::action::{create_tool_action_context, invoke_action_protected};
 use crate::execute::execute::TaskExecutorCache;
 use crate::execute::execute::{TaskExecutionError, TaskJobMessage, TaskResult, ToolCheckJob};
+use crate::project_def::types::TaskVar;
 
 pub fn execute_tool_check_job(
     workspace_dir: &Path,
     lua: &mlua::Lua,
     job: &ToolCheckJob,
+    vars: HashMap<String, TaskVar>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) {
-    let result = execute_tool_check_action(workspace_dir, lua, job, db_env, db, cache, sender);
+    let result = execute_tool_check_action(workspace_dir, lua, job, vars, db_env, db, cache, sender);
 
     match result {
         Ok(_) => {
@@ -46,6 +48,7 @@ fn execute_tool_check_action(
     workspace_dir: &Path,
     lua: &mlua::Lua,
     job: &ToolCheckJob,
+    vars: HashMap<String, TaskVar>,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
@@ -73,7 +76,7 @@ fn execute_tool_check_action(
         check_action,
         &job.job_id,
         HashMap::new(),
-        HashMap::new(),
+        vars,
         HashMap::new(),
         project_dir,
         mlua::Value::Nil,
