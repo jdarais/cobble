@@ -4,3 +4,4 @@ task = "/setup"
 
 [vars]
 cobble.build = "release"
+docker.min_version = "26.0.0"
