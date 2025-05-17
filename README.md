@@ -46,7 +46,7 @@ Software project tooling often centeres around a core tool, (such as npm, cargo,
 
 This project was inspired by projects like [Make](https://www.gnu.org/software/make/) and [Doit](https://pydoit.org/)
 
-## License - GPLV3.0
+## License - GPLv3.0
 
 This project, with the exception of the `examples` directory, is licensed under the GPLv3.0 license.  See [COPYING](https://github.com/jdarais/cobble/blob/main/COPYING).  The contents of the `examples` directory are free to use without restrictions.
 
