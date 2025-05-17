@@ -224,6 +224,7 @@ fn do_cobl(args: Cli) -> ExitCode {
             CoblCommand::Other(other_args) => {
                 let original_args = std::env::args_os();
                 let pre_args_len = original_args.len() - other_args.len();
+                // Try re-invoking the command with the same args, but with the "run" command prepended
                 let run_args: Vec<OsString> = original_args
                     .take(pre_args_len)
                     .chain(vec![OsString::from("run")])
