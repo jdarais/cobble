@@ -62,7 +62,7 @@ fn run_init_task<P, IO>(
     cwd: P,
     config: &WorkspaceConfig,
     init_config: &WorkspaceInit,
-    pio: &IO
+    pio: &IO,
 ) -> anyhow::Result<()>
 where
     P: AsRef<Path>,
@@ -90,7 +90,8 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(
 ) -> anyhow::Result<()> {
     match &config.init {
         Some(init_workspace) => {
-            let output_condition = cmp::max(&init_workspace.show_stderr, &init_workspace.show_stdout);
+            let output_condition =
+                cmp::max(&init_workspace.show_stderr, &init_workspace.show_stdout);
 
             match output_condition {
                 TaskOutputCondition::Always => {
@@ -99,7 +100,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(
                 TaskOutputCondition::OnFail => {
                     let mut io_buffer = IOBuffer::new();
                     let run_res = run_init_task(cwd, config, init_workspace, &io_buffer);
-                    
+
                     if let Err(_) = run_res {
                         let _ = io_buffer.flush();
                     }

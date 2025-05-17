@@ -5,6 +5,7 @@
 
 mod commands;
 
+use std::ffi::OsString;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -49,7 +50,7 @@ struct Cli {
     version: bool,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum CoblCommand {
     /// List available tasks
     List {
@@ -85,9 +86,11 @@ enum CoblCommand {
         /// Task(s) to show info for
         tasks: Vec<String>,
     },
+    #[command(external_subcommand)]
+    Other(Vec<OsString>),
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum ToolCommand {
     Check {
         /// Tool names
@@ -95,7 +98,7 @@ enum ToolCommand {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum EnvCommand {
     Run {
         envs: Vec<String>,
@@ -124,7 +127,10 @@ fn run_from_dir(path: &Path) -> anyhow::Result<()> {
 
 fn main() -> ExitCode {
     let args = Cli::parse();
+    do_cobl(args)
+}
 
+fn do_cobl(args: Cli) -> ExitCode {
     if args.version {
         println!("{}", VERSION);
         return ExitCode::from(0);
@@ -215,6 +221,18 @@ fn main() -> ExitCode {
                 vars: args.var,
                 num_threads: args.num_threads,
             }),
+            CoblCommand::Other(other_args) => {
+                let original_args = std::env::args_os();
+                let pre_args_len = original_args.len() - other_args.len();
+                // Try re-invoking the command with the same args, but with the "run" command prepended
+                let run_args: Vec<OsString> = original_args
+                    .take(pre_args_len)
+                    .chain(vec![OsString::from("run")])
+                    .chain(other_args)
+                    .collect();
+                let run_cli = Cli::parse_from(run_args);
+                return do_cobl(run_cli);
+            }
         },
         None => run_from_dir(cwd.as_path()),
     };
