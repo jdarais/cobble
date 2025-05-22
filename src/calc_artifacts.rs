@@ -110,7 +110,7 @@ pub fn calculate_artifacts<IO: ProcessIO>(
         }
 
         let mut new_task = Task::clone(task);
-        new_task.artifacts = combine_artifacts(&new_task.artifacts, &artifacts);
+        new_task.artifacts = artifacts.as_ref().clone();
         new_tasks.insert(task.name.clone(), Arc::new(new_task));
     }
 
