@@ -14,13 +14,15 @@ use crate::project_def::validate::{
     validate_table_has_only_string_or_sequence_keys,
 };
 
+use super::types::MapOrArray;
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct DependencyListByType {
-    pub dirs: Option<HashMap<StringOrInt, String>>,
-    pub files: Option<HashMap<StringOrInt, String>>,
-    pub tasks: Option<HashMap<StringOrInt, String>>,
-    pub vars: Option<HashMap<StringOrInt, String>>,
-    pub calc: Option<HashMap<StringOrInt, String>>,
+    pub dirs: Option<MapOrArray<String>>,
+    pub files: Option<MapOrArray<String>>,
+    pub tasks: Option<MapOrArray<String>>,
+    pub vars: Option<MapOrArray<String>>,
+    pub calc: Option<MapOrArray<String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -45,22 +47,17 @@ impl<'lua> mlua::FromLua<'lua> for Dependencies {
     }
 }
 
-fn alias_map_from_string_or_int_map(
-    value: HashMap<StringOrInt, String>,
-) -> HashMap<Arc<str>, Arc<str>> {
-    let mut result = HashMap::with_capacity(value.len());
-    for (k, v) in value {
-        match k {
-            StringOrInt::Int(_i) => {
-                let f_dep = Arc::<str>::from(v);
-                result.insert(f_dep.clone(), f_dep);
-            }
-            StringOrInt::String(s) => {
-                result.insert(s.into(), v.into());
-            }
-        }
+fn alias_map_from_map_or_array(value: MapOrArray<String>) -> HashMap<Arc<str>, Arc<str>> {
+    match value {
+        MapOrArray::Map(m) => m.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
+        MapOrArray::Array(arr) => arr
+            .into_iter()
+            .map(|v| {
+                let val: Arc<str> = v.into();
+                (val.clone(), val)
+            })
+            .collect(),
     }
-    result
 }
 
 impl From<DependencyListByType> for Dependencies {
@@ -73,27 +70,17 @@ impl From<DependencyListByType> for Dependencies {
             calc,
         } = value;
 
-        let mut calc_deps_list: Vec<Arc<str>> =
-            Vec::with_capacity(calc.as_ref().map(|c| c.len()).unwrap_or(0));
-        if let Some(c_deps) = calc {
-            for (_k, v) in c_deps {
-                calc_deps_list.push(v.into());
-            }
-        }
+        let calc_deps_list: Vec<Arc<str>> = match calc {
+            Some(MapOrArray::Map(m)) => m.into_iter().map(|(_k, v)| v.into()).collect(),
+            Some(MapOrArray::Array(arr)) => arr.into_iter().map(|v| v.into()).collect(),
+            _ => Vec::new()
+        };
 
         Dependencies {
-            dirs: dirs
-                .map(alias_map_from_string_or_int_map)
-                .unwrap_or_default(),
-            files: files
-                .map(alias_map_from_string_or_int_map)
-                .unwrap_or_default(),
-            tasks: tasks
-                .map(alias_map_from_string_or_int_map)
-                .unwrap_or_default(),
-            vars: vars
-                .map(alias_map_from_string_or_int_map)
-                .unwrap_or_default(),
+            dirs: dirs.map(alias_map_from_map_or_array).unwrap_or_default(),
+            files: files.map(alias_map_from_map_or_array).unwrap_or_default(),
+            tasks: tasks.map(alias_map_from_map_or_array).unwrap_or_default(),
+            vars: vars.map(alias_map_from_map_or_array).unwrap_or_default(),
             calc: calc_deps_list,
         }
     }
@@ -118,25 +105,25 @@ impl fmt::Display for DependencyListByType {
 
         if let Some(files) = &self.files {
             f.write_str("files={")?;
-            write_string_or_int_map(f, &files)?;
+            write_string_or_int_map(f, &files.clone().into())?;
             f.write_str("},")?;
         }
 
         if let Some(tasks) = &self.tasks {
             f.write_str("tasks={")?;
-            write_string_or_int_map(f, &tasks)?;
+            write_string_or_int_map(f, &tasks.clone().into())?;
             f.write_str("},")?;
         }
 
         if let Some(vars) = &self.vars {
             f.write_str("vars={")?;
-            write_string_or_int_map(f, &vars)?;
+            write_string_or_int_map(f, &vars.clone().into())?;
             f.write_str("},")?;
         }
 
         if let Some(calc) = &self.calc {
             f.write_str("calc={")?;
-            write_string_or_int_map(f, &calc)?;
+            write_string_or_int_map(f, &calc.clone().into())?;
             f.write_str("}")?;
         }
 

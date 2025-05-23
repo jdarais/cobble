@@ -17,8 +17,8 @@ use crate::execute::action::{create_task_action_context, invoke_action_protected
 use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
-use crate::lua::detached::DetachedLuaValue;
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
+use crate::project_def::types::lua_to_json;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
 use crate::workspace::{Task, Workspace};
@@ -432,11 +432,7 @@ fn execute_task_actions_and_store_result(
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
     // Jump out of this function on failure, but only after we reset the "interactive enabled" registry value
-    let result = result_res?;
-
-    let mut detached_result: DetachedLuaValue = lua
-        .unpack(result)
-        .map_err(|e| TaskExecutionError::LuaError(e))?;
+    let mut result = result_res?;
 
     let mut artifact_file_hashes: HashMap<String, String> =
         HashMap::with_capacity(task.task.artifacts.files.len());
@@ -459,17 +455,19 @@ fn execute_task_actions_and_store_result(
     // Usually, if a task runs, we'd want other tasks that depend on it to also run unless the task output or an artifact
     // has changed.  If there's nothing to compoare against, we'll add a timestamp so that providing no output or artifacts
     // means tasks that depend on this one will always run if this task was run
-    if let DetachedLuaValue::Nil = detached_result {
+    if let mlua::Value::Nil = result {
         if artifact_file_hashes.len() == 0 {
             let time = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("Time since unix epoch should not be negative");
-            detached_result = DetachedLuaValue::Integer(time.as_millis() as i64);
+            result = mlua::Value::Integer(time.as_millis() as i64);
         }
     }
 
+    let task_output_json = lua_to_json(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
+
     let task_output_record = TaskOutput {
-        task_output: detached_result.to_json(),
+        task_output: task_output_json,
         file_hashes: artifact_file_hashes,
     };
 
