@@ -41,16 +41,16 @@ _nil_
 
 ### env
 
- _function_ - Define a build environment
+ _function_ - Define an action environment
 
 `env(env_def)`
 
 ##### Arguments
 
-- `env_def`: _table_ - Build environment definition properties
-    - `name`: _string_ - The build environment name
-    - `setup_task`: *task_def* - The task to execute to set up the build environment, (e.g. "npm install").  All `task_def` properties are supported except for `name`.  The setup task will be given the same name as the build environment.
-    - `action`: *action_def* - An action that will run a command in the build environment, (e.g. "npm exec").  For function actions, the arguments passed to the action are available in `c.args`.  For actions defined using a table, the args are appended to the table and passed to the tool or build environment referenced by the action.
+- `env_def`: _table_ - action environment definition properties
+    - `name`: _string_ - The action environment name
+    - `setup_task`: *task_def* - The task to execute to set up the action environment, (e.g. "npm install").  All `task_def` properties are supported except for `name`.  The setup task will be given the same name as the action environment.
+    - `action`: *action_def* - An action that will run a command in the action environment, (e.g. "npm exec").  For function actions, the arguments passed to the action are available in `c.args`.  For actions defined using a table, the args are appended to the table and passed to the tool or action environment referenced by the action.
 
 ##### Returns
 
@@ -104,7 +104,7 @@ Cobble provides one built-in tool: the `cmd` tool.  The `cmd` tool uses Cobble's
 
 ## Actions
 
-Actions can be defined using a table or function.  See details on the different ways to define an action below.
+Actions can be defined using a table or function.  See details below for the different ways to define an action.
 
 ### Arg-list Actions
 
@@ -113,7 +113,6 @@ An arg-list action is defined using a Lua table with an optional `tool` or `env`
 The remaining table entries are passed to the referenced tool or environment as arguments.
 
 If the action itself receives arguments, (e.g. if the action is defined in a tool or action environment,) those arguments are appended to the arguments defined by the action before passing them to the referenced tool or environment.  This allows easy definition of tools or environments that simply accept arguments and append them to a particular command to be executed.
-
 
 When an action is defined using an arg-list, the resulting action will only return a value if it is invoked as part of a tool or action environment.  This is to avoid excess information from unintentionally being included in the task output.  If a task should have outputs, its last action must be an action function.
 
@@ -128,7 +127,7 @@ tool {
 }
 
 env {
-  name = "npm_env",
+  name = "npm_exec",
   setup_task = {
     actions = {
       -- Action that runs "npm install" using the tool defined above
@@ -143,7 +142,7 @@ task {
   name = "lint",
   actions = {
     -- Action that runs "npm exec -- eslint src/" using the env defined above
-    { env = "npm_env", "eslint", "src/" }
+    { env = "npm_exec", "eslint", "src/" }
   }
 }
 ```
@@ -215,7 +214,7 @@ The action context passed to action functions has the following properties:
 
 #### Action Execution
 
-When Cobble executes tasks, it distributes tasks among multiple threads, each with their own Lua environment.  This presents a challenge for actions funcitons: the action function implementation must be copied from the Lua environment in which the action was defined into the Lua environment responsible for executing the task.  To accomplish this, action functions are extracted from the Lua environment into an in-memory representation, along with any external local variables referenced by the function, (i.e "upvalues").  No global variables are extracted.  This results in a few limitations that are not present in a typical Lua environment:
+When Cobble executes tasks, it distributes tasks among multiple threads, each with their own Lua environment.  This presents a challenge for actions functions: the action function implementation must be copied from the Lua environment in which the action was defined into the Lua environment responsible for executing the task.  To accomplish this, action functions are extracted from the Lua environment into an in-memory representation, along with any external local variables referenced by the function, (i.e "upvalues").  No global variables are extracted.  This results in a few limitations that are not present in a typical Lua environment:
 
 ##### Module References
 
@@ -256,6 +255,13 @@ task {
 }
 ```
 
-Additionally, any native module references other than those to Cobble's built-in modules will cause action extraction to fail.
+Additionally, any references to native modules other than those to Cobble's built-in modules will cause action extraction to fail.
+
+
+### Action Return Values
+
+When a task's last action returns a value, that value is converted to JSON and stored as the task's output.  The task's output will be made available to other tasks that have that task as a dependency.
+
+Note: Conversion from Lua object to JSON has some constraints to be aware of: Lua makes no distinction between maps and arrays.  Everything is a table.  When converting a Lua table in a task's output to JSON, cobble checks whether the Lua table is a "sequence", (i.e. a collection of values with contiguous, integer keys.)  If it is a sequence, cobble will convert the table into a JSON array.  Otherwise, it will convert all keys to strings, (if they aren't strings already,) and convert the table into a JSON object, (i.e. map).  Note that the Lua table  `{ [1] = "frog", [2] = nil, [3] = "cat", [4] = "fish" }` is not a "sequence", because in Lua, `nil` is interpreted as `undefined`, and the value at index `2` is considered to be nonexistent.  (Accessing index `5` would also return `nil`.)  For that reason, if you want to have an action return an array that can have null values in it, it's recommended to use a value other than `nil` to represent those null values, such as `false`.
 
 
