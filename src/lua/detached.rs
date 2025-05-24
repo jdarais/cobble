@@ -3,8 +3,6 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-extern crate serde_json;
-
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
@@ -31,39 +29,6 @@ pub enum DetachedLuaValue {
     ),
     Function(Arc<RwLock<FunctionDump>>),
     UserData(CobbleUserData),
-}
-
-impl DetachedLuaValue {
-    pub fn to_json(&self) -> serde_json::Value {
-        use DetachedLuaValue::*;
-        match self {
-            Nil => serde_json::Value::Null,
-            Boolean(b) => serde_json::Value::Bool(*b),
-            Integer(i) => serde_json::Number::from_f64(*i as f64)
-                .map(|n| serde_json::Value::Number(n))
-                .unwrap_or(serde_json::Value::Null),
-            Number(f) => serde_json::Number::from_f64(*f)
-                .map(|n| serde_json::Value::Number(n))
-                .unwrap_or(serde_json::Value::Null),
-            String(s) => serde_json::Value::String(s.clone()),
-            Table(tbl) => {
-                let tbl_lock = tbl.read().unwrap();
-                let (t, _meta) = &*tbl_lock;
-                let mut map: serde_json::Map<std::string::String, serde_json::Value> =
-                    serde_json::Map::with_capacity(t.len());
-                for (k, v) in t.iter() {
-                    let k_json = match k {
-                        String(s) => s.clone(),
-                        _ => format!("{}", k),
-                    };
-                    map.insert(k_json, v.to_json());
-                }
-                serde_json::Value::Object(map)
-            }
-            Function(f) => serde_json::Value::String(format!("{}", &*f.read().unwrap())),
-            UserData(d) => serde_json::Value::String(format!("{}", d)),
-        }
-    }
 }
 
 fn fmt_debug_detached_value_with_history(
