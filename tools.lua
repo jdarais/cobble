@@ -9,7 +9,7 @@ tool {
         local res = cmd { "docker", "--version" }
         assert(res.status == 0, "docker command exited with status " .. res.status)
         local docker_version = res.stdout:match("Docker version ([^%s]+), build [^%s]+")
-        assert(version, "Unable to get docker version from 'docker --version' command output: " .. res.stdout)
+        assert(docker_version, "Unable to get docker version from 'docker --version' command output: " .. res.stdout)
 
         local min_version = c.vars["docker.min_version"]
         if min_version ~= nil then
