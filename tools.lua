@@ -11,12 +11,15 @@ tool {
         local docker_version = res.stdout:match("Docker version ([^%s]+), build [^%s]+")
         assert(version, "Unable to get docker version from 'docker --version' command output: " .. res.stdout)
 
-        local min_version = maybe(c.vars)["docker"]["min_version"].value
+        local min_version = c.vars["docker.min_version"]
         if min_version ~= nil then
             assert(version(docker_version) > version(min_version), "Docker version must be at least " .. min_version .. ". Found version " .. docker_version)
         end
     end,
-    action = function (c) return c.tool.cmd(tblext.extend({"docker"}, c.args)) end
+    action = function (c) return c.tool.cmd(tblext.extend({"docker"}, c.args)) end,
+    deps = {
+        vars = { "docker.min_version" }
+    }
 }
 
 tool { name = "cargo", action = {"cargo"} }

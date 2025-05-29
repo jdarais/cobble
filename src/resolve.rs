@@ -286,9 +286,6 @@ fn resolve_names_in_tool(
     tool: &mut ExternalTool,
 ) -> Result<(), NameResolutionError> {
     // External tool names are global, no need to resolve the name field
-    if let Some(install) = &mut tool.install {
-        resolve_names_in_action(project_name, project_path, install)?;
-    }
 
     if let Some(check) = &mut tool.check {
         resolve_names_in_action(project_name, project_path, check)?;

@@ -190,7 +190,6 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
 
     let cmd_tool = ExternalTool {
         name: Arc::<str>::from("cmd"),
-        install: None,
         check: None,
         action: Action {
             tools: HashMap::new(),
@@ -203,6 +202,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
                 &mut Vec::new(),
             )?),
         },
+        var_deps: HashMap::new()
     };
 
     projects.insert(
