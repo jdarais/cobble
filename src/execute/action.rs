@@ -11,7 +11,7 @@ use crate::db::{get_task_record, TaskInput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
 use crate::project_def::types::{json_to_lua, TaskVar};
 use crate::project_def::Action;
-use crate::vars::{get_var, unflatten_vars};
+use crate::vars::get_var;
 use crate::workspace::{BuildEnv, Task, Workspace};
 
 #[derive(Clone)]
@@ -317,7 +317,7 @@ pub fn create_task_action_context<'lua>(
     }
 
     // TODO: Figure out whether unflattening of the vars should happen further upstream, such as when first building the TaskInput data struct
-    let task_input_vars = unflatten_vars(&task_input.vars).map_err(|e| mlua::Error::runtime(format!("Error building vars for task: {}", e)))?;
+    // let task_input_vars = unflatten_vars(&task_input.vars).map_err(|e| mlua::Error::runtime(format!("Error building vars for task: {}", e)))?;
 
     let project_dir = task.dir.to_str().map(|s| s.to_owned()).ok_or_else(|| {
         mlua::Error::runtime(format!(
@@ -335,7 +335,7 @@ pub fn create_task_action_context<'lua>(
             extra_envs: task.build_envs.clone(),
             files,
             action_vars: task.var_deps.clone(),
-            task_input_vars,
+            task_input_vars: task_input.vars.clone(),
             task_outputs: task_input.task_outputs.clone(),
             project_dir,
             args,

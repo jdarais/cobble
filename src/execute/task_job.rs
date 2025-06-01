@@ -22,6 +22,7 @@ use crate::project_def::types::lua_to_json;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
+use crate::vars::set_var;
 use crate::workspace::{Task, Workspace};
 
 fn execute_task_actions<'lua>(
@@ -241,9 +242,13 @@ fn get_current_task_input(
     for (_var_alias, var_name) in task.var_deps.iter() {
         let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
             .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-        current_task_input
-            .vars
-            .insert(String::from(var_name.as_ref()), var_value.clone());
+
+        set_var(var_name, var_value.clone(), &mut current_task_input.vars)
+            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+
+        // current_task_input
+        //     .vars
+        //     .insert(String::from(var_name.as_ref()), var_value.clone());
     }
 
     for (_tool_alias, tool_name) in task.tools.iter() {
@@ -252,9 +257,12 @@ fn get_current_task_input(
             if !current_task_input.vars.contains_key(var_name.as_ref()) {
                 let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
                     .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-                current_task_input
-                    .vars
-                    .insert(String::from(var_name.as_ref()), var_value.clone());
+
+                set_var(var_name, var_value.clone(), &mut current_task_input.vars)
+                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+                // current_task_input
+                //     .vars
+                //     .insert(String::from(var_name.as_ref()), var_value.clone());
             }
         }
     }

@@ -5,12 +5,13 @@
 
 use std::fmt;
 use std::sync::Arc;
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
 use crate::project_def::validate::validate_is_string;
 
+use super::types::MapOrArray;
 use super::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
@@ -19,10 +20,10 @@ use super::validate::{
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ArtifactsRecord {
     #[serde(default)]
-    pub files: HashMap<String, String>,
+    pub files: MapOrArray<String>,
 
     #[serde(default)]
-    pub calc: HashMap<String, String>,
+    pub calc: MapOrArray<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -157,16 +158,23 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
 impl From<ArtifactsRecord> for Artifacts {
     fn from(value: ArtifactsRecord) -> Self {
         Artifacts {
-            files: value
-                .files
-                .iter()
-                .map(|f| Arc::<str>::from(f.1.as_str()))
-                .collect(),
-            calc: value
-                .calc
-                .iter()
-                .map(|c| Arc::<str>::from(c.1.as_str()))
-                .collect(),
+            files: match value.files {
+                    MapOrArray::Map(f_map) => f_map.values()
+                        .map(|f| Arc::<str>::from(f.as_str()))
+                        .collect(),
+                    MapOrArray::Array(f_arr) => f_arr.iter()
+                        .map(|f| Arc::<str>::from(f.as_str()))
+                        .collect()
+                },
+
+            calc: match value.calc {
+                MapOrArray::Map(c_map) => c_map.values()
+                    .map(|c| Arc::<str>::from(c.as_str()))
+                    .collect(),
+                MapOrArray::Array(c_arr) => c_arr.iter()
+                    .map(|c| Arc::<str>::from(c.as_str()))
+                    .collect(),
+            }
         }
     }
 }

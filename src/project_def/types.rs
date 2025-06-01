@@ -55,6 +55,12 @@ impl<T> MapOrArray<T> {
     }
 }
 
+impl <T> Default for MapOrArray<T> {
+    fn default() -> Self {
+        MapOrArray::Array(Vec::new())
+    }
+}
+
 impl<T> From<MapOrArray<T>> for HashMap<StringOrInt, T> {
     fn from(value: MapOrArray<T>) -> Self {
         match value {
