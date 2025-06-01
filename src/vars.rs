@@ -126,3 +126,13 @@ fn set_var_at_subpath_in_table(
 
     Ok(())
 }
+
+pub fn unflatten_vars(vars: &HashMap<String, TaskVar>) -> Result<HashMap<String, TaskVar>, VarLookupError> {
+    let mut unflattened_vars: HashMap<String, TaskVar> = HashMap::new();
+
+    for (k, v) in vars.iter() {
+        set_var(k.as_str(), v.clone(), &mut unflattened_vars)?;
+    }
+
+    Ok(unflattened_vars)
+}

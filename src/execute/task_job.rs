@@ -19,8 +19,10 @@ use crate::execute::execute::{
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 use crate::project_def::types::lua_to_json;
+use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
+use crate::vars::set_var;
 use crate::workspace::{Task, Workspace};
 
 fn execute_task_actions<'lua>(
@@ -80,6 +82,7 @@ where
 fn get_current_task_input(
     workspace_config: &WorkspaceConfig,
     task: &Arc<Task>,
+    tools: &HashMap<Arc<str>, Arc<ExternalTool>>,
     db_env: &lmdb::Environment,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
@@ -233,12 +236,35 @@ fn get_current_task_input(
             .insert(String::from(env_alias.as_ref()), current_env_output);
     }
 
-    for (var_alias, var_name) in task.var_deps.iter() {
+    // NOTE: Vars are stored by NAME, not by ALIAS
+    // TODO: Store all task inputs by name, not alias, and do the lookup from alias to name while building the action context
+
+    for (_var_alias, var_name) in task.var_deps.iter() {
         let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
             .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-        current_task_input
-            .vars
-            .insert(String::from(var_alias.as_ref()), var_value.clone());
+
+        set_var(var_name, var_value.clone(), &mut current_task_input.vars)
+            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+
+        // current_task_input
+        //     .vars
+        //     .insert(String::from(var_name.as_ref()), var_value.clone());
+    }
+
+    for (_tool_alias, tool_name) in task.tools.iter() {
+        let tool = tools.get(tool_name).ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
+        for (_var_alias, var_name) in tool.var_deps.iter() {
+            if !current_task_input.vars.contains_key(var_name.as_ref()) {
+                let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
+                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+
+                set_var(var_name, var_value.clone(), &mut current_task_input.vars)
+                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+                // current_task_input
+                //     .vars
+                //     .insert(String::from(var_name.as_ref()), var_value.clone());
+            }
+        }
     }
 
     Ok(current_task_input)
@@ -347,8 +373,8 @@ fn get_up_to_date_task_record(
         return None;
     }
 
-    for (var_alias, var_value) in current_task_input.vars.iter() {
-        let prev_var = match task_record.input.vars.get(var_alias) {
+    for (var_name, var_value) in current_task_input.vars.iter() {
+        let prev_var = match task_record.input.vars.get(var_name) {
             Some(var) => var,
             None => {
                 return None;
@@ -511,7 +537,7 @@ pub fn execute_task_job(
     }
 
     let current_task_input_res =
-        get_current_task_input(workspace_config, &task.task, db_env, db, &cache);
+        get_current_task_input(workspace_config, &task.task, &task.workspace.tools, db_env, db, &cache);
     let current_task_input = match current_task_input_res {
         Ok(task_input) => task_input,
         Err(e) => {
@@ -633,7 +659,6 @@ mod tests {
         let tool_name = Arc::<str>::from("print");
         let tool = Arc::new(ExternalTool {
             name: tool_name.clone(),
-            install: None,
             check: None,
             action: Action {
                 tools: HashMap::new(),
@@ -643,6 +668,7 @@ mod tests {
                     dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap(),
                 ),
             },
+            var_deps: HashMap::new()
         });
 
         let test_task_name = Arc::<str>::from("test");

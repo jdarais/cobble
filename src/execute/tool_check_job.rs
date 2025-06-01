@@ -76,6 +76,7 @@ fn execute_tool_check_action(
         check_action,
         &job.job_id,
         HashMap::new(),
+        job.tool.var_deps.clone(),
         vars,
         HashMap::new(),
         project_dir,

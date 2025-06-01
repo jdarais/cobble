@@ -15,9 +15,7 @@ use crate::{
     execute::{
         action::{create_action_context, invoke_action_protected, ActionContextArgs},
         execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult},
-    },
-    project_def::types::TaskVar,
-    vars::get_var,
+    }
 };
 
 fn execute_clean_actions(
@@ -29,13 +27,6 @@ fn execute_clean_actions(
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<(), TaskExecutionError> {
-    let mut vars: HashMap<String, TaskVar> = workspace_config.vars.clone();
-    for (var_alias, var_name) in &job.task.var_deps {
-        let var = get_var(var_name.as_ref(), &workspace_config.vars)
-            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-        vars.insert(var_alias.as_ref().to_owned(), var.clone());
-    }
-
     let project_dir = job.task.dir.to_str().ok_or_else(|| {
         TaskExecutionError::ExecutorError(format!(
             "Unable to convert path to a string: {}",
@@ -52,7 +43,8 @@ fn execute_clean_actions(
                 extra_tools: job.task.tools.clone(),
                 extra_envs: job.task.build_envs.clone(),
                 files: HashMap::new(),
-                vars: vars.clone(),
+                action_vars: job.task.var_deps.clone(),
+                task_input_vars: workspace_config.vars.clone(),
                 task_outputs: HashMap::new(),
                 project_dir: project_dir.to_owned(),
                 args: mlua::Value::Nil,
