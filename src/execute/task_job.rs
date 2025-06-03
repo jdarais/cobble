@@ -18,7 +18,7 @@ use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
-use crate::project_def::types::lua_to_json;
+use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
@@ -252,7 +252,9 @@ fn get_current_task_input(
     }
 
     for (_tool_alias, tool_name) in task.tools.iter() {
-        let tool = tools.get(tool_name).ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
+        let tool = tools
+            .get(tool_name)
+            .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
         for (_var_alias, var_name) in tool.var_deps.iter() {
             if !current_task_input.vars.contains_key(var_name.as_ref()) {
                 let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
@@ -281,6 +283,7 @@ fn get_up_to_date_task_record(
         Ok(r) => Some(r),
         Err(e) => match e {
             GetError::NotFound(_) => None,
+            GetError::ParseError(_) => None,
             _ => {
                 panic!("Error retrieving task record from the database");
             }
@@ -490,7 +493,8 @@ fn execute_task_actions_and_store_result(
         }
     }
 
-    let task_output_json = lua_to_json(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
+    let task_output_json =
+        to_ser_lua_value(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
 
     let task_output_record = TaskOutput {
         task_output: task_output_json,
@@ -536,8 +540,14 @@ pub fn execute_task_job(
         return;
     }
 
-    let current_task_input_res =
-        get_current_task_input(workspace_config, &task.task, &task.workspace.tools, db_env, db, &cache);
+    let current_task_input_res = get_current_task_input(
+        workspace_config,
+        &task.task,
+        &task.workspace.tools,
+        db_env,
+        db,
+        &cache,
+    );
     let current_task_input = match current_task_input_res {
         Ok(task_input) => task_input,
         Err(e) => {
@@ -616,7 +626,8 @@ mod tests {
     use crate::config::TaskOutputCondition;
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
-    use crate::lua::{detached::dump_function, lua_env::create_lua_env};
+    use crate::lua::lua_env::create_lua_env;
+    use crate::lua::s11n::to_ser_lua_value;
     use crate::project_def::{Action, ActionCmd, ExternalTool};
     use crate::workspace::{Task, TaskType, Workspace};
 
@@ -664,11 +675,11 @@ mod tests {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 kwargs: HashMap::new(),
-                cmd: ActionCmd::Func(
-                    dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap(),
-                ),
+                cmd: ActionCmd::Func(Arc::new(RwLock::new(
+                    to_ser_lua_value(&lua, &mlua::Value::Function(tool_func)).unwrap(),
+                ))),
             },
-            var_deps: HashMap::new()
+            var_deps: HashMap::new(),
         });
 
         let test_task_name = Arc::<str>::from("test");

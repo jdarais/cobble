@@ -15,7 +15,7 @@ use crate::{
     execute::{
         action::{create_action_context, invoke_action_protected, ActionContextArgs},
         execute::{CleanJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult},
-    }
+    },
 };
 
 fn execute_clean_actions(

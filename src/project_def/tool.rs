@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::{borrow::Cow, fmt, sync::Arc};
 
 use crate::project_def::action::validate_action;
+use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
     key_validation_error, validate_is_string, validate_is_table, validate_required_key,
 };
 use crate::project_def::Action;
-use crate::project_def::types::StringOrInt;
 
 use super::validate::{push_prop_name_if_exists, validate_table_has_only_string_or_sequence_keys};
 
@@ -38,8 +38,12 @@ fn validate_tool_deps<'lua>(
         match k_str.to_str()? {
             "vars" => {
                 let v_tbl = validate_is_table(&v, Some(Cow::Borrowed("vars")), prop_path.as_mut())?;
-                validate_table_has_only_string_or_sequence_keys(&v_tbl, Some(Cow::Borrowed("vars")), prop_path.as_mut())
-            },
+                validate_table_has_only_string_or_sequence_keys(
+                    &v_tbl,
+                    Some(Cow::Borrowed("vars")),
+                    prop_path.as_mut(),
+                )
+            }
             unknown_key => key_validation_error(unknown_key, vec!["vars"], prop_path.as_mut()),
         }?;
     }
@@ -104,7 +108,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                 let name = Arc::<str>::from(name_str);
 
                 let mut var_deps: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                
+
                 let deps_tbl_opt: Option<mlua::Table> = tbl.get("deps")?;
                 if let Some(deps_tbl) = deps_tbl_opt {
                     let var_deps_tbl_opt: Option<mlua::Table> = deps_tbl.get("vars")?;
@@ -114,7 +118,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                             let var_dep_value: Arc<str> = v.into();
                             let var_dep_key = match k {
                                 StringOrInt::Int(_i) => var_dep_value.clone(),
-                                StringOrInt::String(s) => s.into()
+                                StringOrInt::String(s) => s.into(),
                             };
 
                             var_deps.insert(var_dep_key, var_dep_value);
@@ -142,7 +146,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                     name,
                     check,
                     action,
-                    var_deps
+                    var_deps,
                 })
             }
             _ => Err(mlua::Error::runtime(format!(
@@ -159,7 +163,7 @@ impl<'lua> mlua::IntoLua<'lua> for ExternalTool {
             name,
             check,
             action,
-            var_deps
+            var_deps,
         } = self;
         let tool_table = lua.create_table()?;
 

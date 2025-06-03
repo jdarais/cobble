@@ -6,11 +6,13 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use serde::{Deserialize, Serialize};
+
 use crate::lua::json::JsonLib;
 use crate::lua::toml::TomlLib;
 use crate::lua::{cmd::CmdLib, path::FsLib, script_dir::ScriptDirLib};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CobbleUserData {
     FsLib,
     CmdLib,

@@ -8,7 +8,10 @@ use std::{collections::HashMap, error::Error, fmt, io, path::Path};
 use lmdb::{Transaction, WriteFlags};
 use serde::{Deserialize, Serialize};
 
-use crate::project_def::types::TaskVar;
+use crate::{
+    lua::s11n::{SerLuaValue, SerLuaValueBlock},
+    project_def::types::TaskVar,
+};
 
 const TASK_KEY_PREFIX: &str = "task:";
 
@@ -24,14 +27,16 @@ pub struct TaskInput {
     pub file_hashes: HashMap<String, String>,
 
     #[serde(default)]
-    pub task_outputs: HashMap<String, serde_json::Value>,
+    pub task_outputs: HashMap<String, SerLuaValueBlock>,
 
     #[serde(default)]
     pub vars: HashMap<String, TaskVar>,
 }
 
-fn default_task_output() -> serde_json::Value {
-    serde_json::Value::Null
+fn default_task_output() -> SerLuaValueBlock {
+    SerLuaValueBlock {
+        values: vec![SerLuaValue::Nil],
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -40,7 +45,7 @@ pub struct TaskOutput {
     pub file_hashes: HashMap<String, String>,
 
     #[serde(default = "default_task_output")]
-    pub task_output: serde_json::Value,
+    pub task_output: SerLuaValueBlock,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

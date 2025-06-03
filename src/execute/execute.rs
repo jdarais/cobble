@@ -17,6 +17,7 @@ use crate::config::{TaskOutputCondition, WorkspaceConfig};
 use crate::db::{new_db_env, DeleteError, GetError, PutError};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::ExternalTool;
 use crate::util::process_io::ProcessIO;
 use crate::vars::VarLookupError;
@@ -490,7 +491,7 @@ pub struct TaskExecutorCache {
     pub project_source_hashes: RwLock<HashMap<Arc<str>, String>>,
     pub dir_mtimes: RwLock<HashMap<Arc<str>, u128>>,
     pub file_hashes: RwLock<HashMap<Arc<str>, String>>,
-    pub task_outputs: RwLock<HashMap<Arc<str>, serde_json::Value>>,
+    pub task_outputs: RwLock<HashMap<Arc<str>, SerLuaValueBlock>>,
 }
 
 pub enum TaskConsoleOutput {
@@ -541,7 +542,7 @@ impl TaskExecutor {
         let cur_num_worker_threads = self.worker_threads.len();
         let des_num_worker_threads = max(1, self.workspace_config.num_threads as usize);
         if cur_num_worker_threads < des_num_worker_threads {
-            for _ in cur_num_worker_threads..des_num_worker_threads {
+            for i in cur_num_worker_threads..des_num_worker_threads {
                 let worker_args = TaskExecutorWorkerArgs {
                     workspace_config: self.workspace_config.clone(),
                     db_env: self.db_env.clone(),
@@ -551,7 +552,10 @@ impl TaskExecutor {
                     cache: self.cache.clone(),
                 };
 
-                let worker_thread = thread::spawn(move || run_task_executor_worker(worker_args));
+                let worker_thread = thread::Builder::new()
+                    .name(format!("Worker {i}"))
+                    .spawn(move || run_task_executor_worker(worker_args))
+                    .unwrap();
 
                 self.worker_threads.push(worker_thread);
             }

@@ -17,7 +17,7 @@ pub mod validate;
 pub use action::{Action, ActionCmd};
 pub use artifact::Artifacts;
 pub use build_env::BuildEnvDef;
-pub use dependency::{Dependencies, DependencyListByType};
+pub use dependency::Dependencies;
 pub use project::Project;
 pub use task::TaskDef;
 pub use tool::ExternalTool;
