@@ -8,9 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use crate::lua::detached::{
-    detach_value, dump_function, hydrate_value, DetachedLuaValue, FunctionDump,
-};
+use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock};
 use crate::project_def::validate::{
     prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
@@ -19,7 +17,7 @@ use crate::project_def::validate::{
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
-    Func(Arc<RwLock<FunctionDump>>),
+    Func(Arc<RwLock<SerLuaValueBlock>>),
 }
 
 impl fmt::Display for ActionCmd {
@@ -27,7 +25,7 @@ impl fmt::Display for ActionCmd {
         use ActionCmd::*;
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
-            Func(func) => write!(f, "Func({})", func.read().unwrap()),
+            Func(func) => write!(f, "Func({:?})", func.read().unwrap()),
         }
     }
 }
@@ -36,7 +34,7 @@ impl fmt::Display for ActionCmd {
 pub struct Action {
     pub tools: HashMap<Arc<str>, Arc<str>>,
     pub build_envs: HashMap<Arc<str>, Arc<str>>,
-    pub kwargs: HashMap<Arc<str>, DetachedLuaValue>,
+    pub kwargs: HashMap<Arc<str>, SerLuaValueBlock>,
     pub cmd: ActionCmd,
 }
 
@@ -198,7 +196,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
             mlua::Value::Table(tbl) => {
                 let mut build_envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
                 let mut tools: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                let mut kwargs: HashMap<Arc<str>, DetachedLuaValue> = HashMap::new();
+                let mut kwargs: HashMap<Arc<str>, SerLuaValueBlock> = HashMap::new();
 
                 for pair in tbl.clone().pairs() {
                     let (k, v): (mlua::Value, mlua::Value) = pair?;
@@ -253,8 +251,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 }
                             },
                             kwarg => {
-                                let detached_v =
-                                    detach_value(lua, v, &mut HashMap::new(), &mut Vec::new())?;
+                                let detached_v = to_ser_lua_value(lua, &v)?;
                                 kwargs.insert(Arc::<str>::from(kwarg.to_owned()), detached_v);
                             }
                         }
@@ -274,16 +271,13 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 tools.insert(cmd_tool_name.clone(), cmd_tool_name);
                             }
 
+                            let ser_lua_fn = to_ser_lua_value(lua, &mlua::Value::Function(func))?;
+
                             return Ok(Action {
                                 build_envs,
                                 tools,
                                 kwargs,
-                                cmd: ActionCmd::Func(dump_function(
-                                    lua,
-                                    func,
-                                    &mut HashMap::new(),
-                                    &mut Vec::new(),
-                                )?),
+                                cmd: ActionCmd::Func(Arc::new(RwLock::new(ser_lua_fn))),
                             });
                         }
                         _ => { /* not a function action */ }
@@ -318,18 +312,14 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 // We are a function action without a tool or build env
                 // Function actions should always have the cmd tool available
                 let cmd_tool_name = Arc::<str>::from("cmd");
+                let ser_lua_fn = to_ser_lua_value(lua, &mlua::Value::Function(func))?;
                 Ok(Action {
                     build_envs: HashMap::new(),
                     tools: vec![(cmd_tool_name.clone(), cmd_tool_name)]
                         .into_iter()
                         .collect(),
                     kwargs: HashMap::new(),
-                    cmd: ActionCmd::Func(dump_function(
-                        lua,
-                        func,
-                        &mut HashMap::new(),
-                        &mut Vec::new(),
-                    )?),
+                    cmd: ActionCmd::Func(Arc::new(RwLock::new(ser_lua_fn))),
                 })
             }
             _ => Err(mlua::Error::runtime(
@@ -363,12 +353,12 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
                 }
             }
             ActionCmd::Func(f) => {
-                action_table.push(DetachedLuaValue::Function(f))?;
+                action_table.push(&*f.read().unwrap())?;
             }
         }
 
         for (k, v) in kwargs {
-            action_table.set(k.as_ref(), hydrate_value(lua, &v, &mut HashMap::new())?)?;
+            action_table.set(k.as_ref(), v)?;
         }
 
         let tools_str: HashMap<&str, &str> = tools

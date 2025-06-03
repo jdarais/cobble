@@ -18,7 +18,7 @@ use crate::execute::execute::{
     TaskExecutionError, TaskExecutorCache, TaskJob, TaskJobMessage, TaskResult,
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
-use crate::project_def::types::lua_to_json;
+use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
@@ -490,7 +490,7 @@ fn execute_task_actions_and_store_result(
         }
     }
 
-    let task_output_json = lua_to_json(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
+    let task_output_json = to_ser_lua_value(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
 
     let task_output_record = TaskOutput {
         task_output: task_output_json,
@@ -616,7 +616,8 @@ mod tests {
     use crate::config::TaskOutputCondition;
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
-    use crate::lua::{detached::dump_function, lua_env::create_lua_env};
+    use crate::lua::s11n::to_ser_lua_value;
+    use crate::lua::{lua_env::create_lua_env};
     use crate::project_def::{Action, ActionCmd, ExternalTool};
     use crate::workspace::{Task, TaskType, Workspace};
 
@@ -665,7 +666,7 @@ mod tests {
                 build_envs: HashMap::new(),
                 kwargs: HashMap::new(),
                 cmd: ActionCmd::Func(
-                    dump_function(&lua, tool_func, &mut HashMap::new(), &mut Vec::new()).unwrap(),
+                    Arc::new(RwLock::new(to_ser_lua_value(&lua, &mlua::Value::Function(tool_func)).unwrap())),
                 ),
             },
             var_deps: HashMap::new()

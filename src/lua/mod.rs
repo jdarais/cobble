@@ -3,9 +3,10 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-pub mod detached;
+// pub mod detached;
 pub mod lua_env;
 pub mod userdata;
+pub mod s11n;
 
 mod cmd;
 mod json;

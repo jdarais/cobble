@@ -6,24 +6,11 @@
 use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use serde::{Deserialize, Serialize};
-
-use crate::project_def::types::StringOrInt;
+use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
 use crate::project_def::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_string, validate_is_table,
     validate_table_has_only_string_or_sequence_keys,
 };
-
-use super::types::MapOrArray;
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct DependencyListByType {
-    pub dirs: Option<MapOrArray<String>>,
-    pub files: Option<MapOrArray<String>>,
-    pub tasks: Option<MapOrArray<String>>,
-    pub vars: Option<MapOrArray<String>>,
-    pub calc: Option<MapOrArray<String>>,
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct Dependencies {
@@ -42,92 +29,9 @@ impl fmt::Display for Dependencies {
 
 impl<'lua> mlua::FromLua<'lua> for Dependencies {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let deps_by_type: DependencyListByType = lua.unpack(value)?;
-        Ok(deps_by_type.into())
-    }
-}
-
-fn alias_map_from_map_or_array(value: MapOrArray<String>) -> HashMap<Arc<str>, Arc<str>> {
-    match value {
-        MapOrArray::Map(m) => m.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
-        MapOrArray::Array(arr) => arr
-            .into_iter()
-            .map(|v| {
-                let val: Arc<str> = v.into();
-                (val.clone(), val)
-            })
-            .collect(),
-    }
-}
-
-impl From<DependencyListByType> for Dependencies {
-    fn from(value: DependencyListByType) -> Self {
-        let DependencyListByType {
-            dirs,
-            files,
-            tasks,
-            vars,
-            calc,
-        } = value;
-
-        let calc_deps_list: Vec<Arc<str>> = match calc {
-            Some(MapOrArray::Map(m)) => m.into_iter().map(|(_k, v)| v.into()).collect(),
-            Some(MapOrArray::Array(arr)) => arr.into_iter().map(|v| v.into()).collect(),
-            _ => Vec::new()
-        };
-
-        Dependencies {
-            dirs: dirs.map(alias_map_from_map_or_array).unwrap_or_default(),
-            files: files.map(alias_map_from_map_or_array).unwrap_or_default(),
-            tasks: tasks.map(alias_map_from_map_or_array).unwrap_or_default(),
-            vars: vars.map(alias_map_from_map_or_array).unwrap_or_default(),
-            calc: calc_deps_list,
-        }
-    }
-}
-
-fn write_string_or_int_map(
-    f: &mut fmt::Formatter<'_>,
-    val: &HashMap<StringOrInt, String>,
-) -> fmt::Result {
-    for (i, (f_alias, f_path)) in val.iter().enumerate() {
-        if i > 0 {
-            f.write_str(", ")?;
-        }
-        write!(f, "{}: {}", f_alias, f_path)?;
-    }
-    Ok(())
-}
-
-impl fmt::Display for DependencyListByType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("{")?;
-
-        if let Some(files) = &self.files {
-            f.write_str("files={")?;
-            write_string_or_int_map(f, &files.clone().into())?;
-            f.write_str("},")?;
-        }
-
-        if let Some(tasks) = &self.tasks {
-            f.write_str("tasks={")?;
-            write_string_or_int_map(f, &tasks.clone().into())?;
-            f.write_str("},")?;
-        }
-
-        if let Some(vars) = &self.vars {
-            f.write_str("vars={")?;
-            write_string_or_int_map(f, &vars.clone().into())?;
-            f.write_str("},")?;
-        }
-
-        if let Some(calc) = &self.calc {
-            f.write_str("calc={")?;
-            write_string_or_int_map(f, &calc.clone().into())?;
-            f.write_str("}")?;
-        }
-
-        f.write_str("}")
+        let value_block: SerLuaValueBlock = lua.unpack(value)?;
+        let deps = Dependencies::try_from(&value_block).map_err(|e| mlua::Error::runtime(e))?;
+        Ok(deps)
     }
 }
 
@@ -207,44 +111,77 @@ pub fn validate_dep_list<'lua>(
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for DependencyListByType {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
-        let mut deps = DependencyListByType {
-            dirs: None,
-            files: None,
-            tasks: None,
-            vars: None,
-            calc: None,
-        };
+impl TryFrom<&SerLuaValueBlock> for Dependencies {
+    type Error = String;
+    
+    fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
+        let mut deps: Dependencies = Default::default();
 
-        let deps_table: mlua::Table = lua.unpack(value)?;
-        for pair in deps_table.pairs() {
-            let (k, v): (String, mlua::Value) = pair?;
-            match k.as_str() {
-                "dirs" => {
-                    deps.dirs = lua.unpack(v)?;
+        let value_ref = refify_ser_lua_value(0, &value.values);
+
+        let deps_table = value_ref.as_table().ok_or_else(|| format!("Expected a table for dependencies"))?;
+
+        for (dep_key, dep_val) in deps_table.entries() {
+            
+            if dep_key == SerLuaValueRef::String("dirs") {
+                let dirs_table = dep_val.as_table().ok_or_else(|| format!("dirs property must be a table"))?;
+
+                for (k, v) in dirs_table.entries() {
+                    let v_str = v.as_string().map(|s| Arc::<str>::from(s)).ok_or_else(|| format!("dir dependency must be a string"))?;
+                    let k_str = match k {
+                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
+                        SerLuaValueRef::Integer(_) => v_str.clone(),
+                        _ => { return Err(format!("dir dependency key must be a string or integer")); }
+                    };
+                    deps.dirs.insert(k_str, v_str);
                 }
-                "files" => {
-                    deps.files = lua.unpack(v)?;
+            } else if dep_key == SerLuaValueRef::String("files") {
+                let files_table = dep_val.as_table().ok_or_else(|| format!("files property must be a table"))?;
+
+                for (k, v) in files_table.entries() {
+                    let v_str = v.as_string().map(|s| Arc::<str>::from(s)).ok_or_else(|| format!("file dependency must be a string"))?;
+                    let k_str = match k {
+                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
+                        SerLuaValueRef::Integer(_) => v_str.clone(),
+                        _ => { return Err(format!("file dependency key must be a string or integer")); }
+                    };
+                    deps.files.insert(k_str, v_str);
                 }
-                "tasks" => {
-                    deps.tasks = lua.unpack(v)?;
+            } else if dep_key == SerLuaValueRef::String("tasks") {
+                let tasks_table = dep_val.as_table().ok_or_else(|| format!("tasks property must be a table"))?;
+
+                for (k, v) in tasks_table.entries() {
+                    let v_str = v.as_string().map(|s| Arc::<str>::from(s)).ok_or_else(|| format!("task dependency must be a string"))?;
+                    let k_str = match k {
+                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
+                        SerLuaValueRef::Integer(_) => v_str.clone(),
+                        _ => { return Err(format!("task dependency key must be a string or integer")); }
+                    };
+                    deps.tasks.insert(k_str, v_str);
                 }
-                "vars" => {
-                    deps.vars = lua.unpack(v)?;
+            } else if dep_key == SerLuaValueRef::String("vars") {
+                let vars_table = dep_val.as_table().ok_or_else(|| format!("vars property must be a table"))?;
+
+                for (k, v) in vars_table.entries() {
+                    let v_str = v.as_string().map(|s| Arc::<str>::from(s)).ok_or_else(|| format!("var dependency must be a string"))?;
+                    let k_str = match k {
+                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
+                        SerLuaValueRef::Integer(_) => v_str.clone(),
+                        _ => { return Err(format!("var dependency key must be a string or integer")); }
+                    };
+                    deps.vars.insert(k_str, v_str);
                 }
-                "calc" => {
-                    deps.calc = lua.unpack(v)?;
-                }
-                _ => {
-                    return Err(mlua::Error::runtime(format!(
-                        "Unknown dependency type: {}",
-                        k
-                    )));
+            } else if dep_key == SerLuaValueRef::String("calc") {
+                let calc_table = dep_val.as_table().ok_or_else(|| format!("calc property must be a table"))?;
+
+                for (_k, v) in calc_table.entries() {
+                    let v_str = v.as_string().map(|s| Arc::<str>::from(s)).ok_or_else(|| format!("calc dependency must be a string"))?;
+                    deps.calc.push(v_str);
                 }
             }
         }
 
         Ok(deps)
     }
+
 }

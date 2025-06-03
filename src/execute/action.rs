@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use crate::db::{get_task_record, TaskInput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
-use crate::project_def::types::{json_to_lua, TaskVar};
+use crate::lua::s11n::SerLuaValueBlock;
+use crate::project_def::types::TaskVar;
 use crate::project_def::Action;
 use crate::vars::get_var;
 use crate::workspace::{BuildEnv, Task, Workspace};
@@ -28,7 +29,7 @@ pub struct ActionContextArgs<'lua> {
     pub files: HashMap<Arc<str>, ActionContextFile>,
     pub action_vars: HashMap<Arc<str>, Arc<str>>,
     pub task_input_vars: HashMap<String, TaskVar>,
-    pub task_outputs: HashMap<String, serde_json::Value>,
+    pub task_outputs: HashMap<String, SerLuaValueBlock>,
     pub project_dir: String,
     pub args: mlua::Value<'lua>,
     pub workspace: Arc<Workspace>,
@@ -86,7 +87,7 @@ fn invoke_tool_by_name<'lua>(
     task_name: &Arc<str>,
     files: HashMap<Arc<str>, ActionContextFile>,
     task_input_vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, serde_json::Value>,
+    task_outputs: HashMap<String, SerLuaValueBlock>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -134,7 +135,7 @@ fn invoke_env_by_name<'lua>(
     task_name: &Arc<str>,
     files: HashMap<Arc<str>, ActionContextFile>,
     vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, serde_json::Value>,
+    task_outputs: HashMap<String, SerLuaValueBlock>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -183,7 +184,7 @@ pub fn create_tool_action_context<'lua>(
     files: HashMap<Arc<str>, ActionContextFile>,
     action_vars: HashMap<Arc<str>, Arc<str>>,
     task_input_vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, serde_json::Value>,
+    task_outputs: HashMap<String, SerLuaValueBlock>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -221,7 +222,7 @@ pub fn create_env_action_context<'lua>(
     task_name: &Arc<str>,
     files: HashMap<Arc<str>, ActionContextFile>,
     task_input_vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, serde_json::Value>,
+    task_outputs: HashMap<String, SerLuaValueBlock>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -249,7 +250,7 @@ pub fn create_env_action_context<'lua>(
         },
     };
 
-    let mut task_outputs_with_install: HashMap<String, serde_json::Value> = task_outputs;
+    let mut task_outputs_with_install: HashMap<String, SerLuaValueBlock> = task_outputs;
     let mut existing_opt =
         task_outputs_with_install.insert(String::from("install"), env_install_task_output);
 
@@ -493,7 +494,7 @@ pub fn create_action_context<'lua>(
 
     let task_outputs_lua = lua.create_table().and_then(|tbl| {
         for (k, v) in task_outputs.iter() {
-            tbl.set(k.clone(), json_to_lua(lua, v.clone())?)?;
+            tbl.set(k.clone(), v)?;
         }
         Ok(tbl)
     })?;

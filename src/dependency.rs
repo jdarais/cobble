@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::execute::execute::{TaskExecutionError, TaskExecutor};
 use crate::project_def::dependency::Dependencies;
-use crate::project_def::{DependencyListByType, Project};
+use crate::project_def::Project;
 use crate::resolve::{resolve_names_in_dependency_list, NameResolutionError};
 use crate::util::process_io::ProcessIO;
 use crate::workspace::{add_dependency_list_to_task, Task, Workspace};
@@ -153,10 +153,8 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
             .get(calc_dep.as_ref())
             .expect("calculated dependency task output should be available after executing");
 
-        let deps_list_by_type: DependencyListByType =
-            serde_json::from_value(task_output.clone())
-                .map_err(|e| ExecutionGraphError::OutputDeserializationError(e.to_string()))?;
-        let mut deps: Dependencies = deps_list_by_type.into();
+        let mut deps = Dependencies::try_from(task_output)
+                .map_err(|e| ExecutionGraphError::OutputDeserializationError(e))?;
 
         // Do not allow calculated dependencies to produce more calculated dependencies for the same task
         deps.calc.clear();

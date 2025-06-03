@@ -7,24 +7,13 @@ use std::fmt;
 use std::sync::Arc;
 use std::borrow::Cow;
 
-use serde::{Deserialize, Serialize};
-
+use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
 use crate::project_def::validate::validate_is_string;
 
-use super::types::MapOrArray;
 use super::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
 };
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ArtifactsRecord {
-    #[serde(default)]
-    pub files: MapOrArray<String>,
-
-    #[serde(default)]
-    pub calc: MapOrArray<String>,
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct Artifacts {
@@ -155,26 +144,60 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
     }
 }
 
-impl From<ArtifactsRecord> for Artifacts {
-    fn from(value: ArtifactsRecord) -> Self {
-        Artifacts {
-            files: match value.files {
-                    MapOrArray::Map(f_map) => f_map.values()
-                        .map(|f| Arc::<str>::from(f.as_str()))
-                        .collect(),
-                    MapOrArray::Array(f_arr) => f_arr.iter()
-                        .map(|f| Arc::<str>::from(f.as_str()))
-                        .collect()
-                },
 
-            calc: match value.calc {
-                MapOrArray::Map(c_map) => c_map.values()
-                    .map(|c| Arc::<str>::from(c.as_str()))
-                    .collect(),
-                MapOrArray::Array(c_arr) => c_arr.iter()
-                    .map(|c| Arc::<str>::from(c.as_str()))
-                    .collect(),
+impl TryFrom<&SerLuaValueBlock> for Artifacts {
+    type Error = String;
+    fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
+        let mut artifacts = Artifacts { files: Vec::new(), calc: Vec::new() };
+        
+        let value_ref = refify_ser_lua_value(0, &value.values);
+
+        let artifacts_table = match &value_ref {
+            SerLuaValueRef::Table(t) => t,
+            _ => { return Err(format!("Value is not a table")); }
+        };
+
+        let files_entry_opt = artifacts_table.entries().find(|(k, _v)| *k == SerLuaValueRef::String("files"));
+        let files_table_opt = match files_entry_opt {
+            Some(ent) => match ent.1 {
+                SerLuaValueRef::Table(t) => Some(t),
+                _ => { return Err(format!("Value is not a table")); }
+            },
+            None => None
+        };
+        
+        if let Some(files_table) = files_table_opt {
+            for (_k, v) in files_table.entries() {
+                let v_str = match v {
+                    SerLuaValueRef::String(s) => s,
+                    _ => { return Err(format!("files values must be strings")); }
+                };
+
+                artifacts.files.push(Arc::<str>::from(v_str.to_owned()));
             }
         }
+
+        let calc_entry_opt = artifacts_table.entries().find(|(k, _v)| *k == SerLuaValueRef::String("calc"));
+        let calc_table_opt = match calc_entry_opt {
+            Some(ent) => match ent.1 {
+                SerLuaValueRef::Table(t) => Some(t),
+                _ => { return Err(format!("Value is not a talbe")); }
+            }
+            None => None
+        };
+
+        if let Some(calc_table) = calc_table_opt {
+            for (_k, v) in calc_table.entries() {
+                let v_str = match v {
+                    SerLuaValueRef::String(s) => s,
+                    _ => { return Err(format!("calc values must be strings")); }
+                };
+
+                artifacts.calc.push(Arc::<str>::from(v_str.to_owned()));
+            }
+        }
+
+        Ok(artifacts)
+
     }
 }

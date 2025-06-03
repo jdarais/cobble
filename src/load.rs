@@ -6,11 +6,11 @@
 use std::collections::HashMap;
 use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::config::PROJECT_FILE_NAME;
-use crate::lua::detached::dump_function;
 use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
+use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
@@ -195,12 +195,10 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             tools: HashMap::new(),
             build_envs: HashMap::new(),
             kwargs: HashMap::new(),
-            cmd: ActionCmd::Func(dump_function(
+            cmd: ActionCmd::Func(Arc::new(RwLock::new(to_ser_lua_value(
                 lua,
-                cmd_tool_action_func,
-                &mut HashMap::new(),
-                &mut Vec::new(),
-            )?),
+                &mlua::Value::Function(cmd_tool_action_func)
+            )?))),
         },
         var_deps: HashMap::new()
     };
