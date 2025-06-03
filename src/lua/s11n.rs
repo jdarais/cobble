@@ -380,18 +380,18 @@ pub fn dump_function_upvalues<'lua>(
 
 fn append_ser_lua_value<'lua>(
     lua: &'lua mlua::Lua,
-    value: &mlua::Value,
-    ref_value_index_map: &mut HashMap<*const c_void, usize>,
+    value: &mlua::Value<'lua>,
+    ref_value_index_map: &mut HashMap<*const c_void, (usize, mlua::Value<'lua>)>,
     ref_values: &mut Vec<SerLuaValue>,
 ) -> mlua::Result<usize> {
     let value_ptr = value.to_pointer();
-    if let Some(idx) = ref_value_index_map.get(&value_ptr) {
+    if let Some((idx, _)) = ref_value_index_map.get(&value_ptr) {
         return Ok(*idx);
     }
 
     let ref_index = ref_values.len();
     ref_values.push(SerLuaValue::Nil);
-    ref_value_index_map.insert(value.to_pointer(), ref_index);
+    ref_value_index_map.insert(value.to_pointer(), (ref_index, value.clone()));
     let ser_val = match value {
         mlua::Value::Nil => SerLuaValue::Nil,
         mlua::Value::Boolean(v) => SerLuaValue::Boolean(*v),
@@ -440,8 +440,6 @@ fn append_ser_lua_value<'lua>(
                 upvalues.push((upval_name, upval_value_ref_index));
             }
 
-            upvalues.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
-
             SerLuaValue::Function(SerLuaFunction { source, upvalues })
         }
         mlua::Value::UserData(d) => SerLuaValue::UserData(CobbleUserData::from_userdata(lua, d.clone())?),
@@ -472,9 +470,9 @@ fn append_ser_lua_value<'lua>(
 
 pub fn to_ser_lua_value<'lua>(
     lua: &'lua mlua::Lua,
-    value: &mlua::Value,
+    value: &mlua::Value<'lua>,
 ) -> mlua::Result<SerLuaValueBlock> {
-    let mut ref_value_index_map: HashMap<*const c_void, usize> = HashMap::new();
+    let mut ref_value_index_map: HashMap<*const c_void, (usize, mlua::Value<'lua>)> = HashMap::new();
     let mut ref_values: Vec<SerLuaValue> = Vec::new();
 
     append_ser_lua_value(lua, value, &mut ref_value_index_map, &mut ref_values)?;

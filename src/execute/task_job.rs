@@ -281,6 +281,7 @@ fn get_up_to_date_task_record(
         Ok(r) => Some(r),
         Err(e) => match e {
             GetError::NotFound(_) => None,
+            GetError::ParseError(_) => None,
             _ => {
                 panic!("Error retrieving task record from the database");
             }
