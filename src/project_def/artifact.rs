@@ -3,9 +3,9 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
-use std::borrow::Cow;
 
 use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
 use crate::project_def::validate::validate_is_string;
@@ -144,53 +144,69 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
     }
 }
 
-
 impl TryFrom<&SerLuaValueBlock> for Artifacts {
     type Error = String;
     fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
-        let mut artifacts = Artifacts { files: Vec::new(), calc: Vec::new() };
-        
+        let mut artifacts = Artifacts {
+            files: Vec::new(),
+            calc: Vec::new(),
+        };
+
         let value_ref = refify_ser_lua_value(0, &value.values);
 
         let artifacts_table = match &value_ref {
             SerLuaValueRef::Table(t) => t,
-            _ => { return Err(format!("Value is not a table")); }
+            _ => {
+                return Err(format!("Value is not a table"));
+            }
         };
 
-        let files_entry_opt = artifacts_table.entries().find(|(k, _v)| *k == SerLuaValueRef::String("files"));
+        let files_entry_opt = artifacts_table
+            .entries()
+            .find(|(k, _v)| *k == SerLuaValueRef::String("files"));
         let files_table_opt = match files_entry_opt {
             Some(ent) => match ent.1 {
                 SerLuaValueRef::Table(t) => Some(t),
-                _ => { return Err(format!("Value is not a table")); }
+                _ => {
+                    return Err(format!("Value is not a table"));
+                }
             },
-            None => None
+            None => None,
         };
-        
+
         if let Some(files_table) = files_table_opt {
             for (_k, v) in files_table.entries() {
                 let v_str = match v {
                     SerLuaValueRef::String(s) => s,
-                    _ => { return Err(format!("files values must be strings")); }
+                    _ => {
+                        return Err(format!("files values must be strings"));
+                    }
                 };
 
                 artifacts.files.push(Arc::<str>::from(v_str.to_owned()));
             }
         }
 
-        let calc_entry_opt = artifacts_table.entries().find(|(k, _v)| *k == SerLuaValueRef::String("calc"));
+        let calc_entry_opt = artifacts_table
+            .entries()
+            .find(|(k, _v)| *k == SerLuaValueRef::String("calc"));
         let calc_table_opt = match calc_entry_opt {
             Some(ent) => match ent.1 {
                 SerLuaValueRef::Table(t) => Some(t),
-                _ => { return Err(format!("Value is not a talbe")); }
-            }
-            None => None
+                _ => {
+                    return Err(format!("Value is not a talbe"));
+                }
+            },
+            None => None,
         };
 
         if let Some(calc_table) = calc_table_opt {
             for (_k, v) in calc_table.entries() {
                 let v_str = match v {
                     SerLuaValueRef::String(s) => s,
-                    _ => { return Err(format!("calc values must be strings")); }
+                    _ => {
+                        return Err(format!("calc values must be strings"));
+                    }
                 };
 
                 artifacts.calc.push(Arc::<str>::from(v_str.to_owned()));
@@ -198,6 +214,5 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
         }
 
         Ok(artifacts)
-
     }
 }

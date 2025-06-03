@@ -22,7 +22,8 @@ pub fn execute_tool_check_job(
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) {
-    let result = execute_tool_check_action(workspace_dir, lua, job, vars, db_env, db, cache, sender);
+    let result =
+        execute_tool_check_action(workspace_dir, lua, job, vars, db_env, db, cache, sender);
 
     match result {
         Ok(_) => {

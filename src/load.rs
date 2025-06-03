@@ -197,10 +197,10 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             kwargs: HashMap::new(),
             cmd: ActionCmd::Func(Arc::new(RwLock::new(to_ser_lua_value(
                 lua,
-                &mlua::Value::Function(cmd_tool_action_func)
+                &mlua::Value::Function(cmd_tool_action_func),
             )?))),
         },
-        var_deps: HashMap::new()
+        var_deps: HashMap::new(),
     };
 
     projects.insert(

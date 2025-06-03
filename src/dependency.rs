@@ -154,7 +154,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
             .expect("calculated dependency task output should be available after executing");
 
         let mut deps = Dependencies::try_from(task_output)
-                .map_err(|e| ExecutionGraphError::OutputDeserializationError(e))?;
+            .map_err(|e| ExecutionGraphError::OutputDeserializationError(e))?;
 
         // Do not allow calculated dependencies to produce more calculated dependencies for the same task
         deps.calc.clear();

@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use std::os::raw::c_void;
 use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::os::raw::c_void;
 
 use mlua::IntoLua;
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,7 @@ impl fmt::Display for SerLuaValueBlock {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SerLuaTable {
     pub entries: Vec<(usize, usize)>,
-    pub metatable: Option<usize>
+    pub metatable: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -46,10 +46,10 @@ pub enum SerLuaValue {
 pub struct SerLuaTableRef<'a> {
     table: &'a SerLuaTable,
     index: usize,
-    ref_values: &'a Vec<SerLuaValue>
+    ref_values: &'a Vec<SerLuaValue>,
 }
 
-impl <'a> SerLuaTableRef<'a> {
+impl<'a> SerLuaTableRef<'a> {
     pub fn entries(&self) -> impl Iterator<Item = (SerLuaValueRef<'a>, SerLuaValueRef<'a>)> {
         self.table.entries.iter().map(|(k, v)| {
             let k_ref = refify_ser_lua_value(*k, self.ref_values);
@@ -59,7 +59,9 @@ impl <'a> SerLuaTableRef<'a> {
     }
 
     pub fn metatable(&self) -> Option<SerLuaValueRef<'a>> {
-        self.table.metatable.map(|v| refify_ser_lua_value(v, self.ref_values))
+        self.table
+            .metatable
+            .map(|v| refify_ser_lua_value(v, self.ref_values))
     }
 
     pub fn index(&self) -> usize {
@@ -67,26 +69,28 @@ impl <'a> SerLuaTableRef<'a> {
     }
 }
 
-impl <'a> Eq for SerLuaTableRef<'a> {}
+impl<'a> Eq for SerLuaTableRef<'a> {}
 
-impl <'a> PartialEq for SerLuaTableRef<'a> {
+impl<'a> PartialEq for SerLuaTableRef<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl <'a> PartialOrd for SerLuaTableRef<'a> {
+impl<'a> PartialOrd for SerLuaTableRef<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl <'a> Ord for SerLuaTableRef<'a> {
+impl<'a> Ord for SerLuaTableRef<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         let metatable_cmp = self.metatable().cmp(&other.metatable());
         match metatable_cmp {
-            Ordering::Equal => {},
-            _ => { return metatable_cmp; } 
+            Ordering::Equal => {}
+            _ => {
+                return metatable_cmp;
+            }
         }
 
         self.entries().cmp(other.entries())
@@ -96,10 +100,10 @@ impl <'a> Ord for SerLuaTableRef<'a> {
 pub struct SerLuaFunctionRef<'a> {
     func: &'a SerLuaFunction,
     index: usize,
-    ref_values: &'a Vec<SerLuaValue>
+    ref_values: &'a Vec<SerLuaValue>,
 }
 
-impl <'a> SerLuaFunctionRef<'a> {
+impl<'a> SerLuaFunctionRef<'a> {
     pub fn source(&self) -> &Vec<u8> {
         &self.func.source
     }
@@ -117,26 +121,28 @@ impl <'a> SerLuaFunctionRef<'a> {
     }
 }
 
-impl <'a> Eq for SerLuaFunctionRef<'a> {}
+impl<'a> Eq for SerLuaFunctionRef<'a> {}
 
-impl <'a> PartialEq for SerLuaFunctionRef<'a> {
+impl<'a> PartialEq for SerLuaFunctionRef<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl <'a> PartialOrd for SerLuaFunctionRef<'a> {
+impl<'a> PartialOrd for SerLuaFunctionRef<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl <'a> Ord for SerLuaFunctionRef<'a> {
+impl<'a> Ord for SerLuaFunctionRef<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         let metatable_cmp = self.source().cmp(&other.source());
         match metatable_cmp {
-            Ordering::Equal => {},
-            _ => { return metatable_cmp; } 
+            Ordering::Equal => {}
+            _ => {
+                return metatable_cmp;
+            }
         }
 
         self.upvalues().cmp(other.upvalues())
@@ -154,125 +160,133 @@ pub enum SerLuaValueRef<'a> {
     UserData(&'a CobbleUserData),
 }
 
-impl <'a> SerLuaValueRef<'a> {
+impl<'a> SerLuaValueRef<'a> {
     pub fn is_nil(&self) -> bool {
         match self {
             SerLuaValueRef::Nil => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn as_boolean(&self) -> Option<bool> {
         match self {
             SerLuaValueRef::Boolean(v) => Some(*v),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_integer(&self) -> Option<mlua::Integer> {
         match self {
             SerLuaValueRef::Integer(v) => Some(*v),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_number(&self) -> Option<mlua::Number> {
         match self {
             SerLuaValueRef::Number(v) => Some(*v),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_string(&self) -> Option<&'a str> {
         match self {
             SerLuaValueRef::String(s) => Some(*s),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_table(&self) -> Option<&SerLuaTableRef<'a>> {
         match self {
             SerLuaValueRef::Table(t) => Some(t),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_function(&self) -> Option<&SerLuaFunctionRef<'a>> {
         match self {
             SerLuaValueRef::Function(f) => Some(f),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn as_userdata(&self) -> Option<&'a CobbleUserData> {
         match self {
             SerLuaValueRef::UserData(d) => Some(*d),
-            _ => None
+            _ => None,
         }
     }
 }
 
-impl <'a> Eq for SerLuaValueRef<'a> {}
+impl<'a> Eq for SerLuaValueRef<'a> {}
 
-impl <'a> PartialEq for SerLuaValueRef<'a> {
+impl<'a> PartialEq for SerLuaValueRef<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
     }
 }
 
-impl <'a> PartialOrd for SerLuaValueRef<'a> {
+impl<'a> PartialOrd for SerLuaValueRef<'a> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl <'a> Ord for SerLuaValueRef<'a> {
+impl<'a> Ord for SerLuaValueRef<'a> {
     fn cmp(&self, other: &Self) -> Ordering {
         use SerLuaValueRef::*;
         match self {
             Nil => match other {
                 Nil => Ordering::Equal,
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             Boolean(v) => match other {
                 Nil => Ordering::Greater,
                 Boolean(ov) => bool::cmp(v, ov),
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             Integer(v) => match other {
                 Nil | Boolean(_) => Ordering::Greater,
                 Integer(ov) => i64::cmp(v, ov),
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             Number(v) => match other {
                 Nil | Boolean(_) | Integer(_) => Ordering::Greater,
                 Number(ov) => f64::total_cmp(v, ov),
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             String(s) => match other {
                 Nil | Boolean(_) | Integer(_) | Number(_) => Ordering::Greater,
                 String(os) => str::cmp(s, os),
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             Table(t) => match other {
                 Nil | Boolean(_) | Integer(_) | Number(_) | String(_) => Ordering::Greater,
                 Table(ot) => t.cmp(ot),
-                _ => Ordering::Less
-            }
+                _ => Ordering::Less,
+            },
             Function(f) => match other {
-                Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) => Ordering::Greater,
+                Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) => {
+                    Ordering::Greater
+                }
                 Function(of) => f.cmp(of),
-                _ => Ordering::Less
+                _ => Ordering::Less,
             },
             UserData(d) => match other {
-                Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) | Function(_) => Ordering::Greater,
-                UserData(od) => d.cmp(od)
-            }
+                Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) | Function(_) => {
+                    Ordering::Greater
+                }
+                UserData(od) => d.cmp(od),
+            },
         }
     }
 }
 
-fn fmt_ser_lua_value_ref_with_history<'a>(f: &mut fmt::Formatter, value: &SerLuaValueRef<'a>, history: &mut HashSet<usize>) -> fmt::Result {
+fn fmt_ser_lua_value_ref_with_history<'a>(
+    f: &mut fmt::Formatter,
+    value: &SerLuaValueRef<'a>,
+    history: &mut HashSet<usize>,
+) -> fmt::Result {
     match value {
         SerLuaValueRef::Nil => f.write_str("nil"),
         SerLuaValueRef::Boolean(v) => write!(f, "{}", v),
@@ -282,14 +296,16 @@ fn fmt_ser_lua_value_ref_with_history<'a>(f: &mut fmt::Formatter, value: &SerLua
         SerLuaValueRef::Table(t) => {
             let index = t.index();
             if history.contains(&index) {
-                return f.write_str("<table (cycle)>")
+                return f.write_str("<table (cycle)>");
             }
 
             history.insert(t.index());
 
             f.write_str("{")?;
             for (i, (k, v)) in t.entries().enumerate() {
-                if i > 0 { f.write_str(", ")?; }
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
 
                 f.write_str("[")?;
                 fmt_ser_lua_value_ref_with_history(f, &k, history)?;
@@ -305,18 +321,21 @@ fn fmt_ser_lua_value_ref_with_history<'a>(f: &mut fmt::Formatter, value: &SerLua
             f.write_str("}")
         }
         SerLuaValueRef::Function(_) => f.write_str("<function>"),
-        SerLuaValueRef::UserData(d) => write!(f, "<userdata:{}>", d)
+        SerLuaValueRef::UserData(d) => write!(f, "<userdata:{}>", d),
     }
 }
 
-impl <'a> fmt::Display for SerLuaValueRef<'a> {
+impl<'a> fmt::Display for SerLuaValueRef<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut history: HashSet<usize> = HashSet::new();
         fmt_ser_lua_value_ref_with_history(f, self, &mut history)
     }
 }
 
-pub fn refify_ser_lua_value<'a>(index: usize, ref_values: &'a Vec<SerLuaValue>) -> SerLuaValueRef<'a> {
+pub fn refify_ser_lua_value<'a>(
+    index: usize,
+    ref_values: &'a Vec<SerLuaValue>,
+) -> SerLuaValueRef<'a> {
     let val = &ref_values[index];
     match val {
         SerLuaValue::Nil => SerLuaValueRef::Nil,
@@ -324,13 +343,21 @@ pub fn refify_ser_lua_value<'a>(index: usize, ref_values: &'a Vec<SerLuaValue>) 
         SerLuaValue::Integer(v) => SerLuaValueRef::Integer(*v),
         SerLuaValue::Number(v) => SerLuaValueRef::Number(*v),
         SerLuaValue::String(s) => SerLuaValueRef::String(s.as_str()),
-        SerLuaValue::Table(t) => SerLuaValueRef::Table(SerLuaTableRef{table: t, index, ref_values}),
-        SerLuaValue::Function(f) => SerLuaValueRef::Function(SerLuaFunctionRef{func: f, index, ref_values}),
+        SerLuaValue::Table(t) => SerLuaValueRef::Table(SerLuaTableRef {
+            table: t,
+            index,
+            ref_values,
+        }),
+        SerLuaValue::Function(f) => SerLuaValueRef::Function(SerLuaFunctionRef {
+            func: f,
+            index,
+            ref_values,
+        }),
         SerLuaValue::UserData(d) => SerLuaValueRef::UserData(d),
     }
 }
 
-impl <'a> From<&'a SerLuaValueBlock> for SerLuaValueRef<'a> {
+impl<'a> From<&'a SerLuaValueBlock> for SerLuaValueRef<'a> {
     fn from(value: &'a SerLuaValueBlock) -> Self {
         refify_ser_lua_value(0, &value.values)
     }
@@ -421,12 +448,11 @@ fn append_ser_lua_value<'lua>(
                 None => None,
             };
 
-            SerLuaValue::Table(SerLuaTable{ entries, metatable })
+            SerLuaValue::Table(SerLuaTable { entries, metatable })
         }
         mlua::Value::Function(f) => {
             let source = dump_function_source(lua, f.clone())?;
 
-            
             let upvalues_tbl = dump_function_upvalues(lua, f.clone())?;
             let mut upvalues: Vec<(String, usize)> = Vec::with_capacity(upvalues_tbl.len());
 
@@ -442,7 +468,9 @@ fn append_ser_lua_value<'lua>(
 
             SerLuaValue::Function(SerLuaFunction { source, upvalues })
         }
-        mlua::Value::UserData(d) => SerLuaValue::UserData(CobbleUserData::from_userdata(lua, d.clone())?),
+        mlua::Value::UserData(d) => {
+            SerLuaValue::UserData(CobbleUserData::from_userdata(lua, d.clone())?)
+        }
         mlua::Value::LightUserData(d) => {
             return Err(mlua::Error::runtime(format!(
                 "Cannot serialize a light user data object: {:?}",
@@ -472,7 +500,8 @@ pub fn to_ser_lua_value<'lua>(
     lua: &'lua mlua::Lua,
     value: &mlua::Value<'lua>,
 ) -> mlua::Result<SerLuaValueBlock> {
-    let mut ref_value_index_map: HashMap<*const c_void, (usize, mlua::Value<'lua>)> = HashMap::new();
+    let mut ref_value_index_map: HashMap<*const c_void, (usize, mlua::Value<'lua>)> =
+        HashMap::new();
     let mut ref_values: Vec<SerLuaValue> = Vec::new();
 
     append_ser_lua_value(lua, value, &mut ref_value_index_map, &mut ref_values)?;
@@ -480,12 +509,11 @@ pub fn to_ser_lua_value<'lua>(
     Ok(SerLuaValueBlock { values: ref_values })
 }
 
-impl <'lua> mlua::FromLua<'lua> for SerLuaValueBlock {
+impl<'lua> mlua::FromLua<'lua> for SerLuaValueBlock {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         to_ser_lua_value(lua, &value)
     }
 }
-
 
 pub fn hydrate_function_upvalues<'lua>(
     lua: &'lua mlua::Lua,
@@ -523,9 +551,14 @@ pub fn hydrate_function_upvalues<'lua>(
     Ok(())
 }
 
-fn hydrate_ser_lua_value<'lua>(lua: &'lua mlua::Lua, value_block: &SerLuaValueBlock, index: usize, index_to_value_map: &mut HashMap<usize, mlua::Value<'lua>>) -> mlua::Result<mlua::Value<'lua>> {
+fn hydrate_ser_lua_value<'lua>(
+    lua: &'lua mlua::Lua,
+    value_block: &SerLuaValueBlock,
+    index: usize,
+    index_to_value_map: &mut HashMap<usize, mlua::Value<'lua>>,
+) -> mlua::Result<mlua::Value<'lua>> {
     if let Some(val) = index_to_value_map.get(&index) {
-        return Ok(val.clone())
+        return Ok(val.clone());
     }
 
     let val = match &value_block.values[index] {
@@ -552,13 +585,18 @@ fn hydrate_ser_lua_value<'lua>(lua: &'lua mlua::Lua, value_block: &SerLuaValueBl
                 match mt_val {
                     mlua::Value::Table(mt_tbl) => {
                         table.set_metatable(Some(mt_tbl));
-                    },
-                    _ => { return Err(mlua::Error::runtime(format!("Tried to set metatable to a value that is not a table: {:?}", &mt_val))) }
+                    }
+                    _ => {
+                        return Err(mlua::Error::runtime(format!(
+                            "Tried to set metatable to a value that is not a table: {:?}",
+                            &mt_val
+                        )))
+                    }
                 };
             }
 
             mlua::Value::Table(table)
-        },
+        }
         SerLuaValue::Function(f) => {
             let lua_source_str = lua.create_string(&f.source)?;
             let lua_func: mlua::Function = lua.load("return load(...)").call(lua_source_str)?;
@@ -576,32 +614,42 @@ fn hydrate_ser_lua_value<'lua>(lua: &'lua mlua::Lua, value_block: &SerLuaValueBl
             hydrate_function_upvalues(lua, lua_func.clone(), &upvalues)?;
 
             mlua::Value::Function(lua_func)
-        },
-        SerLuaValue::UserData(d) => mlua::Value::UserData(d.to_userdata(lua)?)
+        }
+        SerLuaValue::UserData(d) => mlua::Value::UserData(d.to_userdata(lua)?),
     };
 
     index_to_value_map.insert(index, val.clone());
     Ok(val)
 }
 
-pub fn from_ser_lua_value<'lua>(lua: &'lua mlua::Lua, block: &SerLuaValueBlock, index: usize) -> mlua::Result<mlua::Value<'lua>> {
-    let mut index_to_value_map: HashMap<usize, mlua::Value> = HashMap::with_capacity(block.values.len());
+pub fn from_ser_lua_value<'lua>(
+    lua: &'lua mlua::Lua,
+    block: &SerLuaValueBlock,
+    index: usize,
+) -> mlua::Result<mlua::Value<'lua>> {
+    let mut index_to_value_map: HashMap<usize, mlua::Value> =
+        HashMap::with_capacity(block.values.len());
     hydrate_ser_lua_value(lua, block, index, &mut index_to_value_map)
 }
 
-impl <'lua> IntoLua<'lua> for SerLuaValueBlock {
+impl<'lua> IntoLua<'lua> for SerLuaValueBlock {
     fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
         from_ser_lua_value(lua, &self, 0)
     }
 }
 
-impl <'lua> IntoLua<'lua> for &SerLuaValueBlock {
+impl<'lua> IntoLua<'lua> for &SerLuaValueBlock {
     fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
         from_ser_lua_value(lua, self, 0)
     }
 }
 
-fn append_value_from_block(from_block: &SerLuaValueBlock, from_index: usize, block_index_map: &mut HashMap<usize, usize>, to_block: &mut Vec<SerLuaValue>) -> usize {
+fn append_value_from_block(
+    from_block: &SerLuaValueBlock,
+    from_index: usize,
+    block_index_map: &mut HashMap<usize, usize>,
+    to_block: &mut Vec<SerLuaValue>,
+) -> usize {
     if let Some(idx) = block_index_map.get(&from_index) {
         return *idx;
     }
@@ -625,7 +673,10 @@ fn append_value_from_block(from_block: &SerLuaValueBlock, from_index: usize, blo
                 entries.push((to_k, to_v))
             }
 
-            let metatable = t.metatable.as_ref().map(|mt| append_value_from_block(from_block, *mt, block_index_map, to_block));
+            let metatable = t
+                .metatable
+                .as_ref()
+                .map(|mt| append_value_from_block(from_block, *mt, block_index_map, to_block));
 
             SerLuaValue::Table(SerLuaTable { entries, metatable })
         }
@@ -633,13 +684,17 @@ fn append_value_from_block(from_block: &SerLuaValueBlock, from_index: usize, blo
             let mut upvalues: Vec<(String, usize)> = Vec::with_capacity(f.upvalues.len());
 
             for (up_name, up_val) in f.upvalues.iter() {
-                let to_up_val = append_value_from_block(from_block, *up_val, block_index_map, to_block);
+                let to_up_val =
+                    append_value_from_block(from_block, *up_val, block_index_map, to_block);
                 upvalues.push((up_name.clone(), to_up_val));
             }
 
-            SerLuaValue::Function(SerLuaFunction { source: f.source.clone(), upvalues })
+            SerLuaValue::Function(SerLuaFunction {
+                source: f.source.clone(),
+                upvalues,
+            })
         }
-        SerLuaValue::UserData(d) => SerLuaValue::UserData(d.clone())
+        SerLuaValue::UserData(d) => SerLuaValue::UserData(d.clone()),
     };
 
     to_block[to_index] = to_value;

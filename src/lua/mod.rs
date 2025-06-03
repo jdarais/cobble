@@ -5,8 +5,8 @@
 
 // pub mod detached;
 pub mod lua_env;
-pub mod userdata;
 pub mod s11n;
+pub mod userdata;
 
 mod cmd;
 mod json;

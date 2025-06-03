@@ -6,7 +6,13 @@
 use std::{borrow::Cow, collections::HashMap, error::Error, fmt, sync::Arc};
 
 use crate::{
-    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError}, execute::execute::{TaskExecutionError, TaskExecutor}, lua::s11n::SerLuaValueBlock, project_def::Artifacts, resolve::{resolve_names_in_artifacts, NameResolutionError}, util::process_io::ProcessIO, workspace::{Task, Workspace}
+    dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError},
+    execute::execute::{TaskExecutionError, TaskExecutor},
+    lua::s11n::SerLuaValueBlock,
+    project_def::Artifacts,
+    resolve::{resolve_names_in_artifacts, NameResolutionError},
+    util::process_io::ProcessIO,
+    workspace::{Task, Workspace},
 };
 
 #[derive(Debug)]
@@ -79,7 +85,8 @@ pub fn calculate_artifacts<IO: ProcessIO>(
         let mut artifacts: Cow<Artifacts> = Cow::Borrowed(&task.artifacts);
         for calc_artifact in task.artifacts.calc.iter() {
             let task_outputs = executor_cache.task_outputs.read().unwrap();
-            let task_output_record = Artifacts::try_from(&task_outputs[calc_artifact]).map_err(|e| {
+            let task_output_record =
+                Artifacts::try_from(&task_outputs[calc_artifact]).map_err(|e| {
                     CalcArtifactsError::OutputError {
                         task_name: task.name.clone(),
                         task_output: task_outputs[calc_artifact].clone(),

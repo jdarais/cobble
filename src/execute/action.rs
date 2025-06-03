@@ -514,8 +514,12 @@ pub fn create_action_context<'lua>(
 
     let mut vars: HashMap<String, TaskVar> = HashMap::new();
     for (var_alias, var_name) in action_vars.iter() {
-        let var_value = get_var(var_name.as_ref(), &task_input_vars)
-            .map_err(|e| mlua::Error::runtime(format!("Var lookup of {} (alias={}) for task {} failed: {}", var_name, var_alias, &task_name, e)))?;
+        let var_value = get_var(var_name.as_ref(), &task_input_vars).map_err(|e| {
+            mlua::Error::runtime(format!(
+                "Var lookup of {} (alias={}) for task {} failed: {}",
+                var_name, var_alias, &task_name, e
+            ))
+        })?;
 
         vars.insert(String::from(var_alias.as_ref()), var_value.clone());
     }
