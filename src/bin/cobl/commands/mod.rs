@@ -4,6 +4,7 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 pub mod clean;
+pub mod completion;
 pub mod env;
 pub mod list;
 pub mod run;
