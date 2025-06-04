@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock};
 use crate::project_def::validate::{
@@ -17,7 +17,7 @@ use crate::project_def::validate::{
 #[derive(Clone, Debug)]
 pub enum ActionCmd {
     Cmd(Vec<Arc<str>>),
-    Func(Arc<RwLock<SerLuaValueBlock>>),
+    Func(SerLuaValueBlock),
 }
 
 impl fmt::Display for ActionCmd {
@@ -25,7 +25,7 @@ impl fmt::Display for ActionCmd {
         use ActionCmd::*;
         match self {
             Cmd(args) => write!(f, "Cmd({})", args.join(",")),
-            Func(func) => write!(f, "Func({:?})", func.read().unwrap()),
+            Func(func) => write!(f, "Func({:?})", func),
         }
     }
 }
@@ -277,7 +277,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                 build_envs,
                                 tools,
                                 kwargs,
-                                cmd: ActionCmd::Func(Arc::new(RwLock::new(ser_lua_fn))),
+                                cmd: ActionCmd::Func(ser_lua_fn),
                             });
                         }
                         _ => { /* not a function action */ }
@@ -319,7 +319,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                         .into_iter()
                         .collect(),
                     kwargs: HashMap::new(),
-                    cmd: ActionCmd::Func(Arc::new(RwLock::new(ser_lua_fn))),
+                    cmd: ActionCmd::Func(ser_lua_fn),
                 })
             }
             _ => Err(mlua::Error::runtime(
@@ -353,7 +353,7 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
                 }
             }
             ActionCmd::Func(f) => {
-                action_table.push(&*f.read().unwrap())?;
+                action_table.push(&f)?;
             }
         }
 

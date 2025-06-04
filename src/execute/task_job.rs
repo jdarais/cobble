@@ -675,9 +675,9 @@ mod tests {
                 tools: HashMap::new(),
                 build_envs: HashMap::new(),
                 kwargs: HashMap::new(),
-                cmd: ActionCmd::Func(Arc::new(RwLock::new(
+                cmd: ActionCmd::Func(
                     to_ser_lua_value(&lua, &mlua::Value::Function(tool_func)).unwrap(),
-                ))),
+                ),
             },
             var_deps: HashMap::new(),
         });
