@@ -15,6 +15,7 @@ use cobble::config::{get_workspace_config, parse_output_condition, DEFAULT_NUM_T
 use cobble::load::load_projects;
 
 use crate::commands::clean::{clean_command, CleanCommandInput};
+use crate::commands::completion::print_completion_script;
 use crate::commands::env::{run_env_command, RunEnvInput};
 use crate::commands::list::{list_command, ListCommandInput};
 use crate::commands::run::{run_command, RunCommandInput};
@@ -86,6 +87,8 @@ enum CoblCommand {
         /// Task(s) to show info for
         tasks: Vec<String>,
     },
+    /// Print out a script fragment that enables shell completion for cobl commands. Currently, only bash is supported.
+    Completion {},
     #[command(external_subcommand)]
     Other(Vec<OsString>),
 }
@@ -221,6 +224,7 @@ fn do_cobl(args: Cli) -> ExitCode {
                 vars: args.var,
                 num_threads: args.num_threads,
             }),
+            CoblCommand::Completion {} => print_completion_script(),
             CoblCommand::Other(other_args) => {
                 let original_args = std::env::args_os();
                 let pre_args_len = original_args.len() - other_args.len();
