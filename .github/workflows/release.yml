@@ -48,7 +48,7 @@ jobs:
           makeLatest: false
 
   release_linux_bin:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     permissions:
       contents: write
     steps:
@@ -67,7 +67,7 @@ jobs:
           makeLatest: false
 
   release_linux_deb:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     permissions:
       contents: write
     steps:

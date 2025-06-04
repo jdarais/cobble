@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::config::PROJECT_FILE_NAME;
 use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
@@ -195,10 +195,10 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             tools: HashMap::new(),
             build_envs: HashMap::new(),
             kwargs: HashMap::new(),
-            cmd: ActionCmd::Func(Arc::new(RwLock::new(to_ser_lua_value(
+            cmd: ActionCmd::Func(to_ser_lua_value(
                 lua,
                 &mlua::Value::Function(cmd_tool_action_func),
-            )?))),
+            )?),
         },
         var_deps: HashMap::new(),
     };

@@ -353,12 +353,6 @@ fn compute_dependency_edges(
                 for dep in get_task_job_dependencies(&task_job.task, workspace)? {
                     task_deps.push(dep);
                 }
-                // If an "execute_after" task is in the graph, add that as a dependency, too
-                for after_job in task_job.task.execute_after.iter() {
-                    if jobs.contains_key(after_job) {
-                        task_deps.push(after_job.clone());
-                    }
-                }
             }
             ExecutorJob::Clean(clean_job) => {
                 for dep in get_clean_job_task_dependencies(&clean_job.task) {
