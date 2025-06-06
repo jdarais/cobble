@@ -6,6 +6,8 @@ The following global variables are available in any lua environment:
 
 - `WORKSPACE`: _table_ - Contains information about the workspace
     - `dir`: _string_ - Absolute path to the workspace directory
+- `PROJECT`: _table_ - Contains information about the current project
+    - `dir`: _string_ - Relative path of the project from the workspace root
 - `PLATFORM`: _table_ - Contains information about the platform Cobble is able to discover
     - `arch`: _string_ - the platform architecture. One of [std::env::consts::ARCH](https://doc.rust-lang.org/std/env/consts/index.html)
     - `os_family`: _string_ - the platform OS family. One of [std::env::consts::FAMILY](https://doc.rust-lang.org/std/env/consts/constant.FAMILY.html)
@@ -119,7 +121,7 @@ local iter = require("iter")
 local original_words = { "dais", "squirrel", "fort", "part" }
 local new_words = iter(ipairs(original_words))
                     :filter(function(i, w) return w ~= "squirrel" end)
-                    :map(function(i, w) return i, w.."y")
+                    :map(function(i, w) return i, w.."y" end)
                     :to_table()
 assert(
     new_words[1] == "daisy" and
