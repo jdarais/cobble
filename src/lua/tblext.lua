@@ -4,6 +4,19 @@
 -- This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 local function extend(target, source, start_index)
+    if type(target) ~= "table" then
+        error("Expected a table for first argument to extend(), but got "..tostring(target))
+    end
+
+    if type(source) ~= "table" then
+        error("Expected a table for second argument to extend(), but got "..tostring(source))
+    end
+
+    local valid_start_index_types = { ["number"] = true, ["nil"] = true }
+    if not valid_start_index_types[type(start_index)] then
+        error("Expected a number or nil for third argument to extend(), but got "..tostring(start_index))
+    end
+
     local start_offset = (start_index or (#target+1)) - 1
 
     for k, v in pairs(source) do
