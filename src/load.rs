@@ -8,23 +8,27 @@ use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use mlua::FromLua;
+
 use crate::config::PROJECT_FILE_NAME;
 use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
-use crate::lua::s11n::to_ser_lua_value;
+use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock};
 use crate::project_def::build_env::validate_build_env;
+use crate::project_def::project::SerProject;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
+use crate::project_def::validate::validate_is_table;
 use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
 use crate::resolve::resolve_names_in_project;
 use crate::util::onscopeexit::OnScopeExit;
 
-fn process_project(
-    lua: &mlua::Lua,
-    chunk: &Path,
+fn process_project<'lua>(
+    lua: &'lua mlua::Lua,
+    chunk: mlua::Function<'lua>,
     project_name: &str,
     workspace_dir: &Path,
     project_dir: &str,
-) -> mlua::Result<()> {
+) -> mlua::Result<SerProject> {
     let start_project: mlua::Function = lua.globals().get("start_project")?;
     let end_project: mlua::Function = lua.globals().get("end_project")?;
 
@@ -44,16 +48,67 @@ fn process_project(
             .expect("expected to be able to set current working directory to previous value");
     }));
 
+    let mut ser_project = SerProject {
+        name: project_name.to_owned(),
+        path: project_dir.to_owned(),
+        ..Default::default()
+    };
+
+    // TODO: Use RAII to clean-up project specific functions
+    let project_globals = lua.create_table()?;
+    let prev_project_globals: mlua::Table = lua.globals().get("_ENV")?;
+
+    // Copy globals table
+    for pair in prev_project_globals.pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+        project_globals.set(k, v)?;
+    }
+
+    let _restore_project_globals = OnScopeExit::new(Box::new(move || {
+        lua.globals().set("_ENV", prev_project_globals).unwrap();
+    }));
+
+    let task_func = lua.create_function(|lua, val: mlua::Table| {
+        let name: String = val.get("name")?;
+        let ser_task = SerLuaValueBlock::from_lua(mlua::Value::Table(val), lua)?;
+        ser_project.tasks.insert(name, ser_task);
+        Ok(())
+    })?;
+    lua.globals().set("task", task_func)?;
+
+    let env_func = lua.create_function(|lua, val: mlua::Table| {
+        let name: String = val.get("name")?;
+        let ser_env = SerLuaValueBlock::from_lua(mlua::Value::Table(val), lua)?;
+        ser_project.envs.insert(name, ser_env);
+        Ok(())
+    })?;
+    lua.globals().set("env", env_func)?;
+
+    let tool_func = lua.create_function(|lua, val: mlua::Table| {
+        let name: String = val.get("name")?;
+        let ser_tool = SerLuaValueBlock::from_lua(mlua::Value::Table(val), lua)?;
+        ser_project.tools.insert(name, ser_tool);
+        Ok(())
+    })?;
+    lua.globals().set("tool", tool_func)?;
+
+    let project_func = lua.create_function(|l, val: mlua::Function| {
+        let child_project = process_project(l, val, project_name, workspace_dir, project_dir)?;
+        ser_project.child_projects.push(child_project);
+        Ok(())
+    })?;
+
+
     start_project.call::<_, ()>((project_name, project_dir))?;
 
-    lua.load(chunk).exec()?;
+    chunk.call(())?;
 
     end_project.call::<_, ()>(())?;
 
-    Ok(())
+    Ok(ser_project)
 }
 
-pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) -> mlua::Result<()> {
+pub fn process_project_file(lua: &mlua::Lua, dir: &str, workspace_dir: &Path) -> mlua::Result<SerProject> {
     let current_project: Option<mlua::Table> = lua.globals().get("PROJECT")?;
 
     let project_dir = match current_project.as_ref() {
@@ -122,21 +177,24 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
         })?;
     cxt.set("strip_path_prefix", strip_path_prefix_func)?;
 
-    let workspace_dir_owned = PathBuf::from(workspace_dir);
-    let project_dir_func = lua.create_function(move |lua, dir: String| {
-        process_project_file(lua, dir.as_str(), workspace_dir_owned.as_path())
-    })?;
-    cxt.set("process_project_dir", project_dir_func)?;
+    // let workspace_dir_owned = PathBuf::from(workspace_dir);
+    // let project_dir_func = lua.create_function(move |lua, dir: String| {
+    //     process_project_file(lua, dir.as_str(), workspace_dir_owned.as_path())
+    // })?;
+    // cxt.set("process_project_dir", project_dir_func)?;
 
-    let validate_build_env =
-        lua.create_function(|lua, val: mlua::Value| validate_build_env(lua, &val))?;
-    cxt.set("validate_build_env", validate_build_env)?;
+    // let validate_build_env =
+    //     lua.create_function(|lua, val: mlua::Value| validate_build_env(lua, &val))?;
+    // cxt.set("validate_build_env", validate_build_env)?;
 
-    let validate_task = lua.create_function(|lua, val: mlua::Value| validate_task(lua, &val))?;
-    cxt.set("validate_task", validate_task)?;
+    // let validate_task = lua.create_function(|lua, val: mlua::Value| {
+    //     let ser_val = SerLuaValueBlock::from_lua(val, lua)?;
+    //     validate_task(&ser_val).map_err(|e| mlua::Error::runtime(message))
+    // })?;
+    // cxt.set("validate_task", validate_task)?;
 
-    let validate_tool = lua.create_function(|lua, val: mlua::Value| validate_tool(lua, &val))?;
-    cxt.set("validate_tool", validate_tool)?;
+    // let validate_tool = lua.create_function(|lua, val: mlua::Value| validate_tool(lua, &val))?;
+    // cxt.set("validate_tool", validate_tool)?;
 
     cxt.set("project_file_name", PROJECT_FILE_NAME)?;
 

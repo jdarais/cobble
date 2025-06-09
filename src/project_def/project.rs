@@ -3,12 +3,27 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::{BuildEnvDef, ExternalTool, TaskDef};
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SerProject {
+    pub name: String,
+    pub path: String,
+    pub envs: HashMap<String, SerLuaValueBlock>,
+    pub tasks: HashMap<String, SerLuaValueBlock>,
+    pub tools: HashMap<String, SerLuaValueBlock>,
+    pub child_projects: Vec<SerProject>,
+    pub project_source_deps: Vec<String>
+}
 
 #[derive(Debug)]
 pub struct Project {

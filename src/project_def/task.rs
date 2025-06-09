@@ -7,12 +7,13 @@ use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::config::TaskOutputCondition;
+use crate::lua::s11n::{SerLuaTableRef, SerLuaValueBlock, SerLuaValueRef, SerLuaValueType};
 use crate::project_def::action::validate_action_list;
 use crate::project_def::artifact::{validate_artifacts, Artifacts};
 use crate::project_def::dependency::{validate_dep_list, Dependencies};
 use crate::project_def::validate::{
     key_validation_error, push_prop_name_if_exists, validate_is_bool, validate_is_string,
-    validate_is_table, validate_required_key,
+    validate_is_table, validate_required_key, with_prop, ValidationError,
 };
 use crate::project_def::Action;
 
@@ -31,132 +32,145 @@ pub struct TaskDef {
     pub artifacts: Artifacts,
 }
 
-fn validate_output_condition<'lua>(
-    prop_name: Option<Cow<'static, str>>,
-    value: &mlua::Value,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let val_str = validate_is_string(value, prop_name, prop_path)?;
+fn validate_output_condition<'a>(
+    value: SerLuaValueRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
+    let val_str = validate_is_string(&value, prop_path)?;
 
-    match val_str.to_str()? {
+    match val_str {
         "always" | "never" | "on_fail" => Ok(()),
-        invalid_val => Err(mlua::Error::runtime(format!("Invalid value given for output condition: {}.  Expected one of [always, never, on_fail].", invalid_val)))
+        _ => Err(ValidationError::InvalidValue {
+            path: prop_path
+                .iter()
+                .map(|v| SerLuaValueBlock::from(v.clone()))
+                .collect(),
+            value: value.into(),
+            message: String::from("Expected one of [\"always\", \"never\", \"on_fail\"]"),
+        }),
     }
 }
 
-fn validate_env_table<'lua>(
-    prop_name: Option<Cow<'static, str>>,
-    table: &mlua::Table,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path.as_mut());
+fn validate_env_table<'a>(
+    table: &SerLuaTableRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
     let mut has_build_env = false;
-    for pair in table.clone().pairs() {
+    for (k, v) in table.entries() {
         if has_build_env {
-            return Err(mlua::Error::runtime(
-                "Only one env is allowed at the task level",
-            ));
+            return Err(ValidationError::InvalidValue {
+                path: prop_path.iter().cloned().map(|v| v.into()).collect(),
+                value: SerLuaValueRef::Table(table.clone()).into(),
+                message: String::from("Only one env is allowed at the task level"),
+            });
         }
 
-        let (env_alias, env_name): (mlua::Value, mlua::Value) = pair?;
-        validate_is_string(&env_alias, None, prop_path.as_mut())?;
-        validate_is_string(&env_name, None, prop_path.as_mut())?;
+        validate_is_string(&k, prop_path.as_mut())?;
+        with_prop(prop_path, k, |path| validate_is_string(&v, path))?;
         has_build_env = true;
     }
     Ok(())
 }
 
-pub fn validate_inline_task<'lua>(
-    lua: &'lua mlua::Lua,
-    prop_name: Option<Cow<'static, str>>,
-    value: &mlua::Value<'lua>,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
+pub fn validate_inline_task<'a>(
+    value: &SerLuaValueRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
+    let tbl_val = validate_is_table(value, prop_path)?;
 
-    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
+    validate_required_key(tbl_val, "actions", prop_path)?;
 
-    validate_required_key(tbl_val, "actions", None, prop_path.as_mut())?;
-
-    for pair in tbl_val.clone().pairs() {
-        let (k, v): (mlua::Value, mlua::Value) = pair?;
-        let k_str = validate_is_string(&k, None, prop_path.as_mut())?;
-        match k_str.to_str()? {
-            "name" => {
-                validate_is_string(&v, Some(Cow::Borrowed("name")), prop_path.as_mut()).and(Ok(()))
-            }
-            "default" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("default")), prop_path.as_mut()).and(Ok(()))
-            }
-            "always_run" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("always_run")), prop_path.as_mut())
-                    .and(Ok(()))
-            }
-            "interactive" => {
-                validate_is_bool(&v, Some(Cow::Borrowed("interactive")), prop_path.as_mut())
-                    .and(Ok(()))
-            }
-            "stdout" => {
-                validate_output_condition(Some(Cow::Borrowed("stdout")), &v, prop_path.as_mut())
-            }
-            "stderr" => {
-                validate_output_condition(Some(Cow::Borrowed("stderr")), &v, prop_path.as_mut())
-            }
-            "output" => {
-                validate_output_condition(Some(Cow::Borrowed("output")), &v, prop_path.as_mut())
-            }
-            "env" => match v {
-                mlua::Value::String(_) => Ok(()),
-                mlua::Value::Table(t) => {
-                    validate_env_table(Some(Cow::Borrowed("env")), &t, prop_path.as_mut())
-                }
-                _ => Err(mlua::Error::runtime(format!(
-                    "Expected a string or table, but got a {}: {:?}",
-                    v.type_name(),
-                    v
-                ))),
-            },
-            "actions" => {
-                validate_action_list(lua, &v, Some(Cow::Borrowed("actions")), prop_path.as_mut())
-            }
-            "clean" => {
-                validate_action_list(lua, &v, Some(Cow::Borrowed("clean")), prop_path.as_mut())
-            }
-            "deps" => validate_dep_list(lua, &v, Some(Cow::Borrowed("deps")), prop_path.as_mut()),
-            "artifacts" => {
-                validate_artifacts(&v, Some(Cow::Borrowed("artifacts")), prop_path.as_mut())
-            }
-            unknown_key => key_validation_error(
-                unknown_key,
-                vec![
-                    "name",
-                    "default",
-                    "always_run",
-                    "interactive",
-                    "stdout",
-                    "stderr",
-                    "output",
-                    "env",
-                    "actions",
-                    "clean",
-                    "deps",
-                    "artifacts",
-                ],
-                prop_path.as_mut(),
+    for (k, v) in tbl_val.entries() {
+        let k_str = validate_is_string(&k, prop_path)?;
+        let res = match k_str {
+            "name" => with_prop(&mut *prop_path, SerLuaValueRef::String("name"), |path| {
+                validate_is_string(&v, path).and(Ok(()))
+            }),
+            "default" => with_prop(&mut *prop_path, SerLuaValueRef::String("default"), |path| {
+                validate_is_bool(&v, path).and(Ok(()))
+            }),
+            "always_run" => with_prop(
+                &mut *prop_path,
+                SerLuaValueRef::String("always_run"),
+                |path| validate_is_bool(&v, path).and(Ok(())),
             ),
-        }?;
+            "interactive" => with_prop(
+                &mut *prop_path,
+                SerLuaValueRef::String("interactive"),
+                |path| validate_is_bool(&v, path).and(Ok(())),
+            ),
+            "stdout" => with_prop(&mut *prop_path, SerLuaValueRef::String("stdout"), |path| {
+                validate_output_condition(v, path)
+            }),
+            "stderr" => with_prop(&mut *prop_path, SerLuaValueRef::String("stderr"), |path| {
+                validate_output_condition(v, path)
+            }),
+            "output" => with_prop(&mut *prop_path, SerLuaValueRef::String("output"), |path| {
+                validate_output_condition(v, path)
+            }),
+            "env" => match v {
+                SerLuaValueRef::String(_) => Ok(()),
+                SerLuaValueRef::Table(t) => {
+                    with_prop(&mut *prop_path, SerLuaValueRef::String("env"), |path| {
+                        validate_env_table(&t, path)
+                    })
+                }
+                _ => with_prop(&mut *prop_path, SerLuaValueRef::String("env"), |path| {
+                    Err(ValidationError::InvalidType {
+                        path: path.iter().cloned().map(|p| p.into()).collect(),
+                        expected: vec![SerLuaValueType::String, SerLuaValueType::Table],
+                        actual: v.value_type(),
+                        value: v.into(),
+                    })
+                }),
+            },
+            "actions" => with_prop(&mut *prop_path, SerLuaValueRef::String("actions"), |path| {
+                validate_action_list(&v, path)
+            }),
+            "clean" => with_prop(&mut *prop_path, SerLuaValueRef::String("clean"), |path| {
+                validate_action_list(&v, path)
+            }),
+            "deps" => with_prop(&mut *prop_path, SerLuaValueRef::String("deps"), |path| {
+                validate_dep_list(&v, path)
+            }),
+            "artifacts" => with_prop(
+                &mut *prop_path,
+                SerLuaValueRef::String("artifacts"),
+                |path| validate_artifacts(&v, path),
+            ),
+            _ => Err(ValidationError::InvalidKey {
+                path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+                expected: vec![
+                    String::from("name"),
+                    String::from("default"),
+                    String::from("always_run"),
+                    String::from("interactive"),
+                    String::from("stdout"),
+                    String::from("stderr"),
+                    String::from("output"),
+                    String::from("env"),
+                    String::from("actions"),
+                    String::from("clean"),
+                    String::from("deps"),
+                    String::from("artifacts"),
+                ],
+                key: k.into(),
+                table: value.clone().into(),
+            }),
+        };
+        res?;
     }
 
     Ok(())
 }
 
-pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
-    let mut prop_path: Vec<Cow<str>> = Vec::new();
+pub fn validate_task<'a>(value: &SerLuaValueRef<'a>) -> Result<(), ValidationError> {
+    let mut prop_path: Vec<SerLuaValueRef<'a>> = Vec::new();
 
-    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
-    validate_required_key(tbl_val, "name", None, prop_path.as_mut())?;
+    let tbl_val = validate_is_table(value, &mut prop_path)?;
+    validate_required_key(tbl_val, "name", &mut prop_path)?;
 
-    validate_inline_task(lua, None, value, &mut prop_path)
+    validate_inline_task(value, &mut prop_path)
 }
 
 impl fmt::Display for TaskDef {

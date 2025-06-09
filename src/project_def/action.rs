@@ -4,14 +4,15 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock};
+use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock, SerLuaValueRef, SerLuaValueType};
 use crate::project_def::validate::{
     prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+    validate_table_value_type, with_prop, ValidationError,
 };
 
 #[derive(Clone, Debug)]
@@ -38,122 +39,111 @@ pub struct Action {
     pub cmd: ActionCmd,
 }
 
-fn validate_name_alias_table<'lua>(
-    _lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
+fn validate_name_alias_table<'a>(
+    value: &SerLuaValueRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
     match value {
-        mlua::Value::Table(tbl_val) => {
-            validate_table_has_only_string_or_sequence_keys(tbl_val, None, prop_path.as_mut())
+        SerLuaValueRef::Table(tbl_val) => {
+            validate_table_has_only_string_or_sequence_keys(tbl_val, &mut *prop_path)?;
+            validate_table_value_type(tbl_val, &vec![SerLuaValueType::String], &mut *prop_path)
         }
-        mlua::Value::String(_) => Ok(()),
-        _ => Err(mlua::Error::runtime(format!(
-            "In {}: Expected a table or string, but got a {}: {:?}",
-            prop_path_string(prop_path.as_mut()),
-            value.type_name(),
-            value
-        ))),
+        SerLuaValueRef::String(_) => Ok(()),
+        _ => Err(ValidationError::InvalidType {
+            path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+            expected: vec![SerLuaValueType::Table, SerLuaValueType::String],
+            actual: value.value_type(),
+            value: value.clone().into(),
+        }),
     }
 }
 
-pub fn validate_action_list<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
-    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
-    validate_table_is_sequence(tbl_val, None, prop_path.as_mut())?;
-    for (i, action_tbl_res) in tbl_val.clone().sequence_values().into_iter().enumerate() {
-        let action_tbl: mlua::Value = action_tbl_res?;
-        validate_action(
-            lua,
-            &action_tbl,
-            Some(Cow::Owned(format!("[{}]", i))),
-            prop_path.as_mut(),
-        )?;
+pub fn validate_action_list<'a>(
+    value: &SerLuaValueRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
+    let tbl_val = validate_is_table(value, &mut *prop_path)?;
+    validate_table_is_sequence(tbl_val, &mut *prop_path)?;
+    for (k, v) in tbl_val.entries() {
+        with_prop(&mut *prop_path, k, |path| {
+            validate_action(&v, path)
+        })?;
     }
     Ok(())
 }
 
-pub fn validate_action<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
-    prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
+pub fn validate_action<'a>(
+    value: &SerLuaValueRef<'a>,
+    prop_path: &mut Vec<SerLuaValueRef<'a>>,
+) -> Result<(), ValidationError> {
     match value {
-        mlua::Value::Table(tbl_val) => {
-            validate_table_has_only_string_or_sequence_keys(&tbl_val, None, prop_path.as_mut())?;
-            let mut sequence_values: Vec<mlua::Value> = Vec::with_capacity(tbl_val.len()? as usize);
-            sequence_values.resize(sequence_values.capacity(), mlua::Value::Nil);
-
-            for pair in tbl_val.clone().pairs() {
-                let (k, v): (mlua::Value, mlua::Value) = pair?;
+        SerLuaValueRef::Table(tbl_val) => {
+            let mut sequence_items: BTreeMap<SerLuaValueRef<'a>, SerLuaValueRef<'a>> =
+                BTreeMap::new();
+            for (k, v) in tbl_val.entries() {
                 match k {
-                    mlua::Value::Integer(i) => {
-                        sequence_values[i as usize - 1] = v;
+                    SerLuaValueRef::Integer(i) => {
+                        sequence_items.insert(k, v);
                         Ok(())
                     }
-                    mlua::Value::String(ks) => match ks.to_str()? {
-                        "tool" => validate_name_alias_table(
-                            lua,
-                            &v,
-                            Some(Cow::Borrowed("tool")),
-                            prop_path.as_mut(),
-                        ),
-                        "env" => validate_name_alias_table(
-                            lua,
-                            &v,
-                            Some(Cow::Borrowed("env")),
-                            prop_path.as_mut(),
-                        ),
+                    SerLuaValueRef::String(ks) => match ks {
+                        "tool" => {
+                            with_prop(&mut *prop_path, SerLuaValueRef::String("tool"), |path| {
+                                validate_name_alias_table(&v, path)
+                            })
+                        }
+                        "env" => {
+                            with_prop(&mut *prop_path, SerLuaValueRef::String("env"), |path| {
+                                validate_name_alias_table(&v, path)
+                            })
+                        }
                         _ => Ok(()),
                     },
-                    _ => Err(mlua::Error::runtime(format!(
-                        "Expected a string or integer index, but got a {}: {:?}",
-                        k.type_name(),
-                        k
-                    ))),
+                    _ => Err(ValidationError::InvalidType {
+                        path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+                        expected: vec![SerLuaValueType::Integer, SerLuaValueType::String],
+                        actual: value.value_type(),
+                        value: value.clone().into()
+                    }),
                 }?;
             }
 
-            if sequence_values.len() == 0 {
-                return Ok(());
-            }
-
-            let first_seq_val = sequence_values.remove(0);
-            match first_seq_val {
-                mlua::Value::Function(_) => if sequence_values.len() == 0 { Ok(()) }
-                    else { Err(mlua::Error::runtime(format!("In {}: For function actions, the function is the only allowed positional element", prop_path_string(prop_path.as_mut())))) },
-                mlua::Value::String(_) => { Ok(()) },
-                _ => Err(mlua::Error::runtime(format!("In {}: Expected a string or function as the first sequence item, but got a {}: {:?}", prop_path_string(prop_path.as_mut()), first_seq_val.type_name(), first_seq_val)))
+            let first_seq_val_opt = sequence_items.remove(&SerLuaValueRef::Integer(1));
+            match first_seq_val_opt {
+                Some(first_seq_val) => match first_seq_val {
+                    SerLuaValueRef::Function(_) => match sequence_items.len() { 
+                        0 => Ok(()),
+                        _ => Err(ValidationError::InvalidValue {
+                            path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+                            value: value.clone().into(),
+                            message: String::from("For function actions, the function is the only allowed positional element")
+                        })
+                    }
+                    SerLuaValueRef::String(_) => {
+                        for (k, v) in sequence_items.iter() {
+                            with_prop(&mut *prop_path, k.clone(), |path| validate_is_string(v, path))?;
+                        }
+                        Ok(())
+                    }
+                    _ => Err(ValidationError::InvalidValue{
+                        path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+                        value: value.clone().into(),
+                        message: format!("Expected a string or function as the first sequence item, but got a {}: (value={:?})", first_seq_val.value_type(), first_seq_val)
+                    })
+                }
+                None => Ok(()),
             }?;
 
-            for (i, val) in sequence_values.into_iter().enumerate() {
-                validate_is_string(
-                    &val,
-                    Some(Cow::Owned(format!("[{}]", i + 2))),
-                    prop_path.as_mut(),
-                )?;
-            }
 
             Ok(())
         }
-        mlua::Value::Function(_) => Ok(()),
-        _ => Err(mlua::Error::runtime(format!(
-            "Expected table or function, but got a {}:, {:?}",
-            value.type_name(),
-            value
-        ))),
+        SerLuaValueRef::Function(_) => Ok(()),
+        _ => Err(ValidationError::InvalidType {
+            path: prop_path.iter().cloned().map(|p| p.into()).collect(),
+            expected: vec![SerLuaValueType::Function, SerLuaValueType::Table],
+            actual: value.value_type(),
+            value: value.clone().into(),
+        }),
     }
 }
 
