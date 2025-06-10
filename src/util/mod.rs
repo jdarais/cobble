@@ -6,3 +6,4 @@
 pub mod hash;
 pub mod onscopeexit;
 pub mod process_io;
+pub mod serde_base64;

@@ -3,22 +3,30 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::lua::s11n::{SerLuaValueBlock, SerLuaValueRef, SerLuaValueType};
-use crate::project_def::validate::{
-    validate_is_string, validate_table_value_type, with_prop, ValidationError,
-};
+use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
+use crate::project_def::validate::{validate_is_string, with_prop};
 
 use super::validate::{
-    validate_is_table, validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+    key_validation_error, validate_is_table,
+    validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct Artifacts {
     pub files: Vec<Arc<str>>,
     pub calc: Vec<Arc<str>>,
+}
+
+pub fn validate_artifact<'lua>(
+    _lua: &'lua mlua::Lua,
+    value: &mlua::Value<'lua>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
+    validate_is_string(value, prop_path).and(Ok(()))
 }
 
 impl fmt::Display for Artifacts {
@@ -43,44 +51,47 @@ impl fmt::Display for Artifacts {
     }
 }
 
-pub fn validate_artifacts<'a>(
-    value: &SerLuaValueRef<'a>,
-    prop_path: &mut Vec<SerLuaValueRef<'a>>,
-) -> Result<(), ValidationError> {
+pub fn validate_artifacts<'lua>(
+    value: &mlua::Value<'lua>,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     let table_value = validate_is_table(value, &mut *prop_path)?;
+    validate_table_has_only_string_or_sequence_keys(&table_value, &mut *prop_path)?;
 
-    let string_type = vec![SerLuaValueType::String];
-    for (k, v) in table_value.entries() {
-        let res = match k {
-            SerLuaValueRef::String(k_str) => match k_str {
-                "files" => with_prop(&mut *prop_path, SerLuaValueRef::String("files"), |path| {
-                    let files_table = validate_is_table(&v, &mut *path)?;
-                    validate_table_has_only_string_or_sequence_keys(files_table, &mut *path)?;
-                    validate_table_value_type(files_table, &string_type, &mut *path)
-                }),
-                "calc" => with_prop(&mut *prop_path, SerLuaValueRef::String("calc"), |path| {
+    for pair in table_value.clone().pairs() {
+        let (k, v): (mlua::Value, mlua::Value) = pair?;
+
+        if let mlua::Value::String(k_string) = k {
+            let k_str = k_string.to_str()?;
+            match k_str {
+                "files" => {
+                    with_prop(&mut *prop_path, Cow::Borrowed("files"), |path| -> mlua::Result<()> {
+                        let files_table = validate_is_table(&v, &mut *path)?;
+                        validate_table_is_sequence(files_table, &mut *path)?;
+                        for f_val in files_table.clone().sequence_values() {
+                            let f: mlua::Value = f_val?;
+                            validate_is_string(&f, &mut *path)?;
+                        }
+                        Ok(())
+                    })?;
+                }
+                "calc" => with_prop(&mut *prop_path, Cow::Borrowed("calc"), |path| -> mlua::Result<()> {
                     let calc_table = validate_is_table(&v, &mut *path)?;
                     validate_table_is_sequence(calc_table, &mut *path)?;
-                    validate_table_value_type(calc_table, &string_type, &mut *path)
-                }),
-                _ => Err(ValidationError::InvalidKey {
-                    path: prop_path.iter().cloned().map(|p| p.into()).collect(),
-                    expected: vec![String::from("files"), String::from("calc")],
-                    key: k.into(),
-                    table: value.clone().into(),
-                }),
-            },
-            SerLuaValueRef::Integer(_) => with_prop(&mut *prop_path, k, |path| {
-                validate_is_string(&v, path).and(Ok(()))
-            }),
-            _ => Err(ValidationError::InvalidType {
-                path: prop_path.iter().cloned().map(|p| p.into()).collect(),
-                expected: vec![SerLuaValueType::String, SerLuaValueType::Integer],
-                actual: k.value_type(),
-                value: k.into(),
-            }),
-        };
-        res?;
+                    for c_val in calc_table.clone().sequence_values() {
+                        let c: mlua::Value = c_val?;
+                        validate_is_string(&c, &mut *path)?;
+                    }
+                    Ok(())
+                })?,
+                _ => key_validation_error(k_str, vec!["files", "calc"], &mut *prop_path)?,
+            }
+        }
+    }
+
+    for f_val in table_value.clone().sequence_values() {
+        let f: mlua::Value = f_val?;
+        validate_is_string(&f, &mut *prop_path)?;
     }
 
     Ok(())
@@ -131,7 +142,7 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
             calc: Vec::new(),
         };
 
-        let value_ref = SerLuaValueRef::from(&value.values, 0);
+        let value_ref = refify_ser_lua_value(&value.values, 0);
 
         let artifacts_table = match &value_ref {
             SerLuaValueRef::Table(t) => t,

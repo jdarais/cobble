@@ -8,7 +8,7 @@ use std::{fmt, sync::Arc};
 
 use crate::project_def::action::validate_action;
 use crate::project_def::validate::{
-    key_validation_error, validate_is_string, validate_required_key,
+    key_validation_error, validate_is_string, validate_required_key, with_prop,
 };
 use crate::project_def::Action;
 
@@ -33,32 +33,32 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
     let mut prop_path: Vec<Cow<str>> = Vec::new();
     match value {
         mlua::Value::Table(tbl_val) => {
-            validate_required_key(tbl_val, "name", None, &mut prop_path)?;
-            validate_required_key(tbl_val, "action", None, &mut prop_path)?;
+            validate_required_key(tbl_val, "name", &mut prop_path)?;
+            validate_required_key(tbl_val, "action", &mut prop_path)?;
 
             for pair in tbl_val.clone().pairs() {
                 let (k, v): (mlua::Value, mlua::Value) = pair?;
-                let k_str = validate_is_string(&k, None, &mut prop_path)?;
+                let k_str = validate_is_string(&k, &mut prop_path)?;
                 match k_str.to_str()? {
-                    "name" => validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path)
-                        .and(Ok(())),
+                    "name" => with_prop(&mut prop_path, Cow::Borrowed("name"), |path| {
+                        validate_is_string(&v, path).and(Ok(()))
+                    }),
                     "setup_task" => match v {
                         mlua::Value::String(_s) => Ok(()),
-                        mlua::Value::Table(t) => validate_inline_task(
-                            lua,
-                            Some(Cow::Borrowed("setup_task")),
-                            &mlua::Value::Table(t),
-                            &mut prop_path,
-                        ),
+                        mlua::Value::Table(t) => {
+                            with_prop(&mut prop_path, Cow::Borrowed("setup_task"), |path| {
+                                validate_inline_task(lua, &mlua::Value::Table(t), path)
+                            })
+                        }
                         _ => Err(mlua::Error::runtime(format!(
                             "In {}: Expected a table or string for 'setup_task', but got a {}",
                             prop_path_string(&prop_path),
                             v.type_name()
                         ))),
                     },
-                    "action" => {
-                        validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path)
-                    }
+                    "action" => with_prop(&mut prop_path, Cow::Borrowed("action"), |path| {
+                        validate_action(lua, &v, path)
+                    }),
 
                     s_str => key_validation_error(
                         s_str,
@@ -100,7 +100,7 @@ impl fmt::Display for BuildEnvDef {
 }
 
 impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(tbl) => {
                 let name_str: String = tbl.get("name")?;
@@ -112,7 +112,7 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
                         Some(EnvSetupTask::Ref(s.to_str()?.to_owned().into()))
                     }
                     mlua::Value::Table(t) => {
-                        Some(EnvSetupTask::Inline(dump_inline_task(name.clone(), t)?))
+                        Some(EnvSetupTask::Inline(dump_inline_task(lua, name.clone(), t)?))
                     }
                     mlua::Value::Nil => None,
                     val => {

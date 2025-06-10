@@ -6,10 +6,10 @@
 use std::borrow::Cow;
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use crate::lua::s11n::{SerLuaValueBlock, SerLuaValueRef, SerLuaValueType};
+use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
 use crate::project_def::validate::{
-    key_validation_error, push_prop_name_if_exists, validate_is_string, validate_is_table,
-    validate_table_has_only_string_or_sequence_keys, with_prop, ValidationError,
+    key_validation_error, validate_is_string, validate_is_table,
+    validate_table_has_only_string_or_sequence_keys, with_prop,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -35,60 +35,51 @@ impl<'lua> mlua::FromLua<'lua> for Dependencies {
     }
 }
 
-pub fn validate_dep_list<'a>(
-    value: &SerLuaValueRef<'a>,
-    prop_path: &mut Vec<SerLuaValueRef<'a>>,
-) -> Result<(), ValidationError> {
+pub fn validate_dep_list<'lua>(
+    _lua: &'lua mlua::Lua,
+    value: &mlua::Value,
+    prop_path: &mut Vec<Cow<'static, str>>,
+) -> mlua::Result<()> {
     match value {
-        SerLuaValueRef::Table(dep_tbl) => {
-            for (dep_type, dep_list) in dep_tbl.entries() {
+        mlua::Value::Table(dep_tbl) => {
+            for pair in dep_tbl.clone().pairs() {
+                let (dep_type, dep_list): (mlua::Value, mlua::Value) = pair?;
                 let dep_type_str = validate_is_string(&dep_type, &mut *prop_path)?;
-                match dep_type_str {
-                    "dirs" => with_prop(&mut *prop_path, SerLuaValueRef::String("dirs"), |path| {
+                match dep_type_str.to_str()? {
+                    "dirs" => with_prop(&mut *prop_path, Cow::Borrowed("dirs"), |path| {
                         let dirs_tbl = validate_is_table(&dep_list, &mut *path)?;
-                        validate_table_has_only_string_or_sequence_keys(dirs_tbl, path)
+                        validate_table_has_only_string_or_sequence_keys(&dirs_tbl, path)
                     }),
-                    "files" => {
-                        with_prop(&mut *prop_path, SerLuaValueRef::String("files"), |path| {
-                            let files_tbl = validate_is_table(&dep_list, &mut *path)?;
-                            validate_table_has_only_string_or_sequence_keys(files_tbl, path)
-                        })
-                    }
-                    "tasks" => {
-                        with_prop(&mut *prop_path, SerLuaValueRef::String("tasks"), |path| {
-                            let tasks_tbl = validate_is_table(&dep_list, &mut *path)?;
-                            validate_table_has_only_string_or_sequence_keys(tasks_tbl, path)
-                        })
-                    }
-                    "vars" => with_prop(&mut *prop_path, SerLuaValueRef::String("vars"), |path| {
+                    "files" => with_prop(&mut *prop_path, Cow::Borrowed("files"), |path| {
+                        let files_tbl = validate_is_table(&dep_list, &mut *path)?;
+                        validate_table_has_only_string_or_sequence_keys(&files_tbl, path)
+                    }),
+                    "tasks" => with_prop(&mut *prop_path, Cow::Borrowed("tasks"), |path| {
+                        let tasks_tbl = validate_is_table(&dep_list, &mut *path)?;
+                        validate_table_has_only_string_or_sequence_keys(&tasks_tbl, path)
+                    }),
+                    "vars" => with_prop(&mut *prop_path, Cow::Borrowed("vars"), |path| {
                         let vars_tbl = validate_is_table(&dep_list, &mut *path)?;
-                        validate_table_has_only_string_or_sequence_keys(vars_tbl, path)
+                        validate_table_has_only_string_or_sequence_keys(&vars_tbl, path)
                     }),
-                    "calc" => with_prop(&mut *prop_path, SerLuaValueRef::String("tasks"), |path| {
+                    "calc" => with_prop(&mut *prop_path, Cow::Borrowed("calc"), |path| {
                         let calc_tbl = validate_is_table(&dep_list, &mut *path)?;
-                        validate_table_has_only_string_or_sequence_keys(calc_tbl, path)
+                        validate_table_has_only_string_or_sequence_keys(&calc_tbl, path)
                     }),
-                    _k => Err(ValidationError::InvalidKey {
-                        path: prop_path.iter().cloned().map(|p| p.into()).collect(),
-                        expected: vec![
-                            String::from("files"),
-                            String::from("tasks"),
-                            String::from("vars"),
-                            String::from("calc"),
-                        ],
-                        key: dep_type.clone().into(),
-                        table: value.clone().into(),
-                    }),
+                    key => key_validation_error(
+                        key,
+                        vec!["files", "tasks", "vars", "calc"],
+                        prop_path.as_mut(),
+                    ),
                 }?;
             }
             Ok(())
         }
-        _ => Err(ValidationError::InvalidType {
-            path: prop_path.iter().cloned().map(|p| p.into()).collect(),
-            expected: vec![SerLuaValueType::Table],
-            actual: value.value_type(),
-            value: value.clone().into(),
-        }),
+        _ => Err(mlua::Error::runtime(format!(
+            "Expected a table, but got a {}: {:?}",
+            value.type_name(),
+            value
+        ))),
     }
 }
 
@@ -98,7 +89,7 @@ impl TryFrom<&SerLuaValueBlock> for Dependencies {
     fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
         let mut deps: Dependencies = Default::default();
 
-        let value_ref = SerLuaValueRef::from(&value.values, 0);
+        let value_ref = refify_ser_lua_value(&value.values, 0);
 
         let deps_table = value_ref
             .as_table()

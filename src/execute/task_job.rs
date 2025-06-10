@@ -19,6 +19,8 @@ use crate::execute::execute::{
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 use crate::lua::s11n::to_ser_lua_value;
+use crate::lua::s11n::SerLuaValueBlock;
+use crate::lua::s11n::SerLuaValueRef;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::vars::get_var;
@@ -93,6 +95,7 @@ fn get_current_task_input(
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
         vars: HashMap::new(),
+        task: SerLuaValueBlock::clone(&*task.ser_task),
     };
 
     for project_source in task.project_source_deps.iter() {
@@ -296,6 +299,16 @@ fn get_up_to_date_task_record(
             return None;
         }
     };
+
+    // Check that the serialized task definitions are the same.  Eventually, we should be able to just compare
+    // serialized versions of tasks and the envs and tools they use, without having to track and check project
+    // source dependencies.  This will catch if the task is being populated by an undeclared source, such as an
+    // environment variable
+    if SerLuaValueRef::from(&task_record.input.task.values, 0)
+        != SerLuaValueRef::from(&current_task_input.task.values, 0)
+    {
+        return None;
+    }
 
     // Check project source files
     if current_task_input.project_source_hashes.len()

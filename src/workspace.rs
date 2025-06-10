@@ -9,6 +9,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use crate::config::TaskOutputCondition;
 use crate::dependency::compute_file_providers;
+use crate::lua::s11n::{SerLuaValue, SerLuaValueBlock};
 use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
     Action, Artifacts, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
@@ -49,6 +50,7 @@ pub struct Task {
     pub show_stdout: Option<TaskOutputCondition>,
     pub show_stderr: Option<TaskOutputCondition>,
     pub project_source_deps: Vec<Arc<str>>,
+    pub ser_task: Arc<SerLuaValueBlock>
 }
 
 impl Default for Task {
@@ -74,6 +76,7 @@ impl Default for Task {
             show_stdout: None,
             show_stderr: None,
             project_source_deps: Vec::new(),
+            ser_task: Arc::new(SerLuaValueBlock { values: vec![SerLuaValue::Nil] })
         }
     }
 }
@@ -199,6 +202,7 @@ fn add_task_to_workspace(
         artifacts: task_def.artifacts.clone(),
         project_source_deps: project_source_deps.clone(),
         clean_actions: task_def.clean.clone(),
+        ser_task: Arc::new(task_def.ser_task.clone()),
         ..Default::default()
     };
 

@@ -3,19 +3,19 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-pub struct OnScopeExit {
-    on_scope_exit: Option<Box<dyn FnOnce() -> ()>>,
+pub struct OnScopeExit<F: FnOnce() -> ()> {
+    on_scope_exit: Option<F>,
 }
 
-impl OnScopeExit {
-    pub fn new(on_scope_exit: Box<dyn FnOnce() -> ()>) -> OnScopeExit {
+impl<F: FnOnce() -> ()> OnScopeExit<F> {
+    pub fn new(on_scope_exit: F) -> OnScopeExit<F> {
         OnScopeExit {
             on_scope_exit: Some(on_scope_exit),
         }
     }
 }
 
-impl Drop for OnScopeExit {
+impl<F: FnOnce() -> ()> Drop for OnScopeExit<F> {
     fn drop(&mut self) {
         let func = self.on_scope_exit.take().unwrap();
         func();

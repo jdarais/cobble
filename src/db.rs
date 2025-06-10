@@ -31,9 +31,12 @@ pub struct TaskInput {
 
     #[serde(default)]
     pub vars: HashMap<String, TaskVar>,
+
+    #[serde(default = "default_ser_lua_value_block")]
+    pub task: SerLuaValueBlock,
 }
 
-fn default_task_output() -> SerLuaValueBlock {
+fn default_ser_lua_value_block() -> SerLuaValueBlock {
     SerLuaValueBlock {
         values: vec![SerLuaValue::Nil],
     }
@@ -44,7 +47,7 @@ pub struct TaskOutput {
     #[serde(default)]
     pub file_hashes: HashMap<String, String>,
 
-    #[serde(default = "default_task_output")]
+    #[serde(default = "default_ser_lua_value_block")]
     pub task_output: SerLuaValueBlock,
 }
 

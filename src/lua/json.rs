@@ -112,7 +112,7 @@ fn lua_to_json<'lua>(
             ))),
         },
         mlua::Value::String(s) => Ok(serde_json::Value::String(s.to_str()?.to_owned())),
-        mlua::Value::Table(t) => match validate_table_is_sequence(&t, None, &mut Vec::new()) {
+        mlua::Value::Table(t) => match validate_table_is_sequence(&t, &mut Vec::new()) {
             Ok(_) => {
                 let mut arr: Vec<serde_json::Value> = Vec::with_capacity(t.len()? as usize);
                 for v_res in t.sequence_values() {
