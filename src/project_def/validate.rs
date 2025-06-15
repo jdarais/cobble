@@ -3,39 +3,43 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use mlua::FromLua;
 use std::borrow::Cow;
 
-use crate::util::onscopeexit::OnScopeExitMut;
+use crate::lua::s11n::SerLuaValueBlock;
 
 pub fn prop_path_string(prop_path: &Vec<Cow<'static, str>>) -> String {
     prop_path.join(".")
 }
 
-pub fn push_prop_name_if_exists<'a>(
-    prop_name: Option<Cow<'static, str>>,
-    prop_path: &'a mut Vec<Cow<'static, str>>,
-) -> OnScopeExitMut<'a, Vec<Cow<'static, str>>> {
-    match prop_name {
-        Some(name) => {
-            prop_path.push(name);
-            OnScopeExitMut::new(
-                prop_path,
-                Box::new(|path| {
-                    path.pop();
-                }),
-            )
+pub fn prop_key_string<'lua>(
+    lua: &'lua mlua::Lua,
+    key: &mlua::Value<'lua>,
+) -> mlua::Result<Cow<'static, str>> {
+    match key {
+        mlua::Value::String(s) => Ok(Cow::Owned(String::from(s.to_str()?))),
+        _ => {
+            let ser_key = SerLuaValueBlock::from_lua(key.clone(), lua)?;
+            Ok(Cow::Owned(format!("[{ser_key}]")))
         }
-        None => OnScopeExitMut::new(prop_path, Box::new(|_| {})),
     }
+}
+
+pub fn with_prop<T, F: FnOnce(&mut Vec<Cow<'static, str>>) -> T>(
+    prop_path: &mut Vec<Cow<'static, str>>,
+    prop: Cow<'static, str>,
+    func: F,
+) -> T {
+    prop_path.push(prop);
+    let res = func(prop_path);
+    prop_path.pop();
+    res
 }
 
 pub fn validate_table_has_only_string_or_sequence_keys(
     table: &mlua::Table,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     let sequence_len = table.len()?;
     for pair in table.clone().pairs() {
         let (k, _v): (mlua::Value, mlua::Value) = pair?;
@@ -65,11 +69,8 @@ pub fn validate_table_has_only_string_or_sequence_keys(
 
 pub fn validate_table_is_sequence(
     table: &mlua::Table,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     let sequence_len = table.len()?;
     for pair in table.clone().pairs() {
         let (k, _v): (mlua::Value, mlua::Value) = pair?;
@@ -98,10 +99,8 @@ pub fn validate_table_is_sequence(
 
 pub fn validate_is_string<'a, 'lua>(
     value: &'a mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<&'a mlua::String<'lua>> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
     match value {
         mlua::Value::String(s) => Ok(s),
         _ => Err(mlua::Error::runtime(format!(
@@ -115,11 +114,8 @@ pub fn validate_is_string<'a, 'lua>(
 
 pub fn validate_is_bool(
     value: &mlua::Value,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<bool> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     match value {
         mlua::Value::Boolean(b) => Ok(*b),
         _ => Err(mlua::Error::runtime(format!(
@@ -133,11 +129,8 @@ pub fn validate_is_bool(
 
 pub fn validate_is_table<'a, 'lua>(
     value: &'a mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<&'a mlua::Table<'lua>> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     match value {
         mlua::Value::Table(t) => Ok(t),
         _ => Err(mlua::Error::runtime(format!(
@@ -165,11 +158,8 @@ pub fn key_validation_error<T>(
 pub fn validate_required_key(
     table: &mlua::Table,
     key: &str,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     if table.contains_key(key)? {
         Ok(())
     } else {

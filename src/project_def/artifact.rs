@@ -8,11 +8,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
-use crate::project_def::validate::validate_is_string;
+use crate::project_def::validate::{validate_is_string, with_prop};
 
 use super::validate::{
-    key_validation_error, push_prop_name_if_exists, validate_is_table,
-    validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+    key_validation_error, validate_is_table, validate_table_has_only_string_or_sequence_keys,
+    validate_table_is_sequence,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -24,10 +24,9 @@ pub struct Artifacts {
 pub fn validate_artifact<'lua>(
     _lua: &'lua mlua::Lua,
     value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    validate_is_string(value, prop_name, prop_path).and(Ok(()))
+    validate_is_string(value, prop_path).and(Ok(()))
 }
 
 impl fmt::Display for Artifacts {
@@ -54,13 +53,10 @@ impl fmt::Display for Artifacts {
 
 pub fn validate_artifacts<'lua>(
     value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
-    let table_value = validate_is_table(value, None, prop_path.as_mut())?;
-    validate_table_has_only_string_or_sequence_keys(&table_value, None, prop_path.as_mut())?;
+    let table_value = validate_is_table(value, &mut *prop_path)?;
+    validate_table_has_only_string_or_sequence_keys(&table_value, &mut *prop_path)?;
 
     for pair in table_value.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
@@ -69,39 +65,41 @@ pub fn validate_artifacts<'lua>(
             let k_str = k_string.to_str()?;
             match k_str {
                 "files" => {
-                    let files_table =
-                        validate_is_table(&v, Some(Cow::Borrowed("files")), prop_path.as_mut())?;
-                    validate_table_is_sequence(
-                        files_table,
-                        Some(Cow::Borrowed("files")),
-                        prop_path.as_mut(),
+                    with_prop(
+                        &mut *prop_path,
+                        Cow::Borrowed("files"),
+                        |path| -> mlua::Result<()> {
+                            let files_table = validate_is_table(&v, &mut *path)?;
+                            validate_table_is_sequence(files_table, &mut *path)?;
+                            for f_val in files_table.clone().sequence_values() {
+                                let f: mlua::Value = f_val?;
+                                validate_is_string(&f, &mut *path)?;
+                            }
+                            Ok(())
+                        },
                     )?;
-                    for f_val in files_table.clone().sequence_values() {
-                        let f: mlua::Value = f_val?;
-                        validate_is_string(&f, None, prop_path.as_mut())?;
-                    }
                 }
-                "calc" => {
-                    let calc_table =
-                        validate_is_table(&v, Some(Cow::Borrowed("calc")), prop_path.as_mut())?;
-                    validate_table_is_sequence(
-                        calc_table,
-                        Some(Cow::Borrowed("calc")),
-                        prop_path.as_mut(),
-                    )?;
-                    for c_val in calc_table.clone().sequence_values() {
-                        let c: mlua::Value = c_val?;
-                        validate_is_string(&c, None, prop_path.as_mut())?;
-                    }
-                }
-                _ => key_validation_error(k_str, vec!["files", "calc"], prop_path.as_mut())?,
+                "calc" => with_prop(
+                    &mut *prop_path,
+                    Cow::Borrowed("calc"),
+                    |path| -> mlua::Result<()> {
+                        let calc_table = validate_is_table(&v, &mut *path)?;
+                        validate_table_is_sequence(calc_table, &mut *path)?;
+                        for c_val in calc_table.clone().sequence_values() {
+                            let c: mlua::Value = c_val?;
+                            validate_is_string(&c, &mut *path)?;
+                        }
+                        Ok(())
+                    },
+                )?,
+                _ => key_validation_error(k_str, vec!["files", "calc"], &mut *prop_path)?,
             }
         }
     }
 
     for f_val in table_value.clone().sequence_values() {
         let f: mlua::Value = f_val?;
-        validate_is_string(&f, None, prop_path.as_mut())?;
+        validate_is_string(&f, &mut *prop_path)?;
     }
 
     Ok(())
@@ -152,7 +150,7 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
             calc: Vec::new(),
         };
 
-        let value_ref = refify_ser_lua_value(0, &value.values);
+        let value_ref = refify_ser_lua_value(&value.values, 0);
 
         let artifacts_table = match &value_ref {
             SerLuaValueRef::Table(t) => t,

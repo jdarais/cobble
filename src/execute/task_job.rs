@@ -19,10 +19,14 @@ use crate::execute::execute::{
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 use crate::lua::s11n::to_ser_lua_value;
+use crate::lua::s11n::SerLuaValueBlock;
+use crate::lua::s11n::SerLuaValueRef;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
+use crate::util::hash::compute_hash_string;
 use crate::vars::get_var;
 use crate::vars::set_var;
+use crate::workspace::BuildEnv;
 use crate::workspace::{Task, Workspace};
 
 fn execute_task_actions<'lua>(
@@ -83,49 +87,20 @@ fn get_current_task_input(
     workspace_config: &WorkspaceConfig,
     task: &Arc<Task>,
     tools: &HashMap<Arc<str>, Arc<ExternalTool>>,
+    envs: &HashMap<Arc<str>, Arc<BuildEnv>>,
     db_env: &lmdb::Environment,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
 ) -> Result<TaskInput, TaskExecutionError> {
     let mut current_task_input = TaskInput {
-        project_source_hashes: HashMap::new(),
         dir_mtimes: HashMap::new(),
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
         vars: HashMap::new(),
+        task: SerLuaValueBlock::clone(&*task.ser_task),
+        env_hashes: HashMap::new(),
+        tool_hashes: HashMap::new(),
     };
-
-    for project_source in task.project_source_deps.iter() {
-        let cached_hash = cache
-            .project_source_hashes
-            .read()
-            .unwrap()
-            .get(project_source)
-            .cloned();
-        let current_hash = match cached_hash {
-            Some(hash) => hash,
-            None => {
-                let file_path = workspace_config
-                    .workspace_dir
-                    .join(Path::new(project_source.as_ref()));
-                let file_hash = compute_file_hash(&file_path.as_path()).map_err(|e| {
-                    TaskExecutionError::IOError {
-                        message: format!("Error reading file {}", file_path.display()),
-                        cause: e,
-                    }
-                })?;
-                cache
-                    .project_source_hashes
-                    .write()
-                    .unwrap()
-                    .insert(project_source.clone(), file_hash.clone());
-                file_hash
-            }
-        };
-        current_task_input
-            .project_source_hashes
-            .insert(String::from(project_source.as_ref()), current_hash);
-    }
 
     for (dir_alias, dir_path) in task.dir_deps.iter() {
         let cached_mtime = cache.dir_mtimes.read().unwrap().get(dir_path).cloned();
@@ -217,6 +192,35 @@ fn get_current_task_input(
     }
 
     for (env_alias, env_dep) in task.build_envs.iter() {
+        let cached_env_hash = cache.env_hashes.read().unwrap().get(env_dep).cloned();
+        let current_env_hash = match cached_env_hash {
+            Some(hash) => hash,
+            None => {
+                let env = envs
+                    .get(env_dep)
+                    .ok_or_else(|| TaskExecutionError::EnvLookupError(env_dep.clone()))?;
+                let env_json = serde_json::to_string(&*env.ser_env)
+                    .map_err(|e| TaskExecutionError::SerializeError(e))?;
+                let env_hash = compute_hash_string(env_json.as_bytes()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: String::from("Compute hash for env failed"),
+                        cause: e,
+                    }
+                })?;
+
+                cache
+                    .env_hashes
+                    .write()
+                    .unwrap()
+                    .insert(env_dep.clone(), env_hash.clone());
+
+                env_hash
+            }
+        };
+        current_task_input
+            .env_hashes
+            .insert(String::from(env_dep.as_ref()), current_env_hash);
+
         let cached_env_output = cache.task_outputs.read().unwrap().get(env_dep).cloned();
         let current_env_output = match cached_env_output {
             Some(output) => output,
@@ -245,13 +249,37 @@ fn get_current_task_input(
 
         set_var(var_name, var_value.clone(), &mut current_task_input.vars)
             .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-
-        // current_task_input
-        //     .vars
-        //     .insert(String::from(var_name.as_ref()), var_value.clone());
     }
 
     for (_tool_alias, tool_name) in task.tools.iter() {
+        let cached_tool_hash = cache.tool_hashes.read().unwrap().get(tool_name).cloned();
+        let current_tool_hash = match cached_tool_hash {
+            Some(hash) => hash,
+            None => {
+                let tool = tools
+                    .get(tool_name)
+                    .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
+                let tool_json = serde_json::to_string(&tool.ser_tool)
+                    .map_err(|e| TaskExecutionError::SerializeError(e))?;
+                let tool_hash = compute_hash_string(tool_json.as_bytes()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: String::from("Compute hash for tool failed"),
+                        cause: e,
+                    }
+                })?;
+                cache
+                    .tool_hashes
+                    .write()
+                    .unwrap()
+                    .insert(tool_name.clone(), tool_hash.clone());
+                tool_hash
+            }
+        };
+
+        current_task_input
+            .tool_hashes
+            .insert(String::from(tool_name.as_ref()), current_tool_hash);
+
         let tool = tools
             .get(tool_name)
             .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
@@ -262,9 +290,6 @@ fn get_current_task_input(
 
                 set_var(var_name, var_value.clone(), &mut current_task_input.vars)
                     .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-                // current_task_input
-                //     .vars
-                //     .insert(String::from(var_name.as_ref()), var_value.clone());
             }
         }
     }
@@ -297,24 +322,11 @@ fn get_up_to_date_task_record(
         }
     };
 
-    // Check project source files
-    if current_task_input.project_source_hashes.len()
-        != task_record.input.project_source_hashes.len()
+    // Check that the serialized task definitions are the same.
+    if SerLuaValueRef::from(&task_record.input.task.values, 0)
+        != SerLuaValueRef::from(&current_task_input.task.values, 0)
     {
         return None;
-    }
-
-    for (source_file, source_hash) in current_task_input.project_source_hashes.iter() {
-        let prev_hash = match task_record.input.project_source_hashes.get(source_file) {
-            Some(hash) => hash,
-            None => {
-                return None;
-            }
-        };
-
-        if prev_hash != source_hash {
-            return None;
-        }
     }
 
     // Check directories
@@ -418,6 +430,44 @@ fn get_up_to_date_task_record(
         };
 
         if prev_hash != &file_hash {
+            return None;
+        }
+    }
+
+    // Check envs
+
+    if current_task_input.env_hashes.len() != task_record.input.env_hashes.len() {
+        return None;
+    }
+
+    for (env_name, env_hash) in current_task_input.env_hashes.iter() {
+        let prev_hash = match task_record.input.env_hashes.get(env_name) {
+            Some(hash) => hash,
+            None => {
+                return None;
+            }
+        };
+
+        if prev_hash != env_hash {
+            return None;
+        }
+    }
+
+    // Check tools
+
+    if current_task_input.tool_hashes.len() != task_record.input.tool_hashes.len() {
+        return None;
+    }
+
+    for (tool_name, tool_hash) in current_task_input.tool_hashes.iter() {
+        let prev_hash = match task_record.input.tool_hashes.get(tool_name) {
+            Some(hash) => hash,
+            None => {
+                return None;
+            }
+        };
+
+        if prev_hash != tool_hash {
             return None;
         }
     }
@@ -544,6 +594,7 @@ pub fn execute_task_job(
         workspace_config,
         &task.task,
         &task.workspace.tools,
+        &task.workspace.build_envs,
         db_env,
         db,
         &cache,
@@ -623,11 +674,12 @@ mod tests {
     use std::sync::{mpsc, RwLock};
     use std::time::Duration;
 
+    use mlua::FromLua;
+
     use crate::config::TaskOutputCondition;
     use crate::db::new_db_env;
     use crate::execute::action::init_lua_for_task_executor;
     use crate::lua::lua_env::create_lua_env;
-    use crate::lua::s11n::to_ser_lua_value;
     use crate::project_def::{Action, ActionCmd, ExternalTool};
     use crate::workspace::{Task, TaskType, Workspace};
 
@@ -656,31 +708,26 @@ mod tests {
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
         let cache = Arc::new(TaskExecutorCache {
-            project_source_hashes: RwLock::new(HashMap::new()),
             dir_mtimes: RwLock::new(HashMap::new()),
             file_hashes: RwLock::new(HashMap::new()),
             task_outputs: RwLock::new(HashMap::new()),
+            env_hashes: RwLock::new(HashMap::new()),
+            tool_hashes: RwLock::new(HashMap::new()),
         });
 
-        let tool_func: mlua::Function = lua
-            .load(r#"function (c) assert(c.args[1] == "Test!") end"#)
+        let tool_lua: mlua::Value = lua
+            .load(
+                r#"{
+                    name = "print",
+                    action = function (c)
+                        assert(c.args[1] == "Test!")
+                    end
+                }"#,
+            )
             .eval()
             .unwrap();
 
-        let tool_name = Arc::<str>::from("print");
-        let tool = Arc::new(ExternalTool {
-            name: tool_name.clone(),
-            check: None,
-            action: Action {
-                tools: HashMap::new(),
-                build_envs: HashMap::new(),
-                kwargs: HashMap::new(),
-                cmd: ActionCmd::Func(
-                    to_ser_lua_value(&lua, &mlua::Value::Function(tool_func)).unwrap(),
-                ),
-            },
-            var_deps: HashMap::new(),
-        });
+        let tool = Arc::new(ExternalTool::from_lua(tool_lua, &lua).unwrap());
 
         let test_task_name = Arc::<str>::from("test");
 
@@ -689,11 +736,11 @@ mod tests {
             task_type: TaskType::Task,
             dir: workspace_dir.clone(),
             project_name: Arc::<str>::from("/"),
-            tools: vec![(tool_name.clone(), tool_name.clone())]
+            tools: vec![(tool.name.clone(), tool.name.clone())]
                 .into_iter()
                 .collect(),
             actions: vec![Action {
-                tools: vec![(tool_name.clone(), tool_name.clone())]
+                tools: vec![(tool.name.clone(), tool.name.clone())]
                     .into_iter()
                     .collect(),
                 build_envs: HashMap::new(),
@@ -708,7 +755,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             build_envs: HashMap::new(),
-            tools: vec![(tool_name.clone(), tool.clone())]
+            tools: vec![(tool.name.clone(), tool.clone())]
                 .into_iter()
                 .collect(),
             file_providers: HashMap::new(),

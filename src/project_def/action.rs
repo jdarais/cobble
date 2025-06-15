@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use crate::lua::s11n::{to_ser_lua_value, SerLuaValueBlock};
 use crate::project_def::validate::{
-    prop_path_string, push_prop_name_if_exists, validate_is_string, validate_is_table,
-    validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence,
+    prop_path_string, validate_is_string, validate_is_table,
+    validate_table_has_only_string_or_sequence_keys, validate_table_is_sequence, with_prop,
 };
 
 #[derive(Clone, Debug)]
@@ -41,19 +41,16 @@ pub struct Action {
 fn validate_name_alias_table<'lua>(
     _lua: &'lua mlua::Lua,
     value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     match value {
         mlua::Value::Table(tbl_val) => {
-            validate_table_has_only_string_or_sequence_keys(tbl_val, None, prop_path.as_mut())
+            validate_table_has_only_string_or_sequence_keys(tbl_val, &mut *prop_path)
         }
         mlua::Value::String(_) => Ok(()),
         _ => Err(mlua::Error::runtime(format!(
             "In {}: Expected a table or string, but got a {}: {:?}",
-            prop_path_string(prop_path.as_mut()),
+            prop_path_string(&mut *prop_path),
             value.type_name(),
             value
         ))),
@@ -63,21 +60,15 @@ fn validate_name_alias_table<'lua>(
 pub fn validate_action_list<'lua>(
     lua: &'lua mlua::Lua,
     value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
-    let tbl_val = validate_is_table(value, None, prop_path.as_mut())?;
-    validate_table_is_sequence(tbl_val, None, prop_path.as_mut())?;
+    let tbl_val = validate_is_table(value, &mut *prop_path)?;
+    validate_table_is_sequence(tbl_val, &mut *prop_path)?;
     for (i, action_tbl_res) in tbl_val.clone().sequence_values().into_iter().enumerate() {
         let action_tbl: mlua::Value = action_tbl_res?;
-        validate_action(
-            lua,
-            &action_tbl,
-            Some(Cow::Owned(format!("[{}]", i))),
-            prop_path.as_mut(),
-        )?;
+        with_prop(&mut *prop_path, Cow::Owned(format!("{i}")), |path| {
+            validate_action(lua, &action_tbl, path)
+        })?;
     }
     Ok(())
 }
@@ -85,14 +76,11 @@ pub fn validate_action_list<'lua>(
 pub fn validate_action<'lua>(
     lua: &'lua mlua::Lua,
     value: &mlua::Value<'lua>,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
     match value {
         mlua::Value::Table(tbl_val) => {
-            validate_table_has_only_string_or_sequence_keys(&tbl_val, None, prop_path.as_mut())?;
+            validate_table_has_only_string_or_sequence_keys(&tbl_val, &mut *prop_path)?;
             let mut sequence_values: Vec<mlua::Value> = Vec::with_capacity(tbl_val.len()? as usize);
             sequence_values.resize(sequence_values.capacity(), mlua::Value::Nil);
 
@@ -104,18 +92,12 @@ pub fn validate_action<'lua>(
                         Ok(())
                     }
                     mlua::Value::String(ks) => match ks.to_str()? {
-                        "tool" => validate_name_alias_table(
-                            lua,
-                            &v,
-                            Some(Cow::Borrowed("tool")),
-                            prop_path.as_mut(),
-                        ),
-                        "env" => validate_name_alias_table(
-                            lua,
-                            &v,
-                            Some(Cow::Borrowed("env")),
-                            prop_path.as_mut(),
-                        ),
+                        "tool" => with_prop(&mut *prop_path, Cow::Borrowed("tool"), |path| {
+                            validate_name_alias_table(lua, &v, path)
+                        }),
+                        "env" => with_prop(&mut *prop_path, Cow::Borrowed("env"), |path| {
+                            validate_name_alias_table(lua, &v, path)
+                        }),
                         _ => Ok(()),
                     },
                     _ => Err(mlua::Error::runtime(format!(
@@ -139,11 +121,9 @@ pub fn validate_action<'lua>(
             }?;
 
             for (i, val) in sequence_values.into_iter().enumerate() {
-                validate_is_string(
-                    &val,
-                    Some(Cow::Owned(format!("[{}]", i + 2))),
-                    prop_path.as_mut(),
-                )?;
+                with_prop(&mut *prop_path, Cow::Owned(format!("[{i}]")), |path| {
+                    validate_is_string(&val, path)
+                })?;
             }
 
             Ok(())
@@ -392,7 +372,7 @@ mod tests {
             .load(r#"{ tool = "cmd", "echo", "hi", "there" }"#)
             .eval()
             .unwrap();
-        validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
+        validate_action(&lua, &action_val, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
             ActionCmd::Cmd(_) => { /* OK */ }
@@ -416,7 +396,7 @@ mod tests {
             )
             .eval()
             .unwrap();
-        validate_action(&lua, &action_val, None, &mut Vec::new()).unwrap();
+        validate_action(&lua, &action_val, &mut Vec::new()).unwrap();
         let action: Action = lua.unpack(action_val).unwrap();
         match action.cmd {
             ActionCmd::Func(_) => { /* OK */ }
@@ -443,7 +423,7 @@ mod tests {
             )
             .eval()
             .unwrap();
-        validate_action(&lua, &action_val, None, &mut Vec::new()).expect_err(
+        validate_action(&lua, &action_val, &mut Vec::new()).expect_err(
             "Validation of action with mixed function and string sequence values should fail",
         );
 

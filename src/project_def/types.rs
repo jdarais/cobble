@@ -162,7 +162,7 @@ pub fn lua_to_json<'lua>(
             .unwrap_or(serde_json::Value::Null),
         String(s) => serde_json::Value::String(std::string::String::from(s.to_str()?)),
         Table(tbl) => {
-            let is_sequence = validate_table_is_sequence(tbl, None, &mut Vec::new()).is_ok();
+            let is_sequence = validate_table_is_sequence(tbl, &mut Vec::new()).is_ok();
             if is_sequence {
                 let mut arr: Vec<serde_json::Value> = Vec::new();
                 for val_res in tbl.clone().sequence_values() {

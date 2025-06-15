@@ -9,6 +9,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use crate::config::TaskOutputCondition;
 use crate::dependency::compute_file_providers;
+use crate::lua::s11n::{SerLuaValue, SerLuaValueBlock};
 use crate::project_def::build_env::EnvSetupTask;
 use crate::project_def::{
     Action, Artifacts, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
@@ -48,7 +49,7 @@ pub struct Task {
     pub is_interactive: bool,
     pub show_stdout: Option<TaskOutputCondition>,
     pub show_stderr: Option<TaskOutputCondition>,
-    pub project_source_deps: Vec<Arc<str>>,
+    pub ser_task: Arc<SerLuaValueBlock>,
 }
 
 impl Default for Task {
@@ -73,7 +74,9 @@ impl Default for Task {
             is_interactive: false,
             show_stdout: None,
             show_stderr: None,
-            project_source_deps: Vec::new(),
+            ser_task: Arc::new(SerLuaValueBlock {
+                values: vec![SerLuaValue::Nil],
+            }),
         }
     }
 }
@@ -84,6 +87,7 @@ pub struct BuildEnv {
     pub dir: PathBuf,
     pub setup_task: Option<Arc<str>>,
     pub action: Action,
+    pub ser_env: Arc<SerLuaValueBlock>,
 }
 
 #[derive(Clone, Debug)]
@@ -144,18 +148,11 @@ fn add_build_env_to_workspace(
     build_env: &BuildEnvDef,
     project_name: &Arc<str>,
     dir: &Arc<Path>,
-    project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
     if let Some(setup_task) = &build_env.setup_task {
         if let EnvSetupTask::Inline(inline_setup_task) = setup_task {
-            add_task_to_workspace(
-                inline_setup_task,
-                project_name,
-                dir,
-                project_source_deps,
-                workspace,
-            );
+            add_task_to_workspace(inline_setup_task, project_name, dir, workspace);
         }
     }
 
@@ -174,6 +171,7 @@ fn add_build_env_to_workspace(
             dir: PathBuf::from(dir.as_ref()),
             setup_task: setup_task_name,
             action: build_env.action.clone(),
+            ser_env: Arc::new(build_env.ser_env.clone()),
         }),
     );
 }
@@ -182,7 +180,6 @@ fn add_task_to_workspace(
     task_def: &TaskDef,
     project_name: &Arc<str>,
     dir: &Arc<Path>,
-    project_source_deps: &Vec<Arc<str>>,
     workspace: &mut Workspace,
 ) {
     let mut task = Task {
@@ -197,8 +194,8 @@ fn add_task_to_workspace(
         show_stderr: task_def.show_stderr.clone(),
         build_envs: task_def.build_env.iter().cloned().collect(),
         artifacts: task_def.artifacts.clone(),
-        project_source_deps: project_source_deps.clone(),
         clean_actions: task_def.clean.clone(),
+        ser_task: Arc::new(task_def.ser_task.clone()),
         ..Default::default()
     };
 
@@ -225,7 +222,6 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
                 .iter()
                 .map(|t| (t.clone(), t.clone()))
                 .collect(),
-            project_source_deps: project.project_source_deps.clone(),
             ..Default::default()
         };
         let mut default_tasks: Vec<&TaskDef> = project
@@ -250,23 +246,11 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 
     for env in project.build_envs.iter() {
-        add_build_env_to_workspace(
-            env,
-            &project.name,
-            &project.path,
-            &project.project_source_deps,
-            workspace,
-        );
+        add_build_env_to_workspace(env, &project.name, &project.path, workspace);
     }
 
     for task in project.tasks.iter() {
-        add_task_to_workspace(
-            task,
-            &project.name,
-            &project.path,
-            &project.project_source_deps,
-            workspace,
-        );
+        add_task_to_workspace(task, &project.name, &project.path, workspace);
     }
 
     for tool in project.tools.iter() {

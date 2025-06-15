@@ -6,14 +6,15 @@
 use std::collections::HashMap;
 use std::{borrow::Cow, fmt, sync::Arc};
 
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::action::validate_action;
 use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
-    key_validation_error, validate_is_string, validate_is_table, validate_required_key,
+    key_validation_error, validate_is_string, validate_is_table, validate_required_key, with_prop,
 };
 use crate::project_def::Action;
 
-use super::validate::{push_prop_name_if_exists, validate_table_has_only_string_or_sequence_keys};
+use super::validate::validate_table_has_only_string_or_sequence_keys;
 
 #[derive(Clone, Debug)]
 pub struct ExternalTool {
@@ -21,30 +22,24 @@ pub struct ExternalTool {
     pub check: Option<Action>,
     pub action: Action,
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
+    pub ser_tool: SerLuaValueBlock,
 }
 
 fn validate_tool_deps<'lua>(
     value: &mlua::Value,
-    prop_name: Option<Cow<'static, str>>,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
-    let mut prop_path = push_prop_name_if_exists(prop_name, prop_path);
-
-    let deps_tbl = validate_is_table(&value, None, prop_path.as_mut())?;
+    let deps_tbl = validate_is_table(&value, prop_path.as_mut())?;
 
     for pair in deps_tbl.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
-        let k_str = validate_is_string(&k, None, prop_path.as_mut())?;
+        let k_str = validate_is_string(&k, prop_path.as_mut())?;
         match k_str.to_str()? {
-            "vars" => {
-                let v_tbl = validate_is_table(&v, Some(Cow::Borrowed("vars")), prop_path.as_mut())?;
-                validate_table_has_only_string_or_sequence_keys(
-                    &v_tbl,
-                    Some(Cow::Borrowed("vars")),
-                    prop_path.as_mut(),
-                )
-            }
-            unknown_key => key_validation_error(unknown_key, vec!["vars"], prop_path.as_mut()),
+            "vars" => with_prop(&mut *prop_path, Cow::Borrowed("vars"), |path| {
+                let v_tbl = validate_is_table(&v, &mut *path)?;
+                validate_table_has_only_string_or_sequence_keys(&v_tbl, path)
+            }),
+            unknown_key => key_validation_error(unknown_key, vec!["vars"], prop_path),
         }?;
     }
 
@@ -54,21 +49,27 @@ fn validate_tool_deps<'lua>(
 pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     let mut prop_path: Vec<Cow<str>> = Vec::new();
 
-    let tool_tbl = validate_is_table(&value, None, &mut prop_path)?;
+    let tool_tbl = validate_is_table(&value, &mut prop_path)?;
 
-    validate_required_key(&tool_tbl, "name", None, &mut prop_path)?;
-    validate_required_key(&tool_tbl, "action", None, &mut prop_path)?;
+    validate_required_key(&tool_tbl, "name", &mut prop_path)?;
+    validate_required_key(&tool_tbl, "action", &mut prop_path)?;
 
     for pair in tool_tbl.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
-        let k_str = validate_is_string(&k, None, &mut prop_path)?;
+        let k_str = validate_is_string(&k, &mut prop_path)?;
         match k_str.to_str()? {
-            "name" => {
-                validate_is_string(&v, Some(Cow::Borrowed("name")), &mut prop_path).and(Ok(()))
-            }
-            "deps" => validate_tool_deps(&v, Some(Cow::Borrowed("deps")), &mut prop_path),
-            "check" => validate_action(lua, &v, Some(Cow::Borrowed("check")), &mut prop_path),
-            "action" => validate_action(lua, &v, Some(Cow::Borrowed("action")), &mut prop_path),
+            "name" => with_prop(&mut prop_path, Cow::Borrowed("name"), |path| {
+                validate_is_string(&v, path).and(Ok(()))
+            }),
+            "deps" => with_prop(&mut prop_path, Cow::Borrowed("deps"), |path| {
+                validate_tool_deps(&v, path)
+            }),
+            "check" => with_prop(&mut prop_path, Cow::Borrowed("check"), |path| {
+                validate_action(lua, &v, path)
+            }),
+            "action" => with_prop(&mut prop_path, Cow::Borrowed("action"), |path| {
+                validate_action(lua, &v, path)
+            }),
             unknown_key => key_validation_error(
                 unknown_key,
                 vec!["name", "install", "check", "action"],
@@ -100,8 +101,10 @@ impl fmt::Display for ExternalTool {
 impl<'lua> mlua::FromLua<'lua> for ExternalTool {
     fn from_lua(
         value: mlua::prelude::LuaValue<'lua>,
-        _lua: &'lua mlua::prelude::Lua,
+        lua: &'lua mlua::prelude::Lua,
     ) -> mlua::prelude::LuaResult<Self> {
+        let ser_tool = SerLuaValueBlock::from_lua(value.clone(), lua)?;
+        let ser_tool = ser_tool.as_deterministic();
         match value {
             mlua::Value::Table(tbl) => {
                 let name_str: String = tbl.get("name")?;
@@ -147,6 +150,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                     check,
                     action,
                     var_deps,
+                    ser_tool,
                 })
             }
             _ => Err(mlua::Error::runtime(format!(
@@ -154,38 +158,5 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                 &value
             ))),
         }
-    }
-}
-
-impl<'lua> mlua::IntoLua<'lua> for ExternalTool {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        let ExternalTool {
-            name,
-            check,
-            action,
-            var_deps,
-        } = self;
-        let tool_table = lua.create_table()?;
-
-        tool_table.set("name", name.as_ref())?;
-
-        if var_deps.len() > 0 {
-            let deps_table = lua.create_table()?;
-
-            let var_deps_table = lua.create_table()?;
-            for (k, v) in var_deps {
-                var_deps_table.set(k.as_ref(), v.as_ref())?;
-            }
-
-            deps_table.set("vars", var_deps_table)?;
-        }
-
-        if let Some(chk) = check {
-            tool_table.set("check", chk)?;
-        }
-
-        tool_table.set("action", action)?;
-
-        Ok(mlua::Value::Table(tool_table))
     }
 }

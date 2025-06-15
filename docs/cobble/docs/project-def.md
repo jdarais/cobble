@@ -49,7 +49,7 @@ _nil_
 
 - `env_def`: _table_ - action environment definition properties
     - `name`: _string_ - The action environment name
-    - `setup_task`: *task_def* - The task to execute to set up the action environment, (e.g. "npm install").  All `task_def` properties are supported except for `name`.  The setup task will be given the same name as the action environment.
+    - `setup_task`: *task_def* | _string_ - The task to execute to set up the action environment, (e.g. "npm install").  If `setup_task` is a string, it is interpreted as a task name reference.  If `setup_task` is a task definition, a new task will be created along with the action environment.  All `task_def` properties are supported except for `name`.  The setup task will be given the same name as the action environment.
     - `action`: *action_def* - An action that will run a command in the action environment, (e.g. "npm exec").  For function actions, the arguments passed to the action are available in `c.args`.  For actions defined using a table, the args are appended to the table and passed to the tool or action environment referenced by the action.
 
 ##### Returns

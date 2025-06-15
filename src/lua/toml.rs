@@ -117,7 +117,7 @@ fn lua_to_toml<'lua>(
             let toml_str = s.to_str()?;
             Ok(toml::Value::String(toml_str.to_owned()))
         }
-        mlua::Value::Table(t) => match validate_table_is_sequence(&t, None, &mut Vec::new()) {
+        mlua::Value::Table(t) => match validate_table_is_sequence(&t, &mut Vec::new()) {
             Ok(_) => {
                 let mut arr: Vec<toml::Value> = Vec::with_capacity(t.len()? as usize);
                 for v_res in t.sequence_values() {

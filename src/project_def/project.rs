@@ -3,12 +3,26 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::{BuildEnvDef, ExternalTool, TaskDef};
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SerProject {
+    pub name: String,
+    pub path: String,
+    pub envs: HashMap<String, SerLuaValueBlock>,
+    pub tasks: HashMap<String, SerLuaValueBlock>,
+    pub tools: HashMap<String, SerLuaValueBlock>,
+    pub child_projects: Vec<SerProject>,
+}
 
 #[derive(Debug)]
 pub struct Project {
@@ -18,7 +32,6 @@ pub struct Project {
     pub tasks: Vec<TaskDef>,
     pub tools: Vec<ExternalTool>,
     pub child_project_names: Vec<Arc<str>>,
-    pub project_source_deps: Vec<Arc<str>>,
 }
 
 impl fmt::Display for Project {
@@ -63,15 +76,6 @@ impl fmt::Display for Project {
         }
         f.write_str("],")?;
 
-        f.write_str("project_file_deps=[")?;
-        for (i, proj) in self.project_source_deps.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-            write!(f, "{}", proj)?;
-        }
-        f.write_str("],")?;
-
         f.write_str(")")
     }
 }
@@ -106,12 +110,6 @@ impl<'lua> mlua::FromLua<'lua> for Project {
             child_project_names.push(child_project_name.into());
         }
 
-        let project_source_deps_strvec: Vec<String> = project_table.get("project_source_deps")?;
-        let project_source_deps: Vec<Arc<str>> = project_source_deps_strvec
-            .into_iter()
-            .map(|s| s.into())
-            .collect();
-
         Ok(Project {
             name,
             path,
@@ -119,7 +117,6 @@ impl<'lua> mlua::FromLua<'lua> for Project {
             tasks,
             tools,
             child_project_names,
-            project_source_deps,
         })
     }
 }

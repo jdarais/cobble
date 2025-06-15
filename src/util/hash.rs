@@ -18,7 +18,7 @@ pub fn compute_file_hash(file_path: &Path) -> Result<String, io::Error> {
     compute_hash_string(&file_content)
 }
 
-fn compute_hash_string(data: &[u8]) -> Result<String, io::Error> {
+pub fn compute_hash_string(data: &[u8]) -> Result<String, io::Error> {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let result = hasher.finalize();
