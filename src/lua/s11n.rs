@@ -41,6 +41,17 @@ pub struct SerLuaValueBlock {
     pub values: Vec<SerLuaValue>,
 }
 
+impl SerLuaValueBlock {
+    pub fn as_deterministic(&self) -> SerLuaValueBlock {
+        // Lua table iterators aren't deterministic, so a SerLuaValueBlock created directly from a lua value isn't
+        // deterministic, but if we create one from a SerLuaValueRef, then we do get determinstic iteration over
+        // tables.  So, to get a deterministic SerLuaValueBlock representation, we need only to convert it to a
+        // SerLuaValueRef and then back into a SerLuaValueBlock
+        let as_ref = SerLuaValueRef::from(&self.values, 0);
+        SerLuaValueBlock::from(as_ref)
+    }
+}
+
 impl<'a> From<SerLuaValueRef<'a>> for SerLuaValueBlock {
     fn from(value: SerLuaValueRef<'a>) -> SerLuaValueBlock {
         extract_lua_value_block(value)
@@ -577,9 +588,14 @@ fn append_ser_lua_value<'lua>(
     ref_values: &mut Vec<SerLuaValue>,
 ) -> mlua::Result<usize> {
     let value_ptr = value.to_pointer();
-    if let Some((idx, _)) = ref_value_index_map.get(&value_ptr) {
-        return Ok(*idx);
-    }
+    match value {
+        mlua::Value::String(_) | mlua::Value::Table(_) | mlua::Value::Function(_) => {
+            if let Some((idx, _)) = ref_value_index_map.get(&value_ptr) {
+                return Ok(*idx);
+            }
+        }
+        _ => { /* noop */}
+    };
 
     let ref_index = ref_values.len();
     ref_values.push(SerLuaValue::Nil);

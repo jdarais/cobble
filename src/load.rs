@@ -8,13 +8,14 @@ use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use mlua::FromLua;
+
 use crate::config::PROJECT_FILE_NAME;
 use crate::lua::lua_env::{create_lua_env, COBBLE_JOB_INTERACTIVE_ENABLED};
-use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::build_env::validate_build_env;
 use crate::project_def::task::validate_task;
 use crate::project_def::tool::validate_tool;
-use crate::project_def::{Action, ActionCmd, ExternalTool, Project};
+use crate::project_def::{ExternalTool, Project};
 use crate::resolve::resolve_names_in_project;
 use crate::util::onscopeexit::OnScopeExit;
 
@@ -166,42 +167,32 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
     //
     // Inject an __COBBLE_INTERNAL__ project with the "cmd" tool
     //
-    let cmd_tool_action_func: mlua::Function = lua.load(r#"
-        function (c)
-            local cmd = require("cmd")
-            local tblext = require("tblext")
-            local path = require("path")
-            
-            c.println("cmd: "..table.concat(c.args, " "))
+    let cmd_tool_lua: mlua::Value = lua.load(r#"
+        {
+            name = "cmd",
+            action = function (c)
+                local cmd = require("cmd")
+                local tblext = require("tblext")
+                local path = require("path")
+                
+                c.println("cmd: "..table.concat(c.args, " "))
 
-            local args = tblext.extend({}, c.args)
-            if args.cwd ~= nil then
-                args.cwd = path.join(c.project.dir, args.cwd)
+                local args = tblext.extend({}, c.args)
+                if args.cwd ~= nil then
+                    args.cwd = path.join(c.project.dir, args.cwd)
+                end
+                local result = cmd(tblext.extend({ cwd = c.project.dir, out = c.print, err = c.eprint }, args))
+
+                if result.status ~= 0 then
+                    error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
+                end
+
+                return result
             end
-            local result = cmd(tblext.extend({ cwd = c.project.dir, out = c.print, err = c.eprint }, args))
-
-            if result.status ~= 0 then
-                error("Command '" .. table.concat(c.args, " ") .. "' exited with status " .. result.status, 0)
-            end
-
-            return result
-        end
+        }
     "#).eval()?;
 
-    let cmd_tool = ExternalTool {
-        name: Arc::<str>::from("cmd"),
-        check: None,
-        action: Action {
-            tools: HashMap::new(),
-            build_envs: HashMap::new(),
-            kwargs: HashMap::new(),
-            cmd: ActionCmd::Func(to_ser_lua_value(
-                lua,
-                &mlua::Value::Function(cmd_tool_action_func),
-            )?),
-        },
-        var_deps: HashMap::new(),
-    };
+    let cmd_tool = ExternalTool::from_lua(cmd_tool_lua, lua)?;
 
     projects.insert(
         String::from("/__COBBLE_INTERNAL__"),
@@ -212,7 +203,6 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
             tasks: Vec::new(),
             tools: vec![cmd_tool],
             child_project_names: Vec::new(),
-            project_source_deps: Vec::new(),
         },
     );
     // End __COBBLE_INTERNAL__ project

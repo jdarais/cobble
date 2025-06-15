@@ -18,9 +18,6 @@ const TASK_KEY_PREFIX: &str = "task:";
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskInput {
     #[serde(default)]
-    pub project_source_hashes: HashMap<String, String>,
-
-    #[serde(default)]
     pub dir_mtimes: HashMap<String, u128>,
 
     #[serde(default)]
@@ -34,6 +31,12 @@ pub struct TaskInput {
 
     #[serde(default = "default_ser_lua_value_block")]
     pub task: SerLuaValueBlock,
+
+    #[serde(default)]
+    pub env_hashes: HashMap<String, String>,
+    
+    #[serde(default)]
+    pub tool_hashes: HashMap<String, String>
 }
 
 fn default_ser_lua_value_block() -> SerLuaValueBlock {

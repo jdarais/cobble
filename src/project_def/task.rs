@@ -187,6 +187,7 @@ pub fn dump_inline_task<'lua>(
     task_table: mlua::Table<'lua>,
 ) -> mlua::Result<TaskDef> {
     let ser_task = SerLuaValueBlock::from_lua(mlua::Value::Table(task_table.clone()), lua)?;
+    let ser_task = ser_task.as_deterministic();
     let is_default: Option<bool> = task_table.get("default")?;
     let always_run: Option<bool> = task_table.get("always_run")?;
     let is_interactive: Option<bool> = task_table.get("interactive")?;

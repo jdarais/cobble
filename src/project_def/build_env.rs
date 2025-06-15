@@ -6,6 +6,7 @@
 use std::borrow::Cow;
 use std::{fmt, sync::Arc};
 
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::action::validate_action;
 use crate::project_def::validate::{
     key_validation_error, validate_is_string, validate_required_key, with_prop,
@@ -27,6 +28,7 @@ pub struct BuildEnvDef {
     pub name: Arc<str>,
     pub setup_task: Option<EnvSetupTask>,
     pub action: Action,
+    pub ser_env: SerLuaValueBlock,
 }
 
 pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
@@ -101,6 +103,8 @@ impl fmt::Display for BuildEnvDef {
 
 impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
     fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        let ser_env = SerLuaValueBlock::from_lua(value.clone(), lua)?;
+        let ser_env = ser_env.as_deterministic();
         match value {
             mlua::Value::Table(tbl) => {
                 let name_str: String = tbl.get("name")?;
@@ -126,6 +130,7 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
                     name,
                     setup_task,
                     action,
+                    ser_env,
                 })
             }
             val => {

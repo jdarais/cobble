@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::{borrow::Cow, fmt, sync::Arc};
 
+use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::action::validate_action;
 use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
@@ -21,6 +22,7 @@ pub struct ExternalTool {
     pub check: Option<Action>,
     pub action: Action,
     pub var_deps: HashMap<Arc<str>, Arc<str>>,
+    pub ser_tool: SerLuaValueBlock,
 }
 
 fn validate_tool_deps<'lua>(
@@ -93,8 +95,10 @@ impl fmt::Display for ExternalTool {
 impl<'lua> mlua::FromLua<'lua> for ExternalTool {
     fn from_lua(
         value: mlua::prelude::LuaValue<'lua>,
-        _lua: &'lua mlua::prelude::Lua,
+        lua: &'lua mlua::prelude::Lua,
     ) -> mlua::prelude::LuaResult<Self> {
+        let ser_tool = SerLuaValueBlock::from_lua(value.clone(), lua)?;
+        let ser_tool = ser_tool.as_deterministic();
         match value {
             mlua::Value::Table(tbl) => {
                 let name_str: String = tbl.get("name")?;
@@ -140,6 +144,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                     check,
                     action,
                     var_deps,
+                    ser_tool
                 })
             }
             _ => Err(mlua::Error::runtime(format!(
@@ -147,38 +152,5 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                 &value
             ))),
         }
-    }
-}
-
-impl<'lua> mlua::IntoLua<'lua> for ExternalTool {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
-        let ExternalTool {
-            name,
-            check,
-            action,
-            var_deps,
-        } = self;
-        let tool_table = lua.create_table()?;
-
-        tool_table.set("name", name.as_ref())?;
-
-        if var_deps.len() > 0 {
-            let deps_table = lua.create_table()?;
-
-            let var_deps_table = lua.create_table()?;
-            for (k, v) in var_deps {
-                var_deps_table.set(k.as_ref(), v.as_ref())?;
-            }
-
-            deps_table.set("vars", var_deps_table)?;
-        }
-
-        if let Some(chk) = check {
-            tool_table.set("check", chk)?;
-        }
-
-        tool_table.set("action", action)?;
-
-        Ok(mlua::Value::Table(tool_table))
     }
 }
