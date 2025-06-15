@@ -32,7 +32,7 @@ pub struct TaskDef {
     pub clean: Vec<Action>,
     pub deps: Dependencies,
     pub artifacts: Artifacts,
-    pub ser_task: SerLuaValueBlock
+    pub ser_task: SerLuaValueBlock,
 }
 
 fn validate_output_condition<'lua>(
@@ -246,7 +246,7 @@ pub fn dump_inline_task<'lua>(
         clean,
         deps,
         artifacts,
-        ser_task
+        ser_task,
     })
 }
 

@@ -115,9 +115,11 @@ impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
                     mlua::Value::String(s) => {
                         Some(EnvSetupTask::Ref(s.to_str()?.to_owned().into()))
                     }
-                    mlua::Value::Table(t) => {
-                        Some(EnvSetupTask::Inline(dump_inline_task(lua, name.clone(), t)?))
-                    }
+                    mlua::Value::Table(t) => Some(EnvSetupTask::Inline(dump_inline_task(
+                        lua,
+                        name.clone(),
+                        t,
+                    )?)),
                     mlua::Value::Nil => None,
                     val => {
                         return Err(mlua::Error::runtime(format!("Expected table, string, or nil for 'setup_task' property, but got a {}", val.type_name())));

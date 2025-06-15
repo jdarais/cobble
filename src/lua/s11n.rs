@@ -72,35 +72,35 @@ pub struct SerLuaTable {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SerLuaFunction {
-    #[serde(with="crate::util::serde_base64")]
+    #[serde(with = "crate::util::serde_base64")]
     pub source: Vec<u8>,
     pub upvalues: Vec<(String, usize)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum SerLuaValue {
-    #[serde(rename="nil")]
+    #[serde(rename = "nil")]
     Nil,
 
-    #[serde(rename="bool")]
+    #[serde(rename = "bool")]
     Boolean(bool),
 
-    #[serde(rename="int")]
+    #[serde(rename = "int")]
     Integer(mlua::Integer),
 
-    #[serde(rename="num")]
+    #[serde(rename = "num")]
     Number(mlua::Number),
 
-    #[serde(rename="str")]
+    #[serde(rename = "str")]
     String(String),
 
-    #[serde(rename="tbl")]
+    #[serde(rename = "tbl")]
     Table(SerLuaTable),
 
-    #[serde(rename="func")]
+    #[serde(rename = "func")]
     Function(SerLuaFunction),
 
-    #[serde(rename="usr")]
+    #[serde(rename = "usr")]
     UserData(CobbleUserData),
 }
 
@@ -164,7 +164,11 @@ impl<'a> PartialOrd for SerLuaTableRef<'a> {
     }
 }
 
-fn cmp_ser_lua_table_refs_with_history(lhs: &SerLuaTableRef, rhs: &SerLuaTableRef, history: &mut HashSet<usize>) -> Ordering {
+fn cmp_ser_lua_table_refs_with_history(
+    lhs: &SerLuaTableRef,
+    rhs: &SerLuaTableRef,
+    history: &mut HashSet<usize>,
+) -> Ordering {
     let metatable_cmp = lhs.metatable().cmp(&rhs.metatable());
     match metatable_cmp {
         Ordering::Equal => {}
@@ -181,14 +185,18 @@ fn cmp_ser_lua_table_refs_with_history(lhs: &SerLuaTableRef, rhs: &SerLuaTableRe
         for ((lk, lv), (rk, rv)) in lhs.entries().zip(rhs.entries()) {
             let k_order = cmp_ser_lua_value_refs_with_history(&lk, &rk, &mut *history);
             match k_order {
-                Ordering::Equal => {},
-                _ => { return k_order; }
+                Ordering::Equal => {}
+                _ => {
+                    return k_order;
+                }
             };
 
             let v_order = cmp_ser_lua_value_refs_with_history(&lv, &rv, &mut *history);
             match v_order {
-                Ordering::Equal => {},
-                _ => { return v_order; }
+                Ordering::Equal => {}
+                _ => {
+                    return v_order;
+                }
             };
         }
         Ordering::Equal
@@ -241,44 +249,51 @@ impl<'a> PartialOrd for SerLuaFunctionRef<'a> {
     }
 }
 
-fn cmp_ser_lua_function_ref_with_history<'a>(lhs: &SerLuaFunctionRef<'a>, rhs: &SerLuaFunctionRef<'a>, history: &mut HashSet<usize>) -> Ordering {
-        let metatable_cmp = lhs.source().cmp(&rhs.source());
-        match metatable_cmp {
-            Ordering::Equal => {}
-            _ => {
-                return metatable_cmp;
-            }
+fn cmp_ser_lua_function_ref_with_history<'a>(
+    lhs: &SerLuaFunctionRef<'a>,
+    rhs: &SerLuaFunctionRef<'a>,
+    history: &mut HashSet<usize>,
+) -> Ordering {
+    let metatable_cmp = lhs.source().cmp(&rhs.source());
+    match metatable_cmp {
+        Ordering::Equal => {}
+        _ => {
+            return metatable_cmp;
         }
+    }
 
-        // Sort the upvalues by name before comparing, since the functions being compared may
-        // contain the same upvalues, but in a different order
-        let mut upvalues: Vec<(&'a str, SerLuaValueRef<'a>)> = lhs.upvalues().collect();
-        upvalues.sort_by_key(|entry| entry.0);
+    // Sort the upvalues by name before comparing, since the functions being compared may
+    // contain the same upvalues, but in a different order
+    let mut upvalues: Vec<(&'a str, SerLuaValueRef<'a>)> = lhs.upvalues().collect();
+    upvalues.sort_by_key(|entry| entry.0);
 
-        let mut other_upvalues: Vec<(&'a str, SerLuaValueRef<'a>)> = rhs.upvalues().collect();
-        other_upvalues.sort_by_key(|entry| entry.0);
+    let mut other_upvalues: Vec<(&'a str, SerLuaValueRef<'a>)> = rhs.upvalues().collect();
+    other_upvalues.sort_by_key(|entry| entry.0);
 
-        if upvalues.len() < other_upvalues.len() {
-            Ordering::Less
-        } else if upvalues.len() > other_upvalues.len() {
-            Ordering::Greater
-        } else {
-            for ((lk, lv), (rk, rv)) in upvalues.iter().zip(other_upvalues.iter()) {
-                let k_order = lk.cmp(rk);
-                match k_order {
-                    Ordering::Equal => {},
-                    _ => { return k_order; }
-                };
+    if upvalues.len() < other_upvalues.len() {
+        Ordering::Less
+    } else if upvalues.len() > other_upvalues.len() {
+        Ordering::Greater
+    } else {
+        for ((lk, lv), (rk, rv)) in upvalues.iter().zip(other_upvalues.iter()) {
+            let k_order = lk.cmp(rk);
+            match k_order {
+                Ordering::Equal => {}
+                _ => {
+                    return k_order;
+                }
+            };
 
-                let v_order = cmp_ser_lua_value_refs_with_history(&lv, &rv, &mut *history);
-                match v_order {
-                    Ordering::Equal => {},
-                    _ => { return v_order; }
-                };
-
-            }
-            Ordering::Equal
+            let v_order = cmp_ser_lua_value_refs_with_history(&lv, &rv, &mut *history);
+            match v_order {
+                Ordering::Equal => {}
+                _ => {
+                    return v_order;
+                }
+            };
         }
+        Ordering::Equal
+    }
 }
 
 impl<'a> Ord for SerLuaFunctionRef<'a> {
@@ -389,7 +404,11 @@ impl<'a> PartialOrd for SerLuaValueRef<'a> {
     }
 }
 
-fn cmp_ser_lua_value_refs_with_history(lhs: &SerLuaValueRef, rhs: &SerLuaValueRef, history: &mut HashSet<usize>) -> Ordering {
+fn cmp_ser_lua_value_refs_with_history(
+    lhs: &SerLuaValueRef,
+    rhs: &SerLuaValueRef,
+    history: &mut HashSet<usize>,
+) -> Ordering {
     use SerLuaValueRef::*;
     match lhs {
         Nil => match rhs {
@@ -425,13 +444,11 @@ fn cmp_ser_lua_value_refs_with_history(lhs: &SerLuaValueRef, rhs: &SerLuaValueRe
                     history.insert(t.index);
                     cmp_ser_lua_table_refs_with_history(t, ot, history)
                 }
-            },
+            }
             _ => Ordering::Less,
         },
         Function(f) => match rhs {
-            Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) => {
-                Ordering::Greater
-            }
+            Nil | Boolean(_) | Integer(_) | Number(_) | String(_) | Table(_) => Ordering::Greater,
             Function(of) => {
                 if history.contains(&f.index) {
                     Ordering::Equal
@@ -594,7 +611,7 @@ fn append_ser_lua_value<'lua>(
                 return Ok(*idx);
             }
         }
-        _ => { /* noop */}
+        _ => { /* noop */ }
     };
 
     let ref_index = ref_values.len();

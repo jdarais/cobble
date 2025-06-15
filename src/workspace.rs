@@ -49,7 +49,7 @@ pub struct Task {
     pub is_interactive: bool,
     pub show_stdout: Option<TaskOutputCondition>,
     pub show_stderr: Option<TaskOutputCondition>,
-    pub ser_task: Arc<SerLuaValueBlock>
+    pub ser_task: Arc<SerLuaValueBlock>,
 }
 
 impl Default for Task {
@@ -74,7 +74,9 @@ impl Default for Task {
             is_interactive: false,
             show_stdout: None,
             show_stderr: None,
-            ser_task: Arc::new(SerLuaValueBlock { values: vec![SerLuaValue::Nil] })
+            ser_task: Arc::new(SerLuaValueBlock {
+                values: vec![SerLuaValue::Nil],
+            }),
         }
     }
 }
@@ -150,12 +152,7 @@ fn add_build_env_to_workspace(
 ) {
     if let Some(setup_task) = &build_env.setup_task {
         if let EnvSetupTask::Inline(inline_setup_task) = setup_task {
-            add_task_to_workspace(
-                inline_setup_task,
-                project_name,
-                dir,
-                workspace,
-            );
+            add_task_to_workspace(inline_setup_task, project_name, dir, workspace);
         }
     }
 
@@ -174,7 +171,7 @@ fn add_build_env_to_workspace(
             dir: PathBuf::from(dir.as_ref()),
             setup_task: setup_task_name,
             action: build_env.action.clone(),
-            ser_env: Arc::new(build_env.ser_env.clone())
+            ser_env: Arc::new(build_env.ser_env.clone()),
         }),
     );
 }
@@ -249,21 +246,11 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     }
 
     for env in project.build_envs.iter() {
-        add_build_env_to_workspace(
-            env,
-            &project.name,
-            &project.path,
-            workspace,
-        );
+        add_build_env_to_workspace(env, &project.name, &project.path, workspace);
     }
 
     for task in project.tasks.iter() {
-        add_task_to_workspace(
-            task,
-            &project.name,
-            &project.path,
-            workspace,
-        );
+        add_task_to_workspace(task, &project.name, &project.path, workspace);
     }
 
     for tool in project.tools.iter() {

@@ -196,17 +196,30 @@ fn get_current_task_input(
         let current_env_hash = match cached_env_hash {
             Some(hash) => hash,
             None => {
-                let env = envs.get(env_dep).ok_or_else(|| TaskExecutionError::EnvLookupError(env_dep.clone()))?;
-                let env_json = serde_json::to_string(&*env.ser_env).map_err(|e| TaskExecutionError::SerializeError(e))?;
-                let env_hash = compute_hash_string(env_json.as_bytes()).map_err(|e| TaskExecutionError::IOError{ message: String::from("Compute hash for env failed"), cause: e})?;
+                let env = envs
+                    .get(env_dep)
+                    .ok_or_else(|| TaskExecutionError::EnvLookupError(env_dep.clone()))?;
+                let env_json = serde_json::to_string(&*env.ser_env)
+                    .map_err(|e| TaskExecutionError::SerializeError(e))?;
+                let env_hash = compute_hash_string(env_json.as_bytes()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: String::from("Compute hash for env failed"),
+                        cause: e,
+                    }
+                })?;
 
-                cache.env_hashes.write().unwrap().insert(env_dep.clone(), env_hash.clone());
+                cache
+                    .env_hashes
+                    .write()
+                    .unwrap()
+                    .insert(env_dep.clone(), env_hash.clone());
 
                 env_hash
             }
         };
-        current_task_input.env_hashes.insert(String::from(env_dep.as_ref()), current_env_hash);
-
+        current_task_input
+            .env_hashes
+            .insert(String::from(env_dep.as_ref()), current_env_hash);
 
         let cached_env_output = cache.task_outputs.read().unwrap().get(env_dep).cloned();
         let current_env_output = match cached_env_output {
@@ -243,16 +256,29 @@ fn get_current_task_input(
         let current_tool_hash = match cached_tool_hash {
             Some(hash) => hash,
             None => {
-                let tool = tools.get(tool_name).ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
-                let tool_json = serde_json::to_string(&tool.ser_tool).map_err(|e| TaskExecutionError::SerializeError(e))?;
-                let tool_hash = compute_hash_string(tool_json.as_bytes()).map_err(|e| TaskExecutionError::IOError { message: String::from("Compute hash for tool failed"), cause: e})?;
-                cache.tool_hashes.write().unwrap().insert(tool_name.clone(), tool_hash.clone());
+                let tool = tools
+                    .get(tool_name)
+                    .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
+                let tool_json = serde_json::to_string(&tool.ser_tool)
+                    .map_err(|e| TaskExecutionError::SerializeError(e))?;
+                let tool_hash = compute_hash_string(tool_json.as_bytes()).map_err(|e| {
+                    TaskExecutionError::IOError {
+                        message: String::from("Compute hash for tool failed"),
+                        cause: e,
+                    }
+                })?;
+                cache
+                    .tool_hashes
+                    .write()
+                    .unwrap()
+                    .insert(tool_name.clone(), tool_hash.clone());
                 tool_hash
             }
         };
 
-        current_task_input.tool_hashes.insert(String::from(tool_name.as_ref()), current_tool_hash);
-
+        current_task_input
+            .tool_hashes
+            .insert(String::from(tool_name.as_ref()), current_tool_hash);
 
         let tool = tools
             .get(tool_name)

@@ -61,9 +61,15 @@ pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::R
             "name" => with_prop(&mut prop_path, Cow::Borrowed("name"), |path| {
                 validate_is_string(&v, path).and(Ok(()))
             }),
-            "deps" => with_prop(&mut prop_path, Cow::Borrowed("deps"), |path| validate_tool_deps(&v, path)),
-            "check" => with_prop(&mut prop_path, Cow::Borrowed("check"), |path| validate_action(lua, &v, path)),
-            "action" => with_prop(&mut prop_path, Cow::Borrowed("action"), |path| validate_action(lua, &v, path)),
+            "deps" => with_prop(&mut prop_path, Cow::Borrowed("deps"), |path| {
+                validate_tool_deps(&v, path)
+            }),
+            "check" => with_prop(&mut prop_path, Cow::Borrowed("check"), |path| {
+                validate_action(lua, &v, path)
+            }),
+            "action" => with_prop(&mut prop_path, Cow::Borrowed("action"), |path| {
+                validate_action(lua, &v, path)
+            }),
             unknown_key => key_validation_error(
                 unknown_key,
                 vec!["name", "install", "check", "action"],
@@ -144,7 +150,7 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                     check,
                     action,
                     var_deps,
-                    ser_tool
+                    ser_tool,
                 })
             }
             _ => Err(mlua::Error::runtime(format!(

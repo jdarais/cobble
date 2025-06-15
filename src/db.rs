@@ -34,9 +34,9 @@ pub struct TaskInput {
 
     #[serde(default)]
     pub env_hashes: HashMap<String, String>,
-    
+
     #[serde(default)]
-    pub tool_hashes: HashMap<String, String>
+    pub tool_hashes: HashMap<String, String>,
 }
 
 fn default_ser_lua_value_block() -> SerLuaValueBlock {
