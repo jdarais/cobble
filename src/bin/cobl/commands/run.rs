@@ -131,7 +131,7 @@ pub fn run<IO: ProcessIO>(
     let ws_config_args = WorkspaceConfigArgs {
         vars,
         force_run_tasks: Some(force_run_tasks),
-        num_threads: num_threads,
+        num_threads,
         show_stdout,
         show_stderr,
     };
@@ -169,10 +169,11 @@ pub fn run<IO: ProcessIO>(
     )?;
 
     let _ = writeln!(&mut out, "# Computing calculated artifacts #");
-    calculate_artifacts(&mut workspace, &mut executor, pio)?;
+    calculate_artifacts(&config.workspace_dir, &mut workspace, &mut executor, pio)?;
 
     let _ = writeln!(&mut out, "# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
+        &config.workspace_dir,
         selected_tasks.iter(),
         &mut workspace,
         &mut executor,

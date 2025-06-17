@@ -65,12 +65,22 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     "cwd" => {
                         cwd = Some(PathBuf::from(lua.unpack::<String>(v)?));
                     }
-                    "out" => {
-                        out_func = Some(lua.unpack(v)?);
-                    }
-                    "err" => {
-                        err_func = Some(lua.unpack(v)?);
-                    }
+                    "out" => match v {
+                        Value::Boolean(false) => {
+                            out_func = None;
+                        }
+                        _ => {
+                            out_func = Some(lua.unpack(v)?);
+                        }
+                    },
+                    "err" => match v {
+                        Value::Boolean(false) => {
+                            out_func = None;
+                        }
+                        _ => {
+                            err_func = Some(lua.unpack(v)?);
+                        }
+                    },
                     _ => {
                         return Err(Error::runtime(format!(
                             "Unknown key in cmd input: {}",

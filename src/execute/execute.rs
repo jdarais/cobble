@@ -506,7 +506,7 @@ pub struct TaskExecutor {
 
 impl TaskExecutor {
     pub fn new(config: Arc<WorkspaceConfig>, db_path: &Path) -> anyhow::Result<TaskExecutor> {
-        let db_env = new_db_env(db_path)?;
+        let db_env = new_db_env(db_path, config.max_db_size)?;
         let db = db_env.open_db(None)?;
         Ok(TaskExecutor {
             worker_threads: Vec::new(),

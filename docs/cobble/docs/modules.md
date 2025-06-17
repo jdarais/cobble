@@ -29,8 +29,10 @@ _function_ - Execute a command
 
 - `args`: _table_
     - `cwd`: _string | nil_ - Current working directory to run the command with
-    - `out`: _string | nil_ - Callback to be called with any stdout output
-    - `err`: _string | nil_ - Callback to be called with any stderr output
+    - `out`: _string | false | nil_ - Callback to be called with any stdout output.  If false or nil are passed, no callback will be called with stdout output, but stdout will
+            still be provided in the return value.
+    - `err`: _string | false | nil_ - Callback to be called with any stderr output.  If false or nil are passed, no callback will be called with stderr output, but stderr will
+            still be provided in the return value.
     - `...` _(sequence values)_: _string_ - Any positional (numeric index) table elements are interpreted as the command and command args to execute
 
 ##### Returns

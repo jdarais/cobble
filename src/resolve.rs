@@ -3,7 +3,6 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::env::current_dir;
 use std::error::Error;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
@@ -46,15 +45,15 @@ impl fmt::Display for NameResolutionError {
     }
 }
 
-pub fn path_relative_to_workspace_dir(path: &Path) -> Result<PathBuf, NameResolutionError> {
+pub fn path_relative_to_workspace_dir(
+    workspace_dir: &Path,
+    path: &Path,
+) -> Result<PathBuf, NameResolutionError> {
     if path.is_relative() {
         return Ok(PathBuf::from(path));
     }
 
-    // Here we assume that cwd is the workspace root
-    let cwd = current_dir().expect("current working directory must be set and exist");
-
-    path.strip_prefix(cwd)
+    path.strip_prefix(workspace_dir)
         .map(|p| PathBuf::from(p))
         .map_err(|_e| NameResolutionError::PathNotInWorkspace(path.to_string_lossy().to_string()))
 }
@@ -90,7 +89,11 @@ pub fn project_path_to_project_name(project_path: &Path) -> Result<String, NameR
     Ok(project_name)
 }
 
-pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameResolutionError> {
+pub fn resolve_path(
+    workspace_dir: &Path,
+    project_path: &Path,
+    path: &str,
+) -> Result<Arc<str>, NameResolutionError> {
     use Component::*;
 
     let mut path_components: Vec<Component> = Vec::new();
@@ -129,9 +132,10 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
         }
     }
     let full_path = PathBuf::from_iter(path_components.into_iter());
-    let full_path_str_opt = full_path.into_os_string().into_string();
-    match full_path_str_opt {
-        Ok(full_path_str) => Ok(full_path_str.into()),
+    let path_rel_to_workspace = path_relative_to_workspace_dir(workspace_dir, full_path.as_path())?;
+    let path_rel_to_workspace_opt = path_rel_to_workspace.into_os_string().into_string();
+    match path_rel_to_workspace_opt {
+        Ok(path_rel_to_workspace_str) => Ok(path_rel_to_workspace_str.into()),
         Err(os_str) => Err(NameResolutionError::PathToStringError(PathBuf::from(
             os_str,
         ))),
@@ -175,6 +179,7 @@ fn canonicalize_name(mut full_name_segments: Vec<&str>) -> Arc<str> {
 }
 
 pub fn resolve_name(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     name: &Arc<str>,
@@ -195,7 +200,7 @@ pub fn resolve_name(
         };
 
         let path_prefix_rel_to_workspace =
-            path_relative_to_workspace_dir(&project_path.join(Path::new(path_prefix)))?;
+            path_relative_to_workspace_dir(ws_dir, &project_path.join(Path::new(path_prefix)))?;
         let mut resolved_name = project_path_to_project_name(&path_prefix_rel_to_workspace)?;
         resolved_name.push_str(&name[path_prefix.len() + 2..]);
         return Ok(canonicalize_name(resolved_name.split("/").collect()));
@@ -220,30 +225,32 @@ pub fn resolve_name(
 }
 
 pub fn resolve_names_in_dependency_list(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     deps: &mut Dependencies,
 ) -> Result<(), NameResolutionError> {
     for (_, d_path) in deps.dirs.iter_mut() {
-        *d_path = resolve_path(project_path, d_path.as_ref())?
+        *d_path = resolve_path(ws_dir, project_path, d_path.as_ref())?
     }
 
     for (_, f_path) in deps.files.iter_mut() {
-        *f_path = resolve_path(project_path, f_path.as_ref())?
+        *f_path = resolve_path(ws_dir, project_path, f_path.as_ref())?
     }
 
     for (_, t_name) in deps.tasks.iter_mut() {
-        *t_name = resolve_name(project_name, project_path, t_name)?;
+        *t_name = resolve_name(ws_dir, project_name, project_path, t_name)?;
     }
 
     for c_name in deps.calc.iter_mut() {
-        *c_name = resolve_name(project_name, project_path, c_name)?;
+        *c_name = resolve_name(ws_dir, project_name, project_path, c_name)?;
     }
 
     Ok(())
 }
 
 fn resolve_names_in_action(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     action: &mut Action,
@@ -251,36 +258,38 @@ fn resolve_names_in_action(
     // Tool names are global, no need to resolve tool names
 
     for (_, env_name) in action.build_envs.iter_mut() {
-        *env_name = resolve_name(project_name, project_path, &env_name)?;
+        *env_name = resolve_name(ws_dir, project_name, project_path, &env_name)?;
     }
 
     Ok(())
 }
 
 fn resolve_names_in_build_env(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     build_env: &mut BuildEnvDef,
 ) -> Result<(), NameResolutionError> {
-    build_env.name = resolve_name(project_name, project_path, &build_env.name)?;
+    build_env.name = resolve_name(ws_dir, project_name, project_path, &build_env.name)?;
 
     if let Some(setup_task) = &mut build_env.setup_task {
         match setup_task {
             EnvSetupTask::Ref(name) => {
-                *name = resolve_name(project_name, project_path, &name.clone())?;
+                *name = resolve_name(ws_dir, project_name, project_path, &name.clone())?;
             }
             EnvSetupTask::Inline(task) => {
-                resolve_names_in_task(project_name, project_path, task)?;
+                resolve_names_in_task(ws_dir, project_name, project_path, task)?;
             }
         }
     }
 
-    resolve_names_in_action(project_name, project_path, &mut build_env.action)?;
+    resolve_names_in_action(ws_dir, project_name, project_path, &mut build_env.action)?;
 
     Ok(())
 }
 
 fn resolve_names_in_tool(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     tool: &mut ExternalTool,
@@ -288,66 +297,71 @@ fn resolve_names_in_tool(
     // External tool names are global, no need to resolve the name field
 
     if let Some(check) = &mut tool.check {
-        resolve_names_in_action(project_name, project_path, check)?;
+        resolve_names_in_action(ws_dir, project_name, project_path, check)?;
     }
 
-    resolve_names_in_action(project_name, project_path, &mut tool.action)?;
+    resolve_names_in_action(ws_dir, project_name, project_path, &mut tool.action)?;
 
     Ok(())
 }
 
 pub fn resolve_names_in_artifacts(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     artifacts: &mut Artifacts,
 ) -> Result<(), NameResolutionError> {
     // artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
     for f in artifacts.files.iter_mut() {
-        *f = resolve_path(project_path, f.as_ref())?;
+        *f = resolve_path(ws_dir, project_path, f.as_ref())?;
     }
 
     for c in artifacts.calc.iter_mut() {
-        *c = resolve_name(project_name, project_path, &c)?;
+        *c = resolve_name(ws_dir, project_name, project_path, &c)?;
     }
 
     Ok(())
 }
 
 fn resolve_names_in_task(
+    ws_dir: &Path,
     project_name: &str,
     project_path: &Path,
     task: &mut TaskDef,
 ) -> Result<(), NameResolutionError> {
-    task.name = resolve_name(project_name, project_path, &task.name)?;
+    task.name = resolve_name(ws_dir, project_name, project_path, &task.name)?;
 
     if let Some((_, env_name)) = &mut task.build_env {
-        *env_name = resolve_name(project_name, project_path, &env_name)?;
+        *env_name = resolve_name(ws_dir, project_name, project_path, &env_name)?;
     }
 
     for action in task.actions.iter_mut() {
-        resolve_names_in_action(project_name, project_path, action)?;
+        resolve_names_in_action(ws_dir, project_name, project_path, action)?;
     }
 
-    resolve_names_in_dependency_list(project_name, project_path, &mut task.deps)?;
+    resolve_names_in_dependency_list(ws_dir, project_name, project_path, &mut task.deps)?;
 
-    resolve_names_in_artifacts(project_name, project_path, &mut task.artifacts)?;
+    resolve_names_in_artifacts(ws_dir, project_name, project_path, &mut task.artifacts)?;
 
     Ok(())
 }
 
-pub fn resolve_names_in_project(project: &mut Project) -> Result<(), NameResolutionError> {
+pub fn resolve_names_in_project(
+    ws_dir: &Path,
+    project: &mut Project,
+) -> Result<(), NameResolutionError> {
     // Project name and path already fully-qualified relative to the workspace root
 
     for build_env in project.build_envs.iter_mut() {
-        resolve_names_in_build_env(&project.name, &project.path, build_env)?;
+        resolve_names_in_build_env(ws_dir, &project.name, &project.path, build_env)?;
     }
 
     for tool in project.tools.iter_mut() {
-        resolve_names_in_tool(&project.name, &project.path, tool)?;
+        resolve_names_in_tool(ws_dir, &project.name, &project.path, tool)?;
     }
 
     for task in project.tasks.iter_mut() {
-        resolve_names_in_task(&project.name, &project.path, task)?;
+        resolve_names_in_task(ws_dir, &project.name, &project.path, task)?;
     }
 
     Ok(())
@@ -360,6 +374,7 @@ mod tests {
     #[test]
     fn test_resolve_name() {
         let full_name = resolve_name(
+            Path::new("/"),
             "/subproject",
             &Path::new(".").join("subproject"),
             &Arc::<str>::from("myname"),
@@ -373,6 +388,7 @@ mod tests {
         let sep = std::path::MAIN_SEPARATOR;
         let name = format!("[..{sep}otherproject]/myname");
         let full_name = resolve_name(
+            Path::new("/"),
             "/subproject",
             &Path::new(".").join("subproject"),
             &Arc::<str>::from(name),
@@ -383,15 +399,25 @@ mod tests {
 
     #[test]
     fn test_resolve_name_from_root() {
-        let full_name = resolve_name("/", Path::new("."), &Arc::<str>::from("myname")).unwrap();
+        let full_name = resolve_name(
+            Path::new("/"),
+            "/",
+            Path::new("."),
+            &Arc::<str>::from("myname"),
+        )
+        .unwrap();
         assert_eq!(full_name.as_ref(), "/myname");
     }
 
     #[test]
     fn test_resolve_path_removes_curdir_components() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path =
-            resolve_path(Path::new("./a/test/path"), "./a/./path/./with/./dots").unwrap();
+        let resolved_path = resolve_path(
+            Path::new("/"),
+            Path::new("./a/test/path"),
+            "./a/./path/./with/./dots",
+        )
+        .unwrap();
         assert_eq!(
             resolved_path.as_ref(),
             format!("a{sep}test{sep}path{sep}a{sep}path{sep}with{sep}dots").as_str()
@@ -401,8 +427,12 @@ mod tests {
     #[test]
     fn test_resolve_path_resolves_parent_dir_components() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path =
-            resolve_path(Path::new("./a/test/path"), "../../path/in/other/dir").unwrap();
+        let resolved_path = resolve_path(
+            Path::new("/"),
+            Path::new("./a/test/path"),
+            "../../path/in/other/dir",
+        )
+        .unwrap();
         assert_eq!(
             resolved_path.as_ref(),
             format!("a{sep}path{sep}in{sep}other{sep}dir").as_str()
@@ -412,7 +442,8 @@ mod tests {
     #[test]
     fn test_resolve_path_leaves_parent_dir_at_start_of_path() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path = resolve_path(Path::new("./a"), "../../path/in/other/dir").unwrap();
+        let resolved_path =
+            resolve_path(Path::new("/"), Path::new("./a"), "../../path/in/other/dir").unwrap();
         assert_eq!(
             resolved_path.as_ref(),
             format!("..{sep}path{sep}in{sep}other{sep}dir").as_str()
@@ -422,10 +453,11 @@ mod tests {
     #[test]
     fn test_resolve_path_remove_parent_dir_component_at_root_of_abs_path() {
         let sep = std::path::MAIN_SEPARATOR;
-        let resolved_path = resolve_path(Path::new("/a"), "../../path/in/other/dir").unwrap();
+        let resolved_path =
+            resolve_path(Path::new("/"), Path::new("/a"), "../../path/in/other/dir").unwrap();
         assert_eq!(
             resolved_path.as_ref(),
-            format!("{sep}path{sep}in{sep}other{sep}dir").as_str()
+            format!("path{sep}in{sep}other{sep}dir").as_str()
         );
     }
 }

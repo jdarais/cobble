@@ -7,6 +7,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::execute::execute::{TaskExecutionError, TaskExecutor};
@@ -75,6 +76,7 @@ where
 }
 
 pub fn resolve_calculated_dependencies_in_subtrees<'a, T, IO>(
+    ws_dir: &Path,
     task_names: T,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
@@ -87,12 +89,19 @@ where
     for task_name in task_names {
         // TODO: Track the names of tasks that have get visited with each invocation so we can skip
         // them if they show up in another subtree
-        resolve_calculated_dependencies_in_subtree(task_name, workspace, task_executor, pio)?;
+        resolve_calculated_dependencies_in_subtree(
+            ws_dir,
+            task_name,
+            workspace,
+            task_executor,
+            pio,
+        )?;
     }
     Ok(())
 }
 
 pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
+    ws_dir: &Path,
     task_name: &Arc<str>,
     workspace: &mut Workspace,
     task_executor: &mut TaskExecutor,
@@ -101,6 +110,7 @@ pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
     let mut changed = true;
     while changed {
         changed = resolve_calculated_dependencies_in_subtree_once_with_history(
+            ws_dir,
             task_name,
             workspace,
             &mut HashSet::new(),
@@ -112,6 +122,7 @@ pub fn resolve_calculated_dependencies_in_subtree<IO: ProcessIO>(
 }
 
 fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
+    ws_dir: &Path,
     task_name: &Arc<str>,
     workspace: &mut Workspace,
     visited: &mut HashSet<Arc<str>>,
@@ -136,6 +147,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
 
     for calc_dep in task.calc_deps.iter() {
         resolve_calculated_dependencies_in_subtree_once_with_history(
+            ws_dir,
             &calc_dep,
             workspace,
             visited,
@@ -166,8 +178,13 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
             .filter(|s| s != calc_dep)
             .collect();
 
-        resolve_names_in_dependency_list(task.project_name.as_ref(), task.dir.as_ref(), &mut deps)
-            .map_err(|e| ExecutionGraphError::NameResolutionError(e))?;
+        resolve_names_in_dependency_list(
+            ws_dir,
+            task.project_name.as_ref(),
+            task.dir.as_ref(),
+            &mut deps,
+        )
+        .map_err(|e| ExecutionGraphError::NameResolutionError(e))?;
         add_dependency_list_to_task(&deps, &workspace.file_providers, task_cow.to_mut());
 
         changed = true;
@@ -183,6 +200,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
     for dep in task.task_deps.values() {
         changed = changed
             || resolve_calculated_dependencies_in_subtree_once_with_history(
+                ws_dir,
                 dep,
                 workspace,
                 visited,
@@ -195,6 +213,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
         if let Some(t_dep) = &f_dep.provided_by_task {
             changed = changed
                 || resolve_calculated_dependencies_in_subtree_once_with_history(
+                    ws_dir,
                     t_dep,
                     workspace,
                     visited,
@@ -214,6 +233,7 @@ fn resolve_calculated_dependencies_in_subtree_once_with_history<IO: ProcessIO>(
         if let Some(setup_task) = &env.setup_task {
             changed = changed
                 || resolve_calculated_dependencies_in_subtree_once_with_history(
+                    ws_dir,
                     setup_task,
                     workspace,
                     visited,
