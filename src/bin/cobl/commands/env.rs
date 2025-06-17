@@ -80,6 +80,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
     resolve_calculated_dependencies_in_subtrees(
+        &config.workspace_dir,
         setup_tasks.iter(),
         &mut workspace,
         &mut executor,

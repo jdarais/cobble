@@ -145,7 +145,10 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
     lua.load(&project_config_source[..]).call(cxt)
 }
 
-pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Project>> {
+pub fn extract_project_defs(
+    ws_dir: &Path,
+    lua: &mlua::Lua,
+) -> mlua::Result<HashMap<String, Project>> {
     let cobble_table: mlua::Table = lua.globals().get("cobble")?;
     let projects_table: mlua::Table = cobble_table.get("projects")?;
 
@@ -153,7 +156,7 @@ pub fn extract_project_defs(lua: &mlua::Lua) -> mlua::Result<HashMap<String, Pro
 
     for pair in projects_table.pairs() {
         let (key, mut value): (String, Project) = pair?;
-        let resolved_project_res = resolve_names_in_project(&mut value);
+        let resolved_project_res = resolve_names_in_project(ws_dir, &mut value);
         match resolved_project_res {
             Ok(_) => {
                 projects.insert(key, value);
@@ -225,7 +228,7 @@ where
         process_project_file(&project_def_lua, project_dir, workspace_dir)?;
     }
 
-    extract_project_defs(&project_def_lua)
+    extract_project_defs(workspace_dir, &project_def_lua)
 }
 
 #[cfg(test)]
@@ -258,7 +261,7 @@ mod tests {
 
         process_project(&lua, temp_proj_file_path.as_path(), "", &tmpdir, ".").unwrap();
 
-        let projects = extract_project_defs(&lua).unwrap();
+        let projects = extract_project_defs(Path::new("/"), &lua).unwrap();
         assert_eq!(projects.len(), 2);
 
         let project = projects.get("/").unwrap();

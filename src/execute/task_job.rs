@@ -90,9 +90,13 @@ fn get_current_task_input(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
 ) -> Result<TaskInput, TaskExecutionError> {
-    let task_json = serde_json::to_string(&*task.ser_task).map_err(|e| TaskExecutionError::SerializeError(e))?;
-    let task_hash = compute_hash_string(task_json.as_bytes())
-        .map_err(|e| TaskExecutionError::IOError { message: format!("Error computing hash of task: {}", &task.name), cause: e })?;
+    let task_json = serde_json::to_string(&*task.ser_task)
+        .map_err(|e| TaskExecutionError::SerializeError(e))?;
+    let task_hash =
+        compute_hash_string(task_json.as_bytes()).map_err(|e| TaskExecutionError::IOError {
+            message: format!("Error computing hash of task: {}", &task.name),
+            cause: e,
+        })?;
 
     let mut current_task_input = TaskInput {
         dir_mtimes: HashMap::new(),
@@ -704,7 +708,13 @@ mod tests {
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
         init_lua_for_task_executor(&lua).unwrap();
 
-        let db_env = Arc::new(new_db_env(tmpdir.as_path().join(".cobble.db").as_path(), workspace_config.max_db_size).unwrap());
+        let db_env = Arc::new(
+            new_db_env(
+                tmpdir.as_path().join(".cobble.db").as_path(),
+                workspace_config.max_db_size,
+            )
+            .unwrap(),
+        );
         let db = db_env.open_db(None).unwrap();
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 

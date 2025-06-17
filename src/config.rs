@@ -134,8 +134,10 @@ pub fn parse_workspace_config(
     // Max DB Size
     let max_db_size_opt: Option<toml::Value> = config.remove("max_db_size");
     let max_db_size: usize = match max_db_size_opt {
-        Some(val) => val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'max_db_size': {}", e)))?,
-        None => DEFAULT_MAX_DB_SIZE
+        Some(val) => val
+            .try_into()
+            .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'max_db_size': {}", e)))?,
+        None => DEFAULT_MAX_DB_SIZE,
     };
 
     // Task Output

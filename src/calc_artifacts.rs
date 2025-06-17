@@ -3,7 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{borrow::Cow, collections::HashMap, error::Error, fmt, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, error::Error, fmt, path::Path, sync::Arc};
 
 use crate::{
     dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError},
@@ -52,6 +52,7 @@ fn combine_artifacts(lhs: &Artifacts, rhs: &Artifacts) -> Artifacts {
 }
 
 pub fn calculate_artifacts<IO: ProcessIO>(
+    ws_dir: &Path,
     workspace: &mut Workspace,
     executor: &mut TaskExecutor,
     pio: &IO,
@@ -66,6 +67,7 @@ pub fn calculate_artifacts<IO: ProcessIO>(
 
     // First need to make sure all calculated dependencies in the dependency trees of the calc artifacts tasks are resolved
     resolve_calculated_dependencies_in_subtrees(
+        ws_dir,
         calc_artifacts_tasks.iter(),
         workspace,
         executor,
@@ -95,6 +97,7 @@ pub fn calculate_artifacts<IO: ProcessIO>(
                 })?;
             let mut task_output_artifacts: Artifacts = task_output_record.into();
             resolve_names_in_artifacts(
+                ws_dir,
                 &task.project_name,
                 &task.project_path,
                 &mut task_output_artifacts,
