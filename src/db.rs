@@ -29,8 +29,8 @@ pub struct TaskInput {
     #[serde(default)]
     pub vars: HashMap<String, TaskVar>,
 
-    #[serde(default = "default_ser_lua_value_block")]
-    pub task: SerLuaValueBlock,
+    #[serde(default)]
+    pub task_hash: String,
 
     #[serde(default)]
     pub env_hashes: HashMap<String, String>,
@@ -180,8 +180,9 @@ pub fn delete_task_record(
     Ok(())
 }
 
-pub fn new_db_env(path: &Path) -> lmdb::Result<lmdb::Environment> {
+pub fn new_db_env(path: &Path, max_db_size: usize) -> lmdb::Result<lmdb::Environment> {
     lmdb::Environment::new()
         .set_flags(lmdb::EnvironmentFlags::NO_SUB_DIR)
+        .set_map_size(max_db_size)
         .open(path)
 }

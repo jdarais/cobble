@@ -131,7 +131,7 @@ pub fn run<IO: ProcessIO>(
     let ws_config_args = WorkspaceConfigArgs {
         vars,
         force_run_tasks: Some(force_run_tasks),
-        num_threads: num_threads,
+        num_threads,
         show_stdout,
         show_stderr,
     };

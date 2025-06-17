@@ -129,9 +129,10 @@ pub fn resolve_path(project_path: &Path, path: &str) -> Result<Arc<str>, NameRes
         }
     }
     let full_path = PathBuf::from_iter(path_components.into_iter());
-    let full_path_str_opt = full_path.into_os_string().into_string();
-    match full_path_str_opt {
-        Ok(full_path_str) => Ok(full_path_str.into()),
+    let path_rel_to_workspace = path_relative_to_workspace_dir(full_path.as_path())?;
+    let path_rel_to_workspace_opt = path_rel_to_workspace.into_os_string().into_string();
+    match path_rel_to_workspace_opt {
+        Ok(path_rel_to_workspace_str) => Ok(path_rel_to_workspace_str.into()),
         Err(os_str) => Err(NameResolutionError::PathToStringError(PathBuf::from(
             os_str,
         ))),

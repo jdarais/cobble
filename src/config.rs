@@ -17,6 +17,7 @@ pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
 pub const PROJECT_FILE_NAME: &str = "project.lua";
 
 pub const DEFAULT_NUM_THREADS: u8 = 5;
+pub const DEFAULT_MAX_DB_SIZE: usize = 1024 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct WorkspaceInit {
@@ -33,6 +34,7 @@ pub struct WorkspaceConfig {
     pub vars: HashMap<String, TaskVar>,
     pub force_run_tasks: bool,
     pub num_threads: u8,
+    pub max_db_size: usize,
     pub show_stdout: TaskOutputCondition,
     pub show_stderr: TaskOutputCondition,
     pub init: Option<WorkspaceInit>,
@@ -127,6 +129,13 @@ pub fn parse_workspace_config(
             .try_into()
             .map_err(|e| WorkspaceConfigError::ValueError(format!("at 'num_threads': {}", e)))?,
         None => DEFAULT_NUM_THREADS,
+    };
+
+    // Max DB Size
+    let max_db_size_opt: Option<toml::Value> = config.remove("max_db_size");
+    let max_db_size: usize = match max_db_size_opt {
+        Some(val) => val.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'max_db_size': {}", e)))?,
+        None => DEFAULT_MAX_DB_SIZE
     };
 
     // Task Output
@@ -290,6 +299,7 @@ pub fn parse_workspace_config(
         vars,
         force_run_tasks: false,
         num_threads,
+        max_db_size,
         show_stdout: stdout,
         show_stderr: stderr,
         init,

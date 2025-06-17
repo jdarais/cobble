@@ -19,8 +19,6 @@ use crate::execute::execute::{
 };
 use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 use crate::lua::s11n::to_ser_lua_value;
-use crate::lua::s11n::SerLuaValueBlock;
-use crate::lua::s11n::SerLuaValueRef;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::util::hash::compute_hash_string;
@@ -92,12 +90,16 @@ fn get_current_task_input(
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
 ) -> Result<TaskInput, TaskExecutionError> {
+    let task_json = serde_json::to_string(&*task.ser_task).map_err(|e| TaskExecutionError::SerializeError(e))?;
+    let task_hash = compute_hash_string(task_json.as_bytes())
+        .map_err(|e| TaskExecutionError::IOError { message: format!("Error computing hash of task: {}", &task.name), cause: e })?;
+
     let mut current_task_input = TaskInput {
         dir_mtimes: HashMap::new(),
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
         vars: HashMap::new(),
-        task: SerLuaValueBlock::clone(&*task.ser_task),
+        task_hash,
         env_hashes: HashMap::new(),
         tool_hashes: HashMap::new(),
     };
@@ -323,9 +325,7 @@ fn get_up_to_date_task_record(
     };
 
     // Check that the serialized task definitions are the same.
-    if SerLuaValueRef::from(&task_record.input.task.values, 0)
-        != SerLuaValueRef::from(&current_task_input.task.values, 0)
-    {
+    if task_record.input.task_hash != current_task_input.task_hash {
         return None;
     }
 
@@ -696,6 +696,7 @@ mod tests {
             vars: HashMap::new(),
             force_run_tasks: false,
             num_threads: 1,
+            max_db_size: 1024 * 1024,
             show_stdout: TaskOutputCondition::Always,
             show_stderr: TaskOutputCondition::Always,
         });
@@ -703,7 +704,7 @@ mod tests {
         let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
         init_lua_for_task_executor(&lua).unwrap();
 
-        let db_env = Arc::new(new_db_env(tmpdir.as_path().join(".cobble.db").as_path()).unwrap());
+        let db_env = Arc::new(new_db_env(tmpdir.as_path().join(".cobble.db").as_path(), workspace_config.max_db_size).unwrap());
         let db = db_env.open_db(None).unwrap();
         let (tx, rx) = mpsc::channel::<TaskJobMessage>();
 
