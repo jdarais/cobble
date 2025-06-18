@@ -9,7 +9,7 @@ _cobl_completion() {
     commands="list run clean tool env show"
     case $3 in
         "run" | "clean" | "show" ) COMPREPLY=($($1 list "$2*")) ;;
-        "" | "cobl" ) COMPREPLY=($($1 list "$2*") $commands) ;;
+        "" | "cobl" ) COMPREPLY=($($1 list "$2*") $(compgen -W "$commands" $2)) ;;
         "help" ) COMPREPLY=($(compgen -W "$commands" $2)) ;;
     esac
 }
