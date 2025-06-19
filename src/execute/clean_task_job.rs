@@ -49,8 +49,6 @@ fn execute_clean_actions(
                 project_dir: project_dir.to_owned(),
                 args: mlua::Value::Nil,
                 workspace: job.workspace.clone(),
-                db_env: db_env.clone(),
-                db: db.clone(),
                 cache: cache.clone(),
                 sender: sender.clone(),
             },

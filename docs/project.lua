@@ -34,6 +34,12 @@ env {
     action = { env = "venv", "mkdocs" }
 }
 
+env {
+    name = "test_setup_task_in_env_context",
+    setup_task = "venv",
+    action = function (c) print(tblext.format(c.tasks)) end
+}
+
 task {
     name = "calc_docs_src_files",
     always_run = true,

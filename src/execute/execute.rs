@@ -14,10 +14,9 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread::{self, JoinHandle};
 
 use crate::config::{TaskOutputCondition, WorkspaceConfig};
-use crate::db::{new_db_env, DeleteError, GetError, PutError};
+use crate::db::{new_db_env, DeleteError, GetError, PutError, TaskOutput};
 use crate::execute::job_io::ConcurrentIO;
 use crate::execute::worker::{run_task_executor_worker, TaskExecutorWorkerArgs};
-use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::ExternalTool;
 use crate::util::process_io::ProcessIO;
 use crate::vars::VarLookupError;
@@ -484,7 +483,7 @@ fn has_missing_dependencies(
 pub struct TaskExecutorCache {
     pub dir_mtimes: RwLock<HashMap<Arc<str>, u128>>,
     pub file_hashes: RwLock<HashMap<Arc<str>, String>>,
-    pub task_outputs: RwLock<HashMap<Arc<str>, SerLuaValueBlock>>,
+    pub task_outputs: RwLock<HashMap<Arc<str>, TaskOutput>>,
     pub env_hashes: RwLock<HashMap<Arc<str>, String>>,
     pub tool_hashes: RwLock<HashMap<Arc<str>, String>>,
 }

@@ -17,13 +17,11 @@ pub fn execute_tool_check_job(
     lua: &mlua::Lua,
     job: &ToolCheckJob,
     vars: HashMap<String, TaskVar>,
-    db_env: &Arc<lmdb::Environment>,
-    db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) {
     let result =
-        execute_tool_check_action(workspace_dir, lua, job, vars, db_env, db, cache, sender);
+        execute_tool_check_action(workspace_dir, lua, job, vars, cache, sender);
 
     match result {
         Ok(_) => {
@@ -50,8 +48,6 @@ fn execute_tool_check_action(
     lua: &mlua::Lua,
     job: &ToolCheckJob,
     vars: HashMap<String, TaskVar>,
-    db_env: &Arc<lmdb::Environment>,
-    db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<(), TaskExecutionError> {
@@ -83,8 +79,6 @@ fn execute_tool_check_action(
         project_dir,
         mlua::Value::Nil,
         &job.workspace,
-        db_env,
-        db,
         cache,
         sender,
     );

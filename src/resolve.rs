@@ -49,7 +49,9 @@ pub fn path_relative_to_workspace_dir(
     workspace_dir: &Path,
     path: &Path,
 ) -> Result<PathBuf, NameResolutionError> {
-    if path.is_relative() {
+    // Use has_root here instead of is_absolute, since on Windows filesystems is_absolute can return false even if the
+    // path begins with a separator
+    if !path.has_root() {
         return Ok(PathBuf::from(path));
     }
 

@@ -87,11 +87,6 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
         &StandardIO,
     )?;
 
-    let mut executor = TaskExecutor::new(
-        config.clone(),
-        config.workspace_dir.join(".cobble.db").as_path(),
-    )?;
-
     let args_arcs: Vec<Arc<str>> = args.into_iter().map(|s| s.into()).collect();
 
     executor.do_env_actions(&workspace, selected_envs.iter(), &args_arcs, &StandardIO)?;

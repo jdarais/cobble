@@ -32,8 +32,6 @@ fn execute_task_actions<'lua>(
     task: &TaskJob,
     task_inputs: &TaskInput,
     workspace: &Arc<Workspace>,
-    db_env: &Arc<lmdb::Environment>,
-    db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
@@ -46,8 +44,6 @@ fn execute_task_actions<'lua>(
             task_inputs,
             args,
             workspace,
-            db_env,
-            db,
             cache,
             sender,
         );
@@ -188,13 +184,13 @@ fn get_current_task_input(
                     .task_outputs
                     .write()
                     .unwrap()
-                    .insert(task_dep.clone(), task_record.output.task_output.clone());
-                task_record.output.task_output
+                    .insert(task_dep.clone(), task_record.output.clone());
+                task_record.output
             }
         };
         current_task_input
             .task_outputs
-            .insert(String::from(task_alias.as_ref()), current_task_output);
+            .insert(String::from(task_alias.as_ref()), current_task_output.task_output);
     }
 
     for (env_alias, env_dep) in task.build_envs.iter() {
@@ -237,13 +233,13 @@ fn get_current_task_input(
                     .task_outputs
                     .write()
                     .unwrap()
-                    .insert(env_dep.clone(), task_record.output.task_output.clone());
-                task_record.output.task_output
+                    .insert(env_dep.clone(), task_record.output.clone());
+                task_record.output
             }
         };
         current_task_input
             .task_outputs
-            .insert(String::from(env_alias.as_ref()), current_env_output);
+            .insert(String::from(env_alias.as_ref()), current_env_output.task_output);
     }
 
     // NOTE: Vars are stored by NAME, not by ALIAS
@@ -505,8 +501,6 @@ fn execute_task_actions_and_store_result(
         task,
         &current_task_input,
         &task.workspace,
-        db_env,
-        db,
         cache,
         &task_result_sender,
     );
@@ -547,11 +541,11 @@ fn execute_task_actions_and_store_result(
         }
     }
 
-    let task_output_json =
+    let ser_task_output =
         to_ser_lua_value(lua, &result).map_err(|e| TaskExecutionError::LuaError(e))?;
 
     let task_output_record = TaskOutput {
-        task_output: task_output_json,
+        task_output: ser_task_output,
         file_hashes: artifact_file_hashes,
     };
 
@@ -565,7 +559,8 @@ fn execute_task_actions_and_store_result(
         .task_outputs
         .write()
         .unwrap()
-        .insert(task.task_name.clone(), task_record.output.task_output);
+        .insert(task.task_name.clone(), task_record.output);
+
     Ok(())
 }
 
@@ -630,7 +625,7 @@ pub fn execute_task_job(
                 .task_outputs
                 .write()
                 .unwrap()
-                .insert(task.task_name.clone(), task_record.output.task_output);
+                .insert(task.task_name.clone(), task_record.output);
             task_result_sender
                 .send(TaskJobMessage::Complete {
                     task: task.task_name.clone(),

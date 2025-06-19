@@ -10,7 +10,7 @@ use std::{
 
 use crate::{
     execute::{
-        action::{create_action_context, invoke_action_protected, ActionContextArgs},
+        action::{create_env_action_context, invoke_action_protected},
         execute::{
             EnvActionJob, TaskExecutionError, TaskExecutorCache, TaskJobMessage, TaskResult,
         },
@@ -21,8 +21,6 @@ use crate::{
 fn execute_env_action(
     lua: &mlua::Lua,
     job: &EnvActionJob,
-    db_env: &Arc<lmdb::Environment>,
-    db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
     stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     sender: &Sender<TaskJobMessage>,
@@ -39,25 +37,18 @@ fn execute_env_action(
         .pack(args_strings)
         .map_err(|e| TaskExecutionError::LuaError(e))?;
 
-    let action_context = create_action_context(
+    let action_context = create_env_action_context(
         lua,
-        ActionContextArgs {
-            task_name: job.job_id.clone(),
-            action: job.env.action.clone(),
-            extra_tools: HashMap::new(),
-            extra_envs: HashMap::new(),
-            files: HashMap::new(),
-            action_vars: HashMap::new(),
-            task_input_vars: HashMap::new(),
-            task_outputs: HashMap::new(),
-            project_dir: project_dir.to_owned(),
-            args: args_val,
-            workspace: job.workspace.clone(),
-            db_env: db_env.clone(),
-            db: db.clone(),
-            cache: cache.clone(),
-            sender: sender.clone(),
-        },
+        &job.env.action,
+        &job.env,
+        &job.job_id,
+        HashMap::new(),
+        HashMap::new(),
+        project_dir.to_owned(),
+        args_val,
+        &job.workspace,
+        &cache,
+        &sender,
     )
     .map_err(|e| TaskExecutionError::LuaError(e))?;
 
@@ -79,8 +70,6 @@ fn execute_env_action(
 
 pub fn execute_env_action_job(
     lua: &mlua::Lua,
-    db_env: &Arc<lmdb::Environment>,
-    db: &lmdb::Database,
     job: &EnvActionJob,
     stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     task_result_sender: &Sender<TaskJobMessage>,
@@ -89,8 +78,6 @@ pub fn execute_env_action_job(
     let result = execute_env_action(
         lua,
         job,
-        db_env,
-        db,
         cache,
         stdin_ready,
         &task_result_sender,
