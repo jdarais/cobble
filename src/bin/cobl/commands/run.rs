@@ -4,7 +4,6 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::cmp;
-use std::collections::HashMap;
 use std::env::set_current_dir;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -18,7 +17,6 @@ use cobble::config::{
 use cobble::dependency::resolve_calculated_dependencies_in_subtrees;
 use cobble::execute::execute::TaskExecutor;
 use cobble::load::load_projects;
-use cobble::project_def::types::TaskVar;
 use cobble::task_selection::compute_selected_tasks;
 use cobble::util::process_io::{IOBuffer, ProcessIO, StandardIO};
 use cobble::workspace::create_workspace;
@@ -119,7 +117,7 @@ pub fn run_init_task_if_defined<P: AsRef<Path>>(
 pub fn run<IO: ProcessIO>(
     cwd: PathBuf,
     tasks: Vec<String>,
-    vars: HashMap<String, TaskVar>,
+    vars: serde_json::Map<String, serde_json::Value>,
     force_run_tasks: bool,
     num_threads: Option<u8>,
     show_stdout: Option<TaskOutputCondition>,

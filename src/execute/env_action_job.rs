@@ -43,7 +43,7 @@ fn execute_env_action(
         &job.env,
         &job.job_id,
         HashMap::new(),
-        HashMap::new(),
+        Arc::new(serde_json::Map::new()),
         project_dir.to_owned(),
         args_val,
         &job.workspace,

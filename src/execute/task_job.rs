@@ -22,8 +22,7 @@ use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::util::hash::compute_hash_string;
-use crate::vars::get_var;
-use crate::vars::set_var;
+use crate::vars::extract_vars;
 use crate::workspace::BuildEnv;
 use crate::workspace::{Task, Workspace};
 
@@ -32,6 +31,7 @@ fn execute_task_actions<'lua>(
     task: &TaskJob,
     task_inputs: &TaskInput,
     workspace: &Arc<Workspace>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
@@ -43,6 +43,8 @@ fn execute_task_actions<'lua>(
             &task.task,
             task_inputs,
             args,
+            all_vars.clone(),
+            
             workspace,
             cache,
             sender,
@@ -98,7 +100,7 @@ fn get_current_task_input(
         dir_mtimes: HashMap::new(),
         file_hashes: HashMap::new(),
         task_outputs: HashMap::new(),
-        vars: HashMap::new(),
+        vars: serde_json::Map::new(),
         task_hash,
         env_hashes: HashMap::new(),
         tool_hashes: HashMap::new(),
@@ -188,9 +190,10 @@ fn get_current_task_input(
                 task_record.output
             }
         };
-        current_task_input
-            .task_outputs
-            .insert(String::from(task_alias.as_ref()), current_task_output.task_output);
+        current_task_input.task_outputs.insert(
+            String::from(task_alias.as_ref()),
+            current_task_output.task_output,
+        );
     }
 
     for (env_alias, env_dep) in task.build_envs.iter() {
@@ -237,21 +240,18 @@ fn get_current_task_input(
                 task_record.output
             }
         };
-        current_task_input
-            .task_outputs
-            .insert(String::from(env_alias.as_ref()), current_env_output.task_output);
+        current_task_input.task_outputs.insert(
+            String::from(env_alias.as_ref()),
+            current_env_output.task_output,
+        );
     }
 
-    // NOTE: Vars are stored by NAME, not by ALIAS
-    // TODO: Store all task inputs by name, not alias, and do the lookup from alias to name while building the action context
-
-    for (_var_alias, var_name) in task.var_deps.iter() {
-        let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
-            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-
-        set_var(var_name, var_value.clone(), &mut current_task_input.vars)
-            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-    }
+    extract_vars(
+        task.var_deps.iter(),
+        &workspace_config.vars,
+        &mut current_task_input.vars,
+    )
+    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
 
     for (_tool_alias, tool_name) in task.tools.iter() {
         let cached_tool_hash = cache.tool_hashes.read().unwrap().get(tool_name).cloned();
@@ -285,15 +285,12 @@ fn get_current_task_input(
         let tool = tools
             .get(tool_name)
             .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
-        for (_var_alias, var_name) in tool.var_deps.iter() {
-            if !current_task_input.vars.contains_key(var_name.as_ref()) {
-                let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
-                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
 
-                set_var(var_name, var_value.clone(), &mut current_task_input.vars)
-                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-            }
-        }
+        extract_vars(
+            tool.var_deps.iter(),
+            &workspace_config.vars,
+            &mut current_task_input.vars
+        ).map_err(|e| TaskExecutionError::VarLookupError(e))?;
     }
 
     Ok(current_task_input)
@@ -476,7 +473,7 @@ fn get_up_to_date_task_record(
 }
 
 fn execute_task_actions_and_store_result(
-    workspace_dir: &Path,
+    config: &WorkspaceConfig,
     lua: &mlua::Lua,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
@@ -501,6 +498,7 @@ fn execute_task_actions_and_store_result(
         task,
         &current_task_input,
         &task.workspace,
+        Arc::new(config.vars.clone()),
         cache,
         &task_result_sender,
     );
@@ -514,7 +512,7 @@ fn execute_task_actions_and_store_result(
     let mut artifact_file_hashes: HashMap<String, String> =
         HashMap::with_capacity(task.task.artifacts.files.len());
     for artifact in task.task.artifacts.files.iter() {
-        let artifact_path = workspace_dir.join(Path::new(artifact.as_ref()));
+        let artifact_path = config.workspace_dir.join(Path::new(artifact.as_ref()));
         let output_file_hash_res = compute_file_hash(&artifact_path);
         match output_file_hash_res {
             Ok(hash) => {
@@ -637,7 +635,7 @@ pub fn execute_task_job(
     }
 
     let result = execute_task_actions_and_store_result(
-        &workspace_config.workspace_dir,
+        &workspace_config,
         lua,
         db_env,
         db,
@@ -692,7 +690,7 @@ mod tests {
             init: None,
             workspace_dir: PathBuf::from("."),
             root_projects: vec![String::from(".")],
-            vars: HashMap::new(),
+            vars: serde_json::Map::new(),
             force_run_tasks: false,
             num_threads: 1,
             max_db_size: 1024 * 1024,

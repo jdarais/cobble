@@ -23,7 +23,7 @@ task {
 task {
     name = "calc_build_dep",
     actions = { function (c)
-        return { tasks = { (c.vars["cobble.build"] == "release" and "build_release") or "build_debug" } }
+        return { tasks = { (c.vars.cobble.build == "release" and "build_release") or "build_debug" } }
     end },
     deps = { vars = { "cobble.build" } }
 }

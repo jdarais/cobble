@@ -40,7 +40,7 @@ pub struct Task {
     pub dir_deps: HashMap<Arc<str>, Arc<str>>,
     pub file_deps: HashMap<Arc<str>, FileDependency>,
     pub task_deps: HashMap<Arc<str>, Arc<str>>,
-    pub var_deps: HashMap<Arc<str>, Arc<str>>,
+    pub var_deps: Vec<Arc<str>>,
     pub calc_deps: Vec<Arc<str>>,
     pub actions: Vec<Action>,
     pub clean_actions: Vec<Action>,
@@ -65,7 +65,7 @@ impl Default for Task {
             dir_deps: HashMap::new(),
             file_deps: HashMap::new(),
             task_deps: HashMap::new(),
-            var_deps: HashMap::new(),
+            var_deps: Vec::new(),
             calc_deps: Vec::new(),
             actions: Vec::new(),
             clean_actions: Vec::new(),
@@ -121,8 +121,8 @@ pub fn add_dependency_list_to_task(
         task.task_deps.insert(t_alias.clone(), t_path.clone());
     }
 
-    for (v_alias, v_path) in deps.vars.iter() {
-        task.var_deps.insert(v_alias.clone(), v_path.clone());
+    for v in deps.vars.iter() {
+        task.var_deps.push(v.clone());
     }
 
     for c_dep in deps.calc.iter() {

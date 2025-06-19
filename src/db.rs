@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     lua::s11n::{SerLuaValue, SerLuaValueBlock},
-    project_def::types::TaskVar,
 };
 
 const TASK_KEY_PREFIX: &str = "task:";
@@ -27,7 +26,7 @@ pub struct TaskInput {
     pub task_outputs: HashMap<String, SerLuaValueBlock>,
 
     #[serde(default)]
-    pub vars: HashMap<String, TaskVar>,
+    pub vars: serde_json::Map<String, serde_json::Value>,
 
     #[serde(default)]
     pub task_hash: String,

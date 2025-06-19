@@ -3,12 +3,10 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::collections::HashMap;
 use std::{borrow::Cow, fmt, sync::Arc};
 
 use crate::lua::s11n::SerLuaValueBlock;
 use crate::project_def::action::validate_action;
-use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
     key_validation_error, validate_is_string, validate_is_table, validate_required_key, with_prop,
 };
@@ -21,7 +19,7 @@ pub struct ExternalTool {
     pub name: Arc<str>,
     pub check: Option<Action>,
     pub action: Action,
-    pub var_deps: HashMap<Arc<str>, Arc<str>>,
+    pub var_deps: Vec<Arc<str>>,
     pub ser_tool: SerLuaValueBlock,
 }
 
@@ -110,21 +108,16 @@ impl<'lua> mlua::FromLua<'lua> for ExternalTool {
                 let name_str: String = tbl.get("name")?;
                 let name = Arc::<str>::from(name_str);
 
-                let mut var_deps: HashMap<Arc<str>, Arc<str>> = HashMap::new();
+                let mut var_deps: Vec<Arc<str>> = Vec::new();
 
                 let deps_tbl_opt: Option<mlua::Table> = tbl.get("deps")?;
                 if let Some(deps_tbl) = deps_tbl_opt {
                     let var_deps_tbl_opt: Option<mlua::Table> = deps_tbl.get("vars")?;
                     if let Some(var_deps_tbl) = var_deps_tbl_opt {
                         for pair in var_deps_tbl.clone().pairs() {
-                            let (k, v): (StringOrInt, String) = pair?;
-                            let var_dep_value: Arc<str> = v.into();
-                            let var_dep_key = match k {
-                                StringOrInt::Int(_i) => var_dep_value.clone(),
-                                StringOrInt::String(s) => s.into(),
-                            };
+                            let (_k, v): (mlua::Value, String) = pair?;
 
-                            var_deps.insert(var_dep_key, var_dep_value);
+                            var_deps.push(v.into());
                         }
                     }
                 }

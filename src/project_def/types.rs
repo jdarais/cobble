@@ -3,16 +3,17 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::project_def::validate::validate_table_is_sequence;
+use crate::lua::s11n::{SerLuaValue, SerLuaValueBlock, SerLuaValueRef};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
-#[serde(untagged)]
 pub enum StringOrInt {
-    String(String),
+    #[serde(rename="str")]
+    String(Arc<str>),
+    #[serde(rename="int")]
     Int(i64),
 }
 
@@ -25,17 +26,35 @@ impl fmt::Display for StringOrInt {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for StringOrInt {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl <'a> TryFrom<&SerLuaValueRef<'a>> for StringOrInt {
+    type Error = String;
+    
+    fn try_from(value: &SerLuaValueRef<'a>) -> Result<Self, Self::Error> {
         match value {
-            mlua::Value::String(s) => Ok(StringOrInt::String(String::from(s.to_str()?))),
-            mlua::Value::Integer(i) => Ok(StringOrInt::Int(i)),
-            _ => Err(mlua::Error::runtime(format!(
-                "Expected a string or integer, but got a {}: {:?}",
-                value.type_name(),
-                value
-            ))),
+            SerLuaValueRef::String(s) => Ok(StringOrInt::String(Arc::from(*s))),
+            SerLuaValueRef::Integer(i) => Ok(StringOrInt::Int(*i)),
+            _ => Err(format!("Expected a string or integer, but got a {}", value.value_type()))
         }
+    }
+}
+
+impl TryFrom<SerLuaValue> for StringOrInt {
+    type Error = String;
+
+    fn try_from(value: SerLuaValue) -> Result<Self, Self::Error> {
+        match value {
+            SerLuaValue::String(s) => Ok(StringOrInt::String(Arc::from(s))),
+            SerLuaValue::Integer(i) => Ok(StringOrInt::Int(i)),
+            _ => Err(format!("Expected a string or integer, but got a {}", value.value_type()))
+        }
+    }
+}
+
+impl TryFrom<&SerLuaValueBlock> for StringOrInt {
+    type Error = String;
+    
+    fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
+        StringOrInt::try_from(&SerLuaValueRef::from(&value.values, 0))
     }
 }
 
@@ -144,46 +163,6 @@ impl From<toml::Value> for TaskVar {
             toml::Value::Integer(i) => TaskVar::String(format!("{}", i)),
         }
     }
-}
-
-pub fn lua_to_json<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
-) -> mlua::Result<serde_json::Value> {
-    use mlua::Value::*;
-    let json_val = match value {
-        Nil => serde_json::Value::Null,
-        Boolean(b) => serde_json::Value::Bool(*b),
-        Integer(i) => serde_json::Number::from_f64(*i as f64)
-            .map(|n| serde_json::Value::Number(n))
-            .unwrap_or(serde_json::Value::Null),
-        Number(f) => serde_json::Number::from_f64(*f)
-            .map(|n| serde_json::Value::Number(n))
-            .unwrap_or(serde_json::Value::Null),
-        String(s) => serde_json::Value::String(std::string::String::from(s.to_str()?)),
-        Table(tbl) => {
-            let is_sequence = validate_table_is_sequence(tbl, &mut Vec::new()).is_ok();
-            if is_sequence {
-                let mut arr: Vec<serde_json::Value> = Vec::new();
-                for val_res in tbl.clone().sequence_values() {
-                    let val: mlua::Value = val_res?;
-                    let json_val = lua_to_json(lua, &val)?;
-                    arr.push(json_val);
-                }
-                serde_json::Value::Array(arr)
-            } else {
-                let mut map: serde_json::Map<std::string::String, serde_json::Value> =
-                    serde_json::Map::new();
-                for pairs_res in tbl.clone().pairs() {
-                    let (k, v): (mlua::Value, mlua::Value) = pairs_res?;
-                    map.insert(k.to_string()?, lua_to_json(lua, &v)?);
-                }
-                serde_json::Value::Object(map)
-            }
-        }
-        _ => serde_json::Value::String(value.to_string()?),
-    };
-    Ok(json_val)
 }
 
 pub fn json_to_lua<'lua>(
