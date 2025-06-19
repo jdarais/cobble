@@ -10,6 +10,7 @@ task {
                 :filter(function (i, f) return not f:match(".mypy_cache") end)
                 :filter(function (i, f) return not f:match(".venv") end)
                 :filter(function (i, f) return path.is_file(path.join(c.project.dir, f)) end)
+                :map(function (i, f) return f end)
                 :to_table()
         }
     end }

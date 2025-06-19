@@ -84,7 +84,14 @@ local iter_prototype = {
         end
     end,
     to_table = function(self)
-        return self:reduce({}, function(accum, k, v) accum[k] = v ; return accum end)
+        return self:reduce({}, function(accum, k, v)
+            if v == nil then
+                accum[#accum+1] = k
+            else
+                accum[k] = v
+            end
+            return accum
+        end)
     end
 }
 

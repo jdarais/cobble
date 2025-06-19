@@ -15,7 +15,7 @@ use crate::{
 
 const TASK_KEY_PREFIX: &str = "task:";
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct TaskInput {
     #[serde(default)]
     pub dir_mtimes: HashMap<String, u128>,
@@ -54,9 +54,23 @@ pub struct TaskOutput {
     pub task_output: SerLuaValueBlock,
 }
 
+impl Default for TaskOutput {
+    fn default() -> Self {
+        Self {
+            file_hashes: Default::default(),
+            task_output: SerLuaValueBlock {
+                values: vec![SerLuaValue::Nil],
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskRecord {
+    #[serde(default)]
     pub input: TaskInput,
+
+    #[serde(default)]
     pub output: TaskOutput,
 }
 

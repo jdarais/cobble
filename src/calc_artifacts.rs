@@ -88,10 +88,10 @@ pub fn calculate_artifacts<IO: ProcessIO>(
         for calc_artifact in task.artifacts.calc.iter() {
             let task_outputs = executor_cache.task_outputs.read().unwrap();
             let task_output_record =
-                Artifacts::try_from(&task_outputs[calc_artifact]).map_err(|e| {
+                Artifacts::try_from(&task_outputs[calc_artifact].task_output).map_err(|e| {
                     CalcArtifactsError::OutputError {
                         task_name: task.name.clone(),
-                        task_output: task_outputs[calc_artifact].clone(),
+                        task_output: task_outputs[calc_artifact].task_output.clone(),
                         error: e,
                     }
                 })?;

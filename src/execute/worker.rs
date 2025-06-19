@@ -151,8 +151,6 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     &lua,
                     &tool_check,
                     args.workspace_config.vars.clone(),
-                    &args.db_env,
-                    &args.db,
                     &args.cache,
                     &args.task_result_sender,
                 );
@@ -168,8 +166,6 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     .unwrap();
                 execute_env_action_job(
                     &lua,
-                    &args.db_env,
-                    &args.db,
                     &env_action_job,
                     &stdin_ready,
                     &args.task_result_sender,
