@@ -19,7 +19,10 @@ task {
 
 task {
     name = "node_typescript_image",
-    actions = { { tool = "docker", "build", "-f", "node_typescript.Dockerfile", "-t", "local/cobble_test_node_typescript", "../../.." } },
+    actions = {
+        function (c) c.println("Using dockerfile: "..c.files.dockerfile.path) end,
+        { tool = "docker", "build", "-f", "node_typescript.Dockerfile", "-t", "local/cobble_test_node_typescript", "../../.." }
+    },
     deps = {
         files = { dockerfile = "node_typescript.Dockerfile", "../../../.dockerignore", "../../../target/release/cobl" },
         calc = { "calc_node_typescript_test_repo_files" }
