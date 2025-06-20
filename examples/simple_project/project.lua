@@ -13,7 +13,7 @@ task {
         vars = { "this.var" }
     },
     artifacts = {
-        "output.txt" 
+        files = { "output.txt" } 
     }
 }
 

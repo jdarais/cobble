@@ -4,9 +4,11 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::collections::BTreeMap;
+use std::{fmt, sync::Arc};
 
 use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
+use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
     key_validation_error, validate_is_string, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, with_prop,
@@ -14,9 +16,9 @@ use crate::project_def::validate::{
 
 #[derive(Clone, Debug, Default)]
 pub struct Dependencies {
-    pub dirs: HashMap<Arc<str>, Arc<str>>,
-    pub files: HashMap<Arc<str>, Arc<str>>,
-    pub tasks: HashMap<Arc<str>, Arc<str>>,
+    pub dirs: BTreeMap<StringOrInt, Arc<str>>,
+    pub files: BTreeMap<StringOrInt, Arc<str>>,
+    pub tasks: BTreeMap<StringOrInt, Arc<str>>,
     pub vars: Vec<Arc<str>>,
     pub calc: Vec<Arc<str>>,
 }
@@ -107,14 +109,8 @@ impl TryFrom<&SerLuaValueBlock> for Dependencies {
                             .as_string()
                             .map(|s| Arc::<str>::from(s))
                             .ok_or_else(|| format!("dir dependency must be a string"))?;
-                        let k_str = match k {
-                            SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                            SerLuaValueRef::Integer(_) => v_str.clone(),
-                            _ => {
-                                return Err(format!("dir dependency key must be a string or integer"));
-                            }
-                        };
-                        deps.dirs.insert(k_str, v_str);
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.dirs.insert(k_val, v_str);
                     }
                 }
                 SerLuaValueRef::String("files") => {
@@ -127,14 +123,8 @@ impl TryFrom<&SerLuaValueBlock> for Dependencies {
                             .as_string()
                             .map(|s| Arc::<str>::from(s))
                             .ok_or_else(|| format!("file dependency must be a string"))?;
-                        let k_str = match k {
-                            SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                            SerLuaValueRef::Integer(_) => v_str.clone(),
-                            _ => {
-                                return Err(format!("file dependency key must be a string or integer"));
-                            }
-                        };
-                        deps.files.insert(k_str, v_str);
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.files.insert(k_val, v_str);
                     }
                 }
                 SerLuaValueRef::String("tasks") => {
@@ -147,14 +137,8 @@ impl TryFrom<&SerLuaValueBlock> for Dependencies {
                             .as_string()
                             .map(|s| Arc::<str>::from(s))
                             .ok_or_else(|| format!("task dependency must be a string"))?;
-                        let k_str = match k {
-                            SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                            SerLuaValueRef::Integer(_) => v_str.clone(),
-                            _ => {
-                                return Err(format!("task dependency key must be a string or integer"));
-                            }
-                        };
-                        deps.tasks.insert(k_str, v_str);
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.tasks.insert(k_val, v_str);
                     }
                 }
                 SerLuaValueRef::String("vars") => {

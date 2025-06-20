@@ -21,7 +21,7 @@ task {
     name = "node_typescript_image",
     actions = { { tool = "docker", "build", "-f", "node_typescript.Dockerfile", "-t", "local/cobble_test_node_typescript", "../../.." } },
     deps = {
-        files = { "node_typescript.Dockerfile", "../../../.dockerignore", "../../../target/release/cobl" },
+        files = { dockerfile = "node_typescript.Dockerfile", "../../../.dockerignore", "../../../target/release/cobl" },
         calc = { "calc_node_typescript_test_repo_files" }
     }
 }

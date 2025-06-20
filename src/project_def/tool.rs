@@ -23,7 +23,7 @@ pub struct ExternalTool {
     pub ser_tool: SerLuaValueBlock,
 }
 
-fn validate_tool_deps<'lua>(
+pub fn validate_vars_only_deps<'lua>(
     value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
@@ -60,7 +60,7 @@ pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::R
                 validate_is_string(&v, path).and(Ok(()))
             }),
             "deps" => with_prop(&mut prop_path, Cow::Borrowed("deps"), |path| {
-                validate_tool_deps(&v, path)
+                validate_vars_only_deps(&v, path)
             }),
             "check" => with_prop(&mut prop_path, Cow::Borrowed("check"), |path| {
                 validate_action(lua, &v, path)

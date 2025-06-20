@@ -96,8 +96,8 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         if task.artifacts.files.len() == 0 {
             println!("{TAB}{TAB}<none>");
         } else {
-            for f in task.artifacts.files.iter() {
-                println!("{TAB}{TAB}{f}");
+            for (f_alias, f_path) in task.artifacts.files.iter() {
+                println!("{TAB}{TAB}[{f_alias}] = {f_path}");
             }
         }
         println!("");
@@ -106,9 +106,9 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         if task.file_deps.len() == 0 {
             println!("{TAB}{TAB}<none>");
         } else {
-            for (_, f) in task.file_deps.iter() {
-                print!("{TAB}{TAB}{}", f.path);
-                if let Some(provider) = f.provided_by_task.as_ref() {
+            for (f_alias, f_dep) in task.file_deps.iter() {
+                print!("{TAB}{TAB}[{f_alias}] = {}", f_dep.path);
+                if let Some(provider) = f_dep.provided_by_task.as_ref() {
                     print!("  (*provided by {})", provider);
                 }
                 println!("");
@@ -120,8 +120,8 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         if task.task_deps.len() == 0 {
             println!("{TAB}{TAB}<none>");
         } else {
-            for (_, t) in task.task_deps.iter() {
-                println!("{TAB}{TAB}{t}");
+            for (t_alias, t_name) in task.task_deps.iter() {
+                println!("{TAB}{TAB}[{t_alias}] = {t_name}");
             }
         }
         println!("");

@@ -3,7 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -18,9 +18,9 @@ use crate::project_def::{BuildEnvDef, ExternalTool, TaskDef};
 pub struct SerProject {
     pub name: String,
     pub path: String,
-    pub envs: HashMap<String, SerLuaValueBlock>,
-    pub tasks: HashMap<String, SerLuaValueBlock>,
-    pub tools: HashMap<String, SerLuaValueBlock>,
+    pub envs: BTreeMap<String, SerLuaValueBlock>,
+    pub tasks: BTreeMap<String, SerLuaValueBlock>,
+    pub tools: BTreeMap<String, SerLuaValueBlock>,
     pub child_projects: Vec<SerProject>,
 }
 

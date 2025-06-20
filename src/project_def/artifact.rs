@@ -4,10 +4,12 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
 use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
+use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{validate_is_string, with_prop};
 
 use super::validate::{
@@ -17,7 +19,7 @@ use super::validate::{
 
 #[derive(Clone, Debug, Default)]
 pub struct Artifacts {
-    pub files: Vec<Arc<str>>,
+    pub files: BTreeMap<StringOrInt, Arc<str>>,
     pub calc: Vec<Arc<str>>,
 }
 
@@ -32,11 +34,11 @@ pub fn validate_artifact<'lua>(
 impl fmt::Display for Artifacts {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Artifact(files=[")?;
-        for (i, filename) in self.files.iter().enumerate() {
+        for (i, (k, filename)) in self.files.iter().enumerate() {
             if i > 0 {
                 f.write_str(",")?;
             }
-            f.write_str(filename.as_ref())?;
+            write!(f, "{}: {}", k, filename.as_ref())?;
         }
         f.write_str("], calc=[")?;
         for (i, calc) in self.calc.iter().enumerate() {
@@ -70,7 +72,7 @@ pub fn validate_artifacts<'lua>(
                         Cow::Borrowed("files"),
                         |path| -> mlua::Result<()> {
                             let files_table = validate_is_table(&v, &mut *path)?;
-                            validate_table_is_sequence(files_table, &mut *path)?;
+                            validate_table_has_only_string_or_sequence_keys(files_table, &mut *path)?;
                             for f_val in files_table.clone().sequence_values() {
                                 let f: mlua::Value = f_val?;
                                 validate_is_string(&f, &mut *path)?;
@@ -109,13 +111,13 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
     fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(table_value) => {
-                let mut files: Vec<Arc<str>> = Vec::new();
+                let mut files: BTreeMap<StringOrInt, Arc<str>> = BTreeMap::new();
                 let mut calc: Vec<Arc<str>> = Vec::new();
 
-                let files_value_opt: Option<Vec<String>> = table_value.get("files")?;
+                let files_value_opt: Option<BTreeMap<StringOrInt, String>> = table_value.get("files")?;
                 if let Some(files_value) = files_value_opt {
-                    for f in files_value {
-                        files.push(Arc::<str>::from(f));
+                    for (f_alias, f_path) in files_value {
+                        files.insert(f_alias.clone(), Arc::<str>::from(f_path));
                     }
                 }
 
@@ -124,12 +126,6 @@ impl<'lua> mlua::FromLua<'lua> for Artifacts {
                     for c in calc_value {
                         calc.push(Arc::<str>::from(c));
                     }
-                }
-
-                // Treat sequence values as files
-                for val in table_value.sequence_values() {
-                    let f: String = val?;
-                    files.push(Arc::<str>::from(f));
                 }
 
                 Ok(Artifacts { files, calc })
@@ -146,7 +142,7 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
     type Error = String;
     fn try_from(value: &SerLuaValueBlock) -> Result<Self, Self::Error> {
         let mut artifacts = Artifacts {
-            files: Vec::new(),
+            files: BTreeMap::new(),
             calc: Vec::new(),
         };
 
@@ -173,7 +169,8 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
         };
 
         if let Some(files_table) = files_table_opt {
-            for (_k, v) in files_table.entries() {
+            for (k, v) in files_table.entries() {
+                let k_val = StringOrInt::try_from(&k)?;
                 let v_str = match v {
                     SerLuaValueRef::String(s) => s,
                     _ => {
@@ -181,7 +178,7 @@ impl TryFrom<&SerLuaValueBlock> for Artifacts {
                     }
                 };
 
-                artifacts.files.push(Arc::<str>::from(v_str.to_owned()));
+                artifacts.files.insert(k_val, Arc::from(v_str));
             }
         }
 

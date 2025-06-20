@@ -3,7 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::env::{current_dir, set_current_dir};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -148,11 +148,11 @@ pub fn init_lua_for_project_config(lua: &mlua::Lua, workspace_dir: &Path) -> mlu
 pub fn extract_project_defs(
     ws_dir: &Path,
     lua: &mlua::Lua,
-) -> mlua::Result<HashMap<String, Project>> {
+) -> mlua::Result<BTreeMap<String, Project>> {
     let cobble_table: mlua::Table = lua.globals().get("cobble")?;
     let projects_table: mlua::Table = cobble_table.get("projects")?;
 
-    let mut projects: HashMap<String, Project> = HashMap::new();
+    let mut projects: BTreeMap<String, Project> = BTreeMap::new();
 
     for pair in projects_table.pairs() {
         let (key, mut value): (String, Project) = pair?;
@@ -216,7 +216,7 @@ pub fn extract_project_defs(
 pub fn load_projects<'a, P>(
     workspace_dir: &Path,
     root_projects: P,
-) -> mlua::Result<HashMap<String, Project>>
+) -> mlua::Result<BTreeMap<String, Project>>
 where
     P: Iterator<Item = &'a str>,
 {

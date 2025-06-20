@@ -4,7 +4,7 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use mlua::FromLua;
 
@@ -203,7 +203,7 @@ pub fn dump_inline_task<'lua>(
             Some((build_env_name.clone(), build_env_name))
         }
         mlua::Value::Table(t) => {
-            let mut envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
+            let mut envs: BTreeMap<Arc<str>, Arc<str>> = BTreeMap::new();
             for pair in t.pairs() {
                 let (k, v): (String, String) = pair?;
                 envs.insert(k.into(), v.into());

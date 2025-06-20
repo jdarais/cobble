@@ -4,7 +4,6 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::{
-    collections::HashMap,
     fs::remove_file,
     sync::{mpsc::Sender, Arc},
 };
@@ -42,10 +41,10 @@ fn execute_clean_actions(
                 action: action.clone(),
                 extra_tools: job.task.tools.clone(),
                 extra_envs: job.task.build_envs.clone(),
-                files: HashMap::new(),
+                files: Default::default(),
                 var_deps: workspace_config.vars.keys().into_iter().map(|s| Arc::from(s.as_str())).collect(),
                 all_vars: Arc::new(workspace_config.vars.clone()),
-                task_outputs: HashMap::new(),
+                task_outputs: Default::default(),
                 project_dir: project_dir.to_owned(),
                 args: mlua::Value::Nil,
                 workspace: job.workspace.clone(),
@@ -59,8 +58,8 @@ fn execute_clean_actions(
     }
 
     // Delete artifacts
-    for artifact in &job.task.artifacts.files {
-        let file_path = workspace_config.workspace_dir.join(artifact.as_ref());
+    for (_f_alias, f_path) in &job.task.artifacts.files {
+        let file_path = workspace_config.workspace_dir.join(f_path.as_ref());
         if file_path.is_file() {
             remove_file(&file_path).map_err(|e| {
                 TaskExecutionError::ExecutorError(format!(

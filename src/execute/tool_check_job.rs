@@ -5,7 +5,7 @@
 
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::{collections::HashMap, path::Path};
+use std::path::Path;
 
 use crate::execute::action::{create_tool_action_context, invoke_action_protected};
 use crate::execute::execute::TaskExecutorCache;
@@ -71,11 +71,9 @@ fn execute_tool_check_action(
         lua,
         check_action,
         &job.job_id,
-        HashMap::new(),
         // Tool check actions can have all the vars
         vars.keys().into_iter().map(|s| Arc::from(s.as_str())).collect(),
         vars,
-        HashMap::new(),
         project_dir,
         mlua::Value::Nil,
         &job.workspace,

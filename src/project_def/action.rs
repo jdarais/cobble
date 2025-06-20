@@ -4,7 +4,7 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -32,9 +32,9 @@ impl fmt::Display for ActionCmd {
 
 #[derive(Clone, Debug)]
 pub struct Action {
-    pub tools: HashMap<Arc<str>, Arc<str>>,
-    pub build_envs: HashMap<Arc<str>, Arc<str>>,
-    pub kwargs: HashMap<Arc<str>, SerLuaValueBlock>,
+    pub tools: BTreeMap<Arc<str>, Arc<str>>,
+    pub build_envs: BTreeMap<Arc<str>, Arc<str>>,
+    pub kwargs: BTreeMap<Arc<str>, SerLuaValueBlock>,
     pub cmd: ActionCmd,
 }
 
@@ -174,9 +174,9 @@ impl<'lua> mlua::FromLua<'lua> for Action {
     ) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
-                let mut build_envs: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                let mut tools: HashMap<Arc<str>, Arc<str>> = HashMap::new();
-                let mut kwargs: HashMap<Arc<str>, SerLuaValueBlock> = HashMap::new();
+                let mut build_envs: BTreeMap<Arc<str>, Arc<str>> = BTreeMap::new();
+                let mut tools: BTreeMap<Arc<str>, Arc<str>> = BTreeMap::new();
+                let mut kwargs: BTreeMap<Arc<str>, SerLuaValueBlock> = BTreeMap::new();
 
                 for pair in tbl.clone().pairs() {
                     let (k, v): (mlua::Value, mlua::Value) = pair?;
@@ -294,11 +294,11 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 let cmd_tool_name = Arc::<str>::from("cmd");
                 let ser_lua_fn = to_ser_lua_value(lua, &mlua::Value::Function(func))?;
                 Ok(Action {
-                    build_envs: HashMap::new(),
+                    build_envs: BTreeMap::new(),
                     tools: vec![(cmd_tool_name.clone(), cmd_tool_name)]
                         .into_iter()
                         .collect(),
-                    kwargs: HashMap::new(),
+                    kwargs: BTreeMap::new(),
                     cmd: ActionCmd::Func(ser_lua_fn),
                 })
             }
@@ -341,11 +341,11 @@ impl<'lua> mlua::IntoLua<'lua> for Action {
             action_table.set(k.as_ref(), v)?;
         }
 
-        let tools_str: HashMap<&str, &str> = tools
+        let tools_str: BTreeMap<&str, &str> = tools
             .iter()
             .map(|(k, v)| (k.as_ref(), v.as_ref()))
             .collect();
-        let build_envs_str: HashMap<&str, &str> = build_envs
+        let build_envs_str: BTreeMap<&str, &str> = build_envs
             .iter()
             .map(|(k, v)| (k.as_ref(), v.as_ref()))
             .collect();
