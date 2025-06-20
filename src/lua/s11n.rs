@@ -933,7 +933,10 @@ fn append_toml_value_to_block(value: &toml::Value, ser_values: &mut Vec<SerLuaVa
                 let v_index = append_toml_value_to_block(v, ser_values);
                 entries.push((k_index, v_index));
             }
-            ser_values[value_index] = SerLuaValue::Table(SerLuaTable{ entries, metatable: None });
+            ser_values[value_index] = SerLuaValue::Table(SerLuaTable {
+                entries,
+                metatable: None,
+            });
         }
         toml::Value::Array(arr) => {
             let mut entries: Vec<(usize, usize)> = Vec::with_capacity(arr.len());
@@ -943,13 +946,26 @@ fn append_toml_value_to_block(value: &toml::Value, ser_values: &mut Vec<SerLuaVa
                 let v_index = append_toml_value_to_block(v, ser_values);
                 entries.push((k_index, v_index));
             }
-            ser_values[value_index] = SerLuaValue::Table(SerLuaTable{ entries, metatable: None });
+            ser_values[value_index] = SerLuaValue::Table(SerLuaTable {
+                entries,
+                metatable: None,
+            });
         }
-        toml::Value::String(s) => { ser_values[value_index] = SerLuaValue::String(s.clone()); }
-        toml::Value::Boolean(b) => { ser_values[value_index] = SerLuaValue::Boolean(*b); }
-        toml::Value::Datetime(dt) => { ser_values[value_index] = SerLuaValue::String(format!("{}", dt)); }
-        toml::Value::Float(f) => { ser_values[value_index] = SerLuaValue::Number(*f); }
-        toml::Value::Integer(i) => { ser_values[value_index] = SerLuaValue::Integer(*i); }
+        toml::Value::String(s) => {
+            ser_values[value_index] = SerLuaValue::String(s.clone());
+        }
+        toml::Value::Boolean(b) => {
+            ser_values[value_index] = SerLuaValue::Boolean(*b);
+        }
+        toml::Value::Datetime(dt) => {
+            ser_values[value_index] = SerLuaValue::String(format!("{}", dt));
+        }
+        toml::Value::Float(f) => {
+            ser_values[value_index] = SerLuaValue::Number(*f);
+        }
+        toml::Value::Integer(i) => {
+            ser_values[value_index] = SerLuaValue::Integer(*i);
+        }
     };
 
     value_index
@@ -963,7 +979,10 @@ impl From<toml::Value> for SerLuaValueBlock {
     }
 }
 
-fn append_json_value_to_block(value: &serde_json::Value, ser_values: &mut Vec<SerLuaValue>) -> usize {
+fn append_json_value_to_block(
+    value: &serde_json::Value,
+    ser_values: &mut Vec<SerLuaValue>,
+) -> usize {
     let value_index = ser_values.len();
     ser_values.push(SerLuaValue::Nil);
 
@@ -975,7 +994,10 @@ fn append_json_value_to_block(value: &serde_json::Value, ser_values: &mut Vec<Se
                 let v_index = append_json_value_to_block(v, ser_values);
                 entries.push((k_index, v_index));
             }
-            ser_values[value_index] = SerLuaValue::Table(SerLuaTable{ entries, metatable: None });
+            ser_values[value_index] = SerLuaValue::Table(SerLuaTable {
+                entries,
+                metatable: None,
+            });
         }
         serde_json::Value::Array(arr) => {
             let mut entries: Vec<(usize, usize)> = Vec::with_capacity(arr.len());
@@ -985,9 +1007,14 @@ fn append_json_value_to_block(value: &serde_json::Value, ser_values: &mut Vec<Se
                 let v_index = append_json_value_to_block(v, ser_values);
                 entries.push((k_index, v_index));
             }
-            ser_values[value_index] = SerLuaValue::Table(SerLuaTable{ entries, metatable: None });
+            ser_values[value_index] = SerLuaValue::Table(SerLuaTable {
+                entries,
+                metatable: None,
+            });
         }
-        serde_json::Value::Bool(b) => { ser_values[value_index] = SerLuaValue::Boolean(*b); }
+        serde_json::Value::Bool(b) => {
+            ser_values[value_index] = SerLuaValue::Boolean(*b);
+        }
         serde_json::Value::Number(n) => {
             let ser_val = n
                 .as_i64()
@@ -996,8 +1023,10 @@ fn append_json_value_to_block(value: &serde_json::Value, ser_values: &mut Vec<Se
                 .unwrap_or_else(|| SerLuaValue::Number(f64::NAN));
             ser_values[value_index] = ser_val;
         }
-        serde_json::Value::String(s) => { ser_values[value_index] = SerLuaValue::String(s.clone()); }
-        serde_json::Value::Null => { /* value is already nil */},
+        serde_json::Value::String(s) => {
+            ser_values[value_index] = SerLuaValue::String(s.clone());
+        }
+        serde_json::Value::Null => { /* value is already nil */ }
     };
 
     value_index

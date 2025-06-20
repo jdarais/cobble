@@ -7,7 +7,8 @@ require("tools")
 project_dir("docs")
 
 -- Example projects
-local example_test_dirs = path.glob("examples/*/tests")
+local example_test_dirs = path.glob("examples/*/tests", { include_files = false })
+print(tblext.format(example_test_dirs))
 for i, d in ipairs(example_test_dirs) do
     if path.is_file(path.join(d, "project.lua")) then
         project_dir(d)
