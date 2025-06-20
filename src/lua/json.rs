@@ -36,11 +36,14 @@ fn json_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lu
 }
 
 fn json_loads<'lua>(lua: &'lua Lua, val: String) -> mlua::Result<mlua::Value<'lua>> {
+    let create_ordered_map_lua = include_bytes!("ordered_map.lua");
+    let create_ordered_map: mlua::Function = lua.load(&create_ordered_map_lua[..]).call(())?;
+
     let parsed: serde_json::Value = val
-        .parse()
+        .parse()    
         .map_err(|e| mlua::Error::runtime(format!("Error parsing json: {}", e)))?;
 
-    json_to_lua(lua, parsed)
+    json_to_lua(lua, parsed, &create_ordered_map)
 }
 
 fn json_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Value<'lua>)) -> mlua::Result<()> {
@@ -64,6 +67,7 @@ fn json_dumps<'lua>(lua: &'lua Lua, val: mlua::Value) -> mlua::Result<String> {
 fn json_to_lua<'lua>(
     lua: &'lua Lua,
     json_val: serde_json::Value,
+    create_ordered_map: &mlua::Function<'lua>
 ) -> mlua::Result<mlua::Value<'lua>> {
     match json_val {
         serde_json::Value::Null => Ok(mlua::Value::Nil),
@@ -82,14 +86,14 @@ fn json_to_lua<'lua>(
         serde_json::Value::Array(arr) => {
             let table = lua.create_table_with_capacity(arr.len(), 0)?;
             for v in arr {
-                table.push(json_to_lua(lua, v)?)?;
+                table.push(json_to_lua(lua, v, create_ordered_map)?)?;
             }
             Ok(mlua::Value::Table(table))
         }
         serde_json::Value::Object(obj) => {
-            let table = lua.create_table_with_capacity(0, obj.len())?;
+            let table: mlua::Table = create_ordered_map.call(())?;
             for (k, v) in obj {
-                table.set(k, json_to_lua(lua, v)?)?;
+                table.set(k, json_to_lua(lua, v, create_ordered_map)?)?;
             }
             Ok(mlua::Value::Table(table))
         }
@@ -146,5 +150,34 @@ fn lua_to_json<'lua>(
         mlua::Value::Error(_) => Err(mlua::Error::runtime(
             "Cannot convert an error object to a json value",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_map() {
+        let lua = unsafe { Lua::unsafe_new() };
+        let json_lib = lua.create_userdata(JsonLib).unwrap();
+
+        let result: (Vec<String>, Vec<i64>) = lua.load(r#"
+            local json_lib = ...
+            json_map = json_lib.loads("{\"z\": 4, \"b\": 1, \"q\": 3 }")
+            json_map["b"] = 10
+
+            local keys = {}
+            local vals = {}
+            for k, v in pairs(json_map) do
+                keys[#keys+1] = k
+                vals[#vals+1] = v
+            end
+
+            return keys, vals
+        "#).call(json_lib).unwrap();
+
+        assert_eq!(result.0, vec![String::from("z"), String::from("b"), String::from("q")]);
+        assert_eq!(result.1, vec![4, 10, 3]);
     }
 }

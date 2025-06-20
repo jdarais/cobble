@@ -52,12 +52,17 @@ _string_ - The path separator character for the current OS
 
 _function_ - Get files matching a pattern in a directory tree
 
-`path.glob([base], pattern)`
+`path.glob([base], pattern, [options])`
 
 ##### Arguments
 
 - `base` _(optional)_: _string_ - Base path to search from.  Returned file paths are relative to the base path.  (Default: CWD)
 - `pattern`: _string_ - Pattern to match files with.  Can include `*` or `**` wildcards.
+- `options` _(optionsal)_: _table_ - Options to customize the glob behavior
+  - `include`: _string_ | _table_ | _nil_ - Additional glob patterns to include in the search
+  - `exclude`: _string_ | _table_ | _nil_ - Glob patterns to exclude from the search.  If a file path matches both `include`/`pattern` and `exclude` patterns, `exclude` takes precedence.
+  - `include_dirs`: _bool_ | _nil_ - Whether to include directories in the result list. (Default: true)
+  - `include_files`: _bool_ | _nil_ - Whether to include files in the result list. (Default: true)
 
 ##### Returns
 
@@ -231,6 +236,7 @@ Module for (de)serializing json values.  When converting between Lua and json ty
 
 - JSON numbers are always converted to Lua floats, regardless of whether or not they contain integral values
 - If a Lua table contains consecutive integer keys starting from 1, it is converted to a json array.  Otherwise, it is converted to a json object.
+- JSON objects are deserialized into an order-preserving Lua table, so deserialization followed by serialization of a JSON object is stable.
 
 #### json.load
 
@@ -295,6 +301,8 @@ Module for (de)serializing toml values.  When converting between Lua and toml ty
 
 - TOML datetime values are converted to a Lua userdata, which can be converted to a string or serialized back to a toml datetime value.
 - If a Lua table contains consecutive integer keys starting at 1, it is converted into a toml array.  Otherwise, it is converted to a toml table.
+- TOML tables are deserialized into an order-preserving Lua table, so deserialization followed by serialization of a TOML document is stable, however
+  any comments in a deserialized TOML document are not preserved.
 
 #### toml.load
 

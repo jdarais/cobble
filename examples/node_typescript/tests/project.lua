@@ -7,11 +7,14 @@ task {
     always_run = true,
     actions = { function (c)
         local deps = {
-            files = iter(ipairs(path.glob(c.project.dir, path.join("../workspace/**/*"))))
-                :filter(function (i, f) return not f:match("node_modules[/\\]") end)
-                :filter(function (i, f) return not f:match("lib[/\\]") end)
-                :filter(function (i, f) return path.is_file(path.join(c.project.dir, f)) end)
-                :to_table()
+            files = path.glob(
+                c.project.dir,
+                "../workspace/**/*",
+                {
+                    exclude = {"../workspace/node_modules/**", "lib/**" },
+                    include_dirs = false
+                }
+            )
         }
         return deps
     end }
