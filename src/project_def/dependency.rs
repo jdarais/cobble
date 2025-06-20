@@ -4,9 +4,11 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::collections::BTreeMap;
+use std::{fmt, sync::Arc};
 
 use crate::lua::s11n::{refify_ser_lua_value, SerLuaValueBlock, SerLuaValueRef};
+use crate::project_def::types::StringOrInt;
 use crate::project_def::validate::{
     key_validation_error, validate_is_string, validate_is_table,
     validate_table_has_only_string_or_sequence_keys, with_prop,
@@ -14,10 +16,10 @@ use crate::project_def::validate::{
 
 #[derive(Clone, Debug, Default)]
 pub struct Dependencies {
-    pub dirs: HashMap<Arc<str>, Arc<str>>,
-    pub files: HashMap<Arc<str>, Arc<str>>,
-    pub tasks: HashMap<Arc<str>, Arc<str>>,
-    pub vars: HashMap<Arc<str>, Arc<str>>,
+    pub dirs: BTreeMap<StringOrInt, Arc<str>>,
+    pub files: BTreeMap<StringOrInt, Arc<str>>,
+    pub tasks: BTreeMap<StringOrInt, Arc<str>>,
+    pub vars: Vec<Arc<str>>,
     pub calc: Vec<Arc<str>>,
 }
 
@@ -96,94 +98,76 @@ impl TryFrom<&SerLuaValueBlock> for Dependencies {
             .ok_or_else(|| format!("Expected a table for dependencies"))?;
 
         for (dep_key, dep_val) in deps_table.entries() {
-            if dep_key == SerLuaValueRef::String("dirs") {
-                let dirs_table = dep_val
-                    .as_table()
-                    .ok_or_else(|| format!("dirs property must be a table"))?;
+            match dep_key {
+                SerLuaValueRef::String("dirs") => {
+                    let dirs_table = dep_val
+                        .as_table()
+                        .ok_or_else(|| format!("dirs property must be a table"))?;
 
-                for (k, v) in dirs_table.entries() {
-                    let v_str = v
-                        .as_string()
-                        .map(|s| Arc::<str>::from(s))
-                        .ok_or_else(|| format!("dir dependency must be a string"))?;
-                    let k_str = match k {
-                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                        SerLuaValueRef::Integer(_) => v_str.clone(),
-                        _ => {
-                            return Err(format!("dir dependency key must be a string or integer"));
-                        }
-                    };
-                    deps.dirs.insert(k_str, v_str);
+                    for (k, v) in dirs_table.entries() {
+                        let v_str = v
+                            .as_string()
+                            .map(|s| Arc::<str>::from(s))
+                            .ok_or_else(|| format!("dir dependency must be a string"))?;
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.dirs.insert(k_val, v_str);
+                    }
                 }
-            } else if dep_key == SerLuaValueRef::String("files") {
-                let files_table = dep_val
-                    .as_table()
-                    .ok_or_else(|| format!("files property must be a table"))?;
+                SerLuaValueRef::String("files") => {
+                    let files_table = dep_val
+                        .as_table()
+                        .ok_or_else(|| format!("files property must be a table"))?;
 
-                for (k, v) in files_table.entries() {
-                    let v_str = v
-                        .as_string()
-                        .map(|s| Arc::<str>::from(s))
-                        .ok_or_else(|| format!("file dependency must be a string"))?;
-                    let k_str = match k {
-                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                        SerLuaValueRef::Integer(_) => v_str.clone(),
-                        _ => {
-                            return Err(format!("file dependency key must be a string or integer"));
-                        }
-                    };
-                    deps.files.insert(k_str, v_str);
+                    for (k, v) in files_table.entries() {
+                        let v_str = v
+                            .as_string()
+                            .map(|s| Arc::<str>::from(s))
+                            .ok_or_else(|| format!("file dependency must be a string"))?;
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.files.insert(k_val, v_str);
+                    }
                 }
-            } else if dep_key == SerLuaValueRef::String("tasks") {
-                let tasks_table = dep_val
-                    .as_table()
-                    .ok_or_else(|| format!("tasks property must be a table"))?;
+                SerLuaValueRef::String("tasks") => {
+                    let tasks_table = dep_val
+                        .as_table()
+                        .ok_or_else(|| format!("tasks property must be a table"))?;
 
-                for (k, v) in tasks_table.entries() {
-                    let v_str = v
-                        .as_string()
-                        .map(|s| Arc::<str>::from(s))
-                        .ok_or_else(|| format!("task dependency must be a string"))?;
-                    let k_str = match k {
-                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                        SerLuaValueRef::Integer(_) => v_str.clone(),
-                        _ => {
-                            return Err(format!("task dependency key must be a string or integer"));
-                        }
-                    };
-                    deps.tasks.insert(k_str, v_str);
+                    for (k, v) in tasks_table.entries() {
+                        let v_str = v
+                            .as_string()
+                            .map(|s| Arc::<str>::from(s))
+                            .ok_or_else(|| format!("task dependency must be a string"))?;
+                        let k_val = StringOrInt::try_from(&k)?;
+                        deps.tasks.insert(k_val, v_str);
+                    }
                 }
-            } else if dep_key == SerLuaValueRef::String("vars") {
-                let vars_table = dep_val
-                    .as_table()
-                    .ok_or_else(|| format!("vars property must be a table"))?;
+                SerLuaValueRef::String("vars") => {
+                    let vars_table = dep_val
+                        .as_table()
+                        .ok_or_else(|| format!("vars property must be a table"))?;
 
-                for (k, v) in vars_table.entries() {
-                    let v_str = v
-                        .as_string()
-                        .map(|s| Arc::<str>::from(s))
-                        .ok_or_else(|| format!("var dependency must be a string"))?;
-                    let k_str = match k {
-                        SerLuaValueRef::String(s) => Arc::<str>::from(s),
-                        SerLuaValueRef::Integer(_) => v_str.clone(),
-                        _ => {
-                            return Err(format!("var dependency key must be a string or integer"));
-                        }
-                    };
-                    deps.vars.insert(k_str, v_str);
+                    for (_k, v) in vars_table.entries() {
+                        let v_str = v
+                            .as_string()
+                            .map(|s| Arc::<str>::from(s))
+                            .ok_or_else(|| format!("var dependency must be a string"))?;
+                        deps.vars.push(v_str);
+                    }
                 }
-            } else if dep_key == SerLuaValueRef::String("calc") {
-                let calc_table = dep_val
-                    .as_table()
-                    .ok_or_else(|| format!("calc property must be a table"))?;
+                SerLuaValueRef::String("calc") => {
+                    let calc_table = dep_val
+                        .as_table()
+                        .ok_or_else(|| format!("calc property must be a table"))?;
 
-                for (_k, v) in calc_table.entries() {
-                    let v_str = v
-                        .as_string()
-                        .map(|s| Arc::<str>::from(s))
-                        .ok_or_else(|| format!("calc dependency must be a string"))?;
-                    deps.calc.push(v_str);
+                    for (_k, v) in calc_table.entries() {
+                        let v_str = v
+                            .as_string()
+                            .map(|s| Arc::<str>::from(s))
+                            .ok_or_else(|| format!("calc dependency must be a string"))?;
+                        deps.calc.push(v_str);
+                    }
                 }
+                _ => { return Err(format!("Unknown dependency type: {dep_key}")); }
             }
         }
 

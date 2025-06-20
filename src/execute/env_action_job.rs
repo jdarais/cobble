@@ -4,7 +4,6 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::{
-    collections::HashMap,
     sync::{mpsc::Sender, Arc, Condvar, Mutex},
 };
 
@@ -21,6 +20,7 @@ use crate::{
 fn execute_env_action(
     lua: &mlua::Lua,
     job: &EnvActionJob,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     cache: &Arc<TaskExecutorCache>,
     stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     sender: &Sender<TaskJobMessage>,
@@ -42,8 +42,9 @@ fn execute_env_action(
         &job.env.action,
         &job.env,
         &job.job_id,
-        HashMap::new(),
-        HashMap::new(),
+        job.env.var_deps.clone(),
+        all_vars,
+        
         project_dir.to_owned(),
         args_val,
         &job.workspace,
@@ -71,6 +72,7 @@ fn execute_env_action(
 pub fn execute_env_action_job(
     lua: &mlua::Lua,
     job: &EnvActionJob,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     stdin_ready: &Arc<(Mutex<bool>, Condvar)>,
     task_result_sender: &Sender<TaskJobMessage>,
     cache: &Arc<TaskExecutorCache>,
@@ -78,6 +80,7 @@ pub fn execute_env_action_job(
     let result = execute_env_action(
         lua,
         job,
+        all_vars,
         cache,
         stdin_ready,
         &task_result_sender,

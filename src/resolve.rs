@@ -314,8 +314,8 @@ pub fn resolve_names_in_artifacts(
     artifacts: &mut Artifacts,
 ) -> Result<(), NameResolutionError> {
     // artifact.filename = resolve_path(project_path, artifact.filename.as_ref())?;
-    for f in artifacts.files.iter_mut() {
-        *f = resolve_path(ws_dir, project_path, f.as_ref())?;
+    for (_f_alias, f_path) in artifacts.files.iter_mut() {
+        *f_path = resolve_path(ws_dir, project_path, f_path.as_ref())?;
     }
 
     for c in artifacts.calc.iter_mut() {

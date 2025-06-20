@@ -117,14 +117,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     use crate::workspace::Task;
 
     use super::*;
 
     fn create_minimal_workspace() -> Workspace {
-        let mut tasks: HashMap<Arc<str>, Arc<Task>> = HashMap::new();
+        let mut tasks: BTreeMap<Arc<str>, Arc<Task>> = BTreeMap::new();
         tasks.insert(
             String::from("/project1/task1").into(),
             Arc::new(Default::default()),
@@ -140,9 +140,9 @@ mod tests {
 
         Workspace {
             tasks: tasks,
-            build_envs: HashMap::new(),
-            tools: HashMap::new(),
-            file_providers: HashMap::new(),
+            build_envs: BTreeMap::new(),
+            tools: BTreeMap::new(),
+            file_providers: BTreeMap::new(),
         }
     }
 

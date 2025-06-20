@@ -5,12 +5,13 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use crate::config::TaskOutputCondition;
 use crate::dependency::compute_file_providers;
 use crate::lua::s11n::{SerLuaValue, SerLuaValueBlock};
 use crate::project_def::build_env::EnvSetupTask;
+use crate::project_def::types::{extend_string_or_int_table, StringOrInt};
 use crate::project_def::{
     Action, Artifacts, BuildEnvDef, Dependencies, ExternalTool, Project, TaskDef,
 };
@@ -35,12 +36,12 @@ pub struct Task {
     pub project_name: Arc<str>,
     pub project_path: Arc<Path>,
     pub dir: Arc<Path>,
-    pub build_envs: HashMap<Arc<str>, Arc<str>>,
-    pub tools: HashMap<Arc<str>, Arc<str>>,
-    pub dir_deps: HashMap<Arc<str>, Arc<str>>,
-    pub file_deps: HashMap<Arc<str>, FileDependency>,
-    pub task_deps: HashMap<Arc<str>, Arc<str>>,
-    pub var_deps: HashMap<Arc<str>, Arc<str>>,
+    pub build_envs: BTreeMap<Arc<str>, Arc<str>>,
+    pub tools: BTreeMap<Arc<str>, Arc<str>>,
+    pub dir_deps: BTreeMap<StringOrInt, Arc<str>>,
+    pub file_deps: BTreeMap<StringOrInt, FileDependency>,
+    pub task_deps: BTreeMap<StringOrInt, Arc<str>>,
+    pub var_deps: Vec<Arc<str>>,
     pub calc_deps: Vec<Arc<str>>,
     pub actions: Vec<Action>,
     pub clean_actions: Vec<Action>,
@@ -60,12 +61,12 @@ impl Default for Task {
             project_name: String::new().into(),
             project_path: PathBuf::from(".").into(),
             dir: PathBuf::from(".").into(),
-            build_envs: HashMap::new(),
-            tools: HashMap::new(),
-            dir_deps: HashMap::new(),
-            file_deps: HashMap::new(),
-            task_deps: HashMap::new(),
-            var_deps: HashMap::new(),
+            build_envs: BTreeMap::new(),
+            tools: BTreeMap::new(),
+            dir_deps: BTreeMap::new(),
+            file_deps: BTreeMap::new(),
+            task_deps: BTreeMap::new(),
+            var_deps: Vec::new(),
             calc_deps: Vec::new(),
             actions: Vec::new(),
             clean_actions: Vec::new(),
@@ -87,42 +88,48 @@ pub struct BuildEnv {
     pub dir: PathBuf,
     pub setup_task: Option<Arc<str>>,
     pub action: Action,
+    pub var_deps: Vec<Arc<str>>,
     pub ser_env: Arc<SerLuaValueBlock>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Workspace {
-    pub tasks: HashMap<Arc<str>, Arc<Task>>,
-    pub build_envs: HashMap<Arc<str>, Arc<BuildEnv>>,
-    pub tools: HashMap<Arc<str>, Arc<ExternalTool>>,
-    pub file_providers: HashMap<Arc<str>, Arc<str>>,
+    pub tasks: BTreeMap<Arc<str>, Arc<Task>>,
+    pub build_envs: BTreeMap<Arc<str>, Arc<BuildEnv>>,
+    pub tools: BTreeMap<Arc<str>, Arc<ExternalTool>>,
+    pub file_providers: BTreeMap<Arc<str>, Arc<str>>,
 }
 
 pub fn add_dependency_list_to_task(
     deps: &Dependencies,
-    file_providers: &HashMap<Arc<str>, Arc<str>>,
+    file_providers: &BTreeMap<Arc<str>, Arc<str>>,
     task: &mut Task,
 ) {
-    for (d_alias, d_path) in deps.dirs.iter() {
-        task.dir_deps.insert(d_alias.clone(), d_path.clone());
-    }
+    extend_string_or_int_table(
+        &mut task.dir_deps,
+        deps.dirs.iter().map(|(k, v)| (k.clone(), v.clone())),
+    );
 
-    for (f_alias, f_path) in deps.files.iter() {
-        task.file_deps.insert(
-            f_alias.clone(),
-            FileDependency {
-                path: f_path.clone(),
-                provided_by_task: file_providers.get(f_path).cloned(),
-            },
-        );
-    }
+    extend_string_or_int_table(
+        &mut task.file_deps,
+        deps.files.iter().map(|(k, v)| {
+            (
+                k.clone(),
+                FileDependency {
+                    path: v.clone(),
+                    provided_by_task: file_providers.get(v).cloned(),
+                },
+            )
+        }),
+    );
 
-    for (t_alias, t_path) in deps.tasks.iter() {
-        task.task_deps.insert(t_alias.clone(), t_path.clone());
-    }
+    extend_string_or_int_table(
+        &mut task.task_deps,
+        deps.tasks.iter().map(|(k, v)| (k.clone(), v.clone())),
+    );
 
-    for (v_alias, v_path) in deps.vars.iter() {
-        task.var_deps.insert(v_alias.clone(), v_path.clone());
+    for v in deps.vars.iter() {
+        task.var_deps.push(v.clone());
     }
 
     for c_dep in deps.calc.iter() {
@@ -171,6 +178,7 @@ fn add_build_env_to_workspace(
             dir: PathBuf::from(dir.as_ref()),
             setup_task: setup_task_name,
             action: build_env.action.clone(),
+            var_deps: build_env.var_deps.clone(),
             ser_env: Arc::new(build_env.ser_env.clone()),
         }),
     );
@@ -217,11 +225,7 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
             task_type: TaskType::Project,
             dir: project.path.clone(),
             project_name: project.name.clone(),
-            task_deps: project
-                .child_project_names
-                .iter()
-                .map(|t| (t.clone(), t.clone()))
-                .collect(),
+            task_deps: BTreeMap::new(),
             ..Default::default()
         };
         let mut default_tasks: Vec<&TaskDef> = project
@@ -234,10 +238,10 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
             default_tasks = project.tasks.iter().collect();
         }
 
-        for task in default_tasks.into_iter() {
+        for (i, task) in default_tasks.into_iter().enumerate() {
             project_task
                 .task_deps
-                .insert(task.name.clone(), task.name.clone());
+                .insert(StringOrInt::Int(i as i64), task.name.clone());
         }
 
         workspace
@@ -268,9 +272,9 @@ where
     let file_providers = compute_file_providers(all_projects_vec.iter().copied());
 
     let mut workspace = Workspace {
-        tasks: HashMap::new(),
-        build_envs: HashMap::new(),
-        tools: HashMap::new(),
+        tasks: BTreeMap::new(),
+        build_envs: BTreeMap::new(),
+        tools: BTreeMap::new(),
         file_providers,
     };
 

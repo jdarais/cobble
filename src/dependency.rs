@@ -4,7 +4,7 @@
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::path::Path;
@@ -58,16 +58,16 @@ impl fmt::Display for ExecutionGraphError {
     }
 }
 
-pub fn compute_file_providers<'a, P>(projects: P) -> HashMap<Arc<str>, Arc<str>>
+pub fn compute_file_providers<'a, P>(projects: P) -> BTreeMap<Arc<str>, Arc<str>>
 where
     P: Iterator<Item = &'a Project>,
 {
-    let mut file_providers: HashMap<Arc<str>, Arc<str>> = HashMap::new();
+    let mut file_providers: BTreeMap<Arc<str>, Arc<str>> = BTreeMap::new();
 
     for project in projects {
         for task in project.tasks.iter() {
-            for artifact in task.artifacts.files.iter() {
-                file_providers.insert(artifact.clone(), task.name.clone());
+            for (_file_alias, file_path) in task.artifacts.files.iter() {
+                file_providers.insert(file_path.clone(), task.name.clone());
             }
         }
     }

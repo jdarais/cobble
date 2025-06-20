@@ -3,15 +3,15 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::db::{TaskInput, TaskOutput};
 use crate::execute::execute::{TaskExecutionError, TaskExecutorCache, TaskJobMessage};
-use crate::project_def::types::TaskVar;
+use crate::project_def::types::{json_to_lua, StringOrInt};
 use crate::project_def::Action;
-use crate::vars::get_var;
+use crate::vars::extract_vars;
 use crate::workspace::{BuildEnv, Task, Workspace};
 
 #[derive(Clone)]
@@ -23,12 +23,12 @@ pub struct ActionContextFile {
 pub struct ActionContextArgs<'lua> {
     pub task_name: Arc<str>,
     pub action: Action,
-    pub extra_tools: HashMap<Arc<str>, Arc<str>>,
-    pub extra_envs: HashMap<Arc<str>, Arc<str>>,
-    pub files: HashMap<Arc<str>, ActionContextFile>,
-    pub action_vars: HashMap<Arc<str>, Arc<str>>,
-    pub task_input_vars: HashMap<String, TaskVar>,
-    pub task_outputs: HashMap<String, TaskOutput>,
+    pub extra_tools: BTreeMap<Arc<str>, Arc<str>>,
+    pub extra_envs: BTreeMap<Arc<str>, Arc<str>>,
+    pub files: BTreeMap<StringOrInt, ActionContextFile>,
+    pub var_deps: Vec<Arc<str>>,
+    pub all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
+    pub task_outputs: BTreeMap<StringOrInt, TaskOutput>,
     pub project_dir: String,
     pub args: mlua::Value<'lua>,
     pub workspace: Arc<Workspace>,
@@ -82,9 +82,7 @@ fn invoke_tool_by_name<'lua>(
     lua: &'lua mlua::Lua,
     tool_name: &Arc<str>,
     task_name: &Arc<str>,
-    files: HashMap<Arc<str>, ActionContextFile>,
-    task_input_vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, TaskOutput>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -103,10 +101,8 @@ fn invoke_tool_by_name<'lua>(
         lua,
         tool_action,
         task_name,
-        files,
         tool.var_deps.clone(),
-        task_input_vars,
-        task_outputs,
+        all_vars,
         project_dir,
         args,
         workspace,
@@ -126,8 +122,7 @@ fn invoke_env_by_name<'lua>(
     lua: &'lua mlua::Lua,
     env_name: &Arc<str>,
     task_name: &Arc<str>,
-    files: HashMap<Arc<str>, ActionContextFile>,
-    vars: HashMap<String, TaskVar>,
+    vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -147,7 +142,7 @@ fn invoke_env_by_name<'lua>(
         env_action,
         env,
         task_name,
-        files,
+        env.var_deps.clone(),
         vars,
         project_dir,
         args,
@@ -168,10 +163,8 @@ pub fn create_tool_action_context<'lua>(
     lua: &'lua mlua::Lua,
     action: &Action,
     task_name: &Arc<str>,
-    files: HashMap<Arc<str>, ActionContextFile>,
-    action_vars: HashMap<Arc<str>, Arc<str>>,
-    task_input_vars: HashMap<String, TaskVar>,
-    task_outputs: HashMap<String, TaskOutput>,
+    var_deps: Vec<Arc<str>>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -183,12 +176,12 @@ pub fn create_tool_action_context<'lua>(
         ActionContextArgs {
             task_name: task_name.clone(),
             action: action.clone(),
-            extra_tools: HashMap::new(),
-            extra_envs: HashMap::new(),
-            files: files,
-            action_vars,
-            task_input_vars,
-            task_outputs: task_outputs,
+            extra_tools: Default::default(),
+            extra_envs: Default::default(),
+            files: Default::default(),
+            var_deps,
+            all_vars,
+            task_outputs: Default::default(),
             project_dir,
             args,
             workspace: workspace.clone(),
@@ -203,8 +196,8 @@ pub fn create_env_action_context<'lua>(
     action: &Action,
     env: &Arc<BuildEnv>,
     task_name: &Arc<str>,
-    files: HashMap<Arc<str>, ActionContextFile>,
-    task_input_vars: HashMap<String, TaskVar>,
+    var_deps: Vec<Arc<str>>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
     args: mlua::Value<'lua>,
     workspace: &Arc<Workspace>,
@@ -227,10 +220,10 @@ pub fn create_env_action_context<'lua>(
         None => None,
     };
 
-    let mut task_outputs: HashMap<String, TaskOutput> = HashMap::new();
+    let mut task_outputs: BTreeMap<StringOrInt, TaskOutput> = BTreeMap::new();
 
     if let Some(env_setup_task_output) = env_setup_task_output_opt {
-        task_outputs.insert(String::from("setup_task"), env_setup_task_output);
+        task_outputs.insert(StringOrInt::String(Arc::from("setup_task")), env_setup_task_output);
     }
 
     create_action_context(
@@ -238,11 +231,11 @@ pub fn create_env_action_context<'lua>(
         ActionContextArgs {
             task_name: task_name.clone(),
             action: action.clone(),
-            extra_tools: HashMap::new(),
-            extra_envs: HashMap::new(),
-            files: files,
-            action_vars: HashMap::new(),
-            task_input_vars,
+            extra_tools: Default::default(),
+            extra_envs: Default::default(),
+            files: Default::default(),
+            var_deps,
+            all_vars,
             task_outputs,
             project_dir,
             args,
@@ -259,15 +252,16 @@ pub fn create_task_action_context<'lua>(
     task: &Arc<Task>,
     task_input: &TaskInput,
     args: mlua::Value<'lua>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
 ) -> mlua::Result<mlua::Table<'lua>> {
-    let mut files: HashMap<Arc<str>, ActionContextFile> = HashMap::new();
+    let mut files: BTreeMap<StringOrInt, ActionContextFile> = BTreeMap::new();
     for (file_alias, file_dep) in &task.file_deps {
         let hash = task_input
             .file_hashes
-            .get(file_alias.as_ref())
+            .get(file_dep.path.as_ref())
             .ok_or_else(|| {
                 mlua::Error::runtime(format!(
                     "Expected file hash to be available for {}: {}, but it is missing",
@@ -291,7 +285,7 @@ pub fn create_task_action_context<'lua>(
         ))
     })?;
 
-    let mut task_outputs: HashMap<String, TaskOutput> = HashMap::new();
+    let mut task_outputs: BTreeMap<StringOrInt, TaskOutput> = BTreeMap::new();
 
     {
         let cached_outputs_read = cache.task_outputs.read().unwrap();
@@ -303,7 +297,7 @@ pub fn create_task_action_context<'lua>(
                 ))
             })?;
 
-            task_outputs.insert(String::from(task_alias.as_ref()), task_dep_output.clone());
+            task_outputs.insert(task_alias.clone(), task_dep_output.clone());
         }
     }
 
@@ -315,8 +309,8 @@ pub fn create_task_action_context<'lua>(
             extra_tools: task.tools.clone(),
             extra_envs: task.build_envs.clone(),
             files,
-            action_vars: task.var_deps.clone(),
-            task_input_vars: task_input.vars.clone(),
+            var_deps: task.var_deps.clone(),
+            all_vars,
             task_outputs,
             project_dir,
             args,
@@ -337,8 +331,8 @@ pub fn create_action_context<'lua>(
         extra_tools,
         extra_envs,
         files,
-        action_vars,
-        task_input_vars,
+        var_deps,
+        all_vars,
         task_outputs,
         project_dir,
         args,
@@ -401,9 +395,7 @@ pub fn create_action_context<'lua>(
     for (tool_alias, tool_name) in extra_tools.iter().chain(action.tools.iter()) {
         let tool_name_clone = tool_name.clone();
         let task_name_clone = task_name.clone();
-        let files_clone = files.clone();
-        let task_input_vars_clone = task_input_vars.clone();
-        let task_outputs_clone = task_outputs.clone();
+        let all_vars_clone = all_vars.clone();
         let project_dir_clone = project_dir.clone();
         let workspace_clone = workspace.clone();
         let cache_clone = cache.clone();
@@ -413,9 +405,7 @@ pub fn create_action_context<'lua>(
                 fn_lua,
                 &tool_name_clone,
                 &task_name_clone,
-                files_clone.clone(),
-                task_input_vars_clone.clone(),
-                task_outputs_clone.clone(),
+                all_vars_clone.clone(),
                 project_dir_clone.clone(),
                 args,
                 &workspace_clone,
@@ -431,8 +421,7 @@ pub fn create_action_context<'lua>(
     for (env_alias, env_name) in extra_envs.iter().chain(action.build_envs.iter()) {
         let env_name_clone = env_name.clone();
         let task_name_clone = task_name.clone();
-        let files_clone = files.clone();
-        let task_input_vars_clone = task_input_vars.clone();
+        let all_vars_clone = all_vars.clone();
         let project_dir_clone = project_dir.clone();
         let workspace_clone = workspace.clone();
         let cache_clone = cache.clone();
@@ -443,8 +432,7 @@ pub fn create_action_context<'lua>(
                 fn_lua,
                 &env_name_clone,
                 &task_name_clone,
-                files_clone.clone(),
-                task_input_vars_clone.clone(),
+                all_vars_clone.clone(),
                 project_dir_clone.clone(),
                 args,
                 &workspace_clone,
@@ -485,24 +473,21 @@ pub fn create_action_context<'lua>(
             let ActionContextFile { path, hash } = v;
             file_tbl.set("path", path)?;
             file_tbl.set("hash", hash)?;
-            tbl.set(k.to_string(), file_tbl)?;
+            tbl.set(k, file_tbl)?;
         }
         Ok(tbl)
     })?;
     action_context.set("files", files_lua)?;
 
-    let mut vars: HashMap<String, TaskVar> = HashMap::new();
-    for (var_alias, var_name) in action_vars.iter() {
-        let var_value = get_var(var_name.as_ref(), &task_input_vars).map_err(|e| {
-            mlua::Error::runtime(format!(
-                "Var lookup of {} (alias={}) for task {} failed: {}",
-                var_name, var_alias, &task_name, e
-            ))
-        })?;
+    let mut vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    extract_vars(var_deps.iter(), all_vars.as_ref(), &mut vars).map_err(|e| {
+        mlua::Error::runtime(format!("Var lookup for task {} failed: {}", &task_name, e))
+    })?;
 
-        vars.insert(String::from(var_alias.as_ref()), var_value.clone());
-    }
-    action_context.set("vars", vars)?;
+    action_context.set(
+        "vars",
+        json_to_lua(lua, serde_json::Value::Object(vars))?,
+    )?;
 
     let project_table = lua.create_table()?;
     project_table.set("dir", project_dir)?;

@@ -3,14 +3,13 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{collections::HashMap, error::Error, fmt, io, path::Path};
+use std::{collections::BTreeMap, error::Error, fmt, io, path::Path};
 
 use lmdb::{Transaction, WriteFlags};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     lua::s11n::{SerLuaValue, SerLuaValueBlock},
-    project_def::types::TaskVar,
 };
 
 const TASK_KEY_PREFIX: &str = "task:";
@@ -18,25 +17,25 @@ const TASK_KEY_PREFIX: &str = "task:";
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct TaskInput {
     #[serde(default)]
-    pub dir_mtimes: HashMap<String, u128>,
+    pub dir_mtimes: BTreeMap<String, u128>,
 
     #[serde(default)]
-    pub file_hashes: HashMap<String, String>,
+    pub file_hashes: BTreeMap<String, String>,
 
     #[serde(default)]
-    pub task_outputs: HashMap<String, SerLuaValueBlock>,
+    pub task_outputs: BTreeMap<String, SerLuaValueBlock>,
 
     #[serde(default)]
-    pub vars: HashMap<String, TaskVar>,
+    pub vars: serde_json::Map<String, serde_json::Value>,
 
     #[serde(default)]
     pub task_hash: String,
 
     #[serde(default)]
-    pub env_hashes: HashMap<String, String>,
+    pub env_hashes: BTreeMap<String, String>,
 
     #[serde(default)]
-    pub tool_hashes: HashMap<String, String>,
+    pub tool_hashes: BTreeMap<String, String>,
 }
 
 fn default_ser_lua_value_block() -> SerLuaValueBlock {
@@ -48,7 +47,7 @@ fn default_ser_lua_value_block() -> SerLuaValueBlock {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskOutput {
     #[serde(default)]
-    pub file_hashes: HashMap<String, String>,
+    pub file_hashes: BTreeMap<String, String>,
 
     #[serde(default = "default_ser_lua_value_block")]
     pub task_output: SerLuaValueBlock,

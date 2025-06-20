@@ -3,13 +3,16 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{borrow::Cow, collections::HashMap, error::Error, fmt, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, error::Error, fmt, path::Path, sync::Arc};
 
 use crate::{
     dependency::{resolve_calculated_dependencies_in_subtrees, ExecutionGraphError},
     execute::execute::{TaskExecutionError, TaskExecutor},
     lua::s11n::SerLuaValueBlock,
-    project_def::Artifacts,
+    project_def::{
+        types::{extend_string_or_int_table, StringOrInt},
+        Artifacts,
+    },
     resolve::{resolve_names_in_artifacts, NameResolutionError},
     util::process_io::ProcessIO,
     workspace::{Task, Workspace},
@@ -45,8 +48,14 @@ impl fmt::Display for CalcArtifactsError {
 impl Error for CalcArtifactsError {}
 
 fn combine_artifacts(lhs: &Artifacts, rhs: &Artifacts) -> Artifacts {
+    let mut files: BTreeMap<StringOrInt, Arc<str>> = lhs.files.clone();
+    extend_string_or_int_table(
+        &mut files,
+        rhs.files.iter().map(|(k, v)| (k.clone(), v.clone())),
+    );
+
     Artifacts {
-        files: lhs.files.iter().chain(rhs.files.iter()).cloned().collect(),
+        files,
         calc: lhs.calc.iter().chain(rhs.calc.iter()).cloned().collect(),
     }
 }
@@ -81,19 +90,17 @@ pub fn calculate_artifacts<IO: ProcessIO>(
         .map_err(|e| CalcArtifactsError::ExecutionError(e))?;
 
     // Swap the calc artifacts for the task outputs of that task
-    let mut new_tasks: HashMap<Arc<str>, Arc<Task>> = HashMap::new();
+    let mut updated_tasks: BTreeMap<Arc<str>, Arc<Task>> = BTreeMap::new();
     let executor_cache = executor.cache();
     for (_, task) in workspace.tasks.iter() {
         let mut artifacts: Cow<Artifacts> = Cow::Borrowed(&task.artifacts);
         for calc_artifact in task.artifacts.calc.iter() {
             let task_outputs = executor_cache.task_outputs.read().unwrap();
-            let task_output_record =
-                Artifacts::try_from(&task_outputs[calc_artifact].task_output).map_err(|e| {
-                    CalcArtifactsError::OutputError {
-                        task_name: task.name.clone(),
-                        task_output: task_outputs[calc_artifact].task_output.clone(),
-                        error: e,
-                    }
+            let task_output_record = Artifacts::try_from(&task_outputs[calc_artifact].task_output)
+                .map_err(|e| CalcArtifactsError::OutputError {
+                    task_name: task.name.clone(),
+                    task_output: task_outputs[calc_artifact].task_output.clone(),
+                    error: e,
                 })?;
             let mut task_output_artifacts: Artifacts = task_output_record.into();
             resolve_names_in_artifacts(
@@ -113,12 +120,12 @@ pub fn calculate_artifacts<IO: ProcessIO>(
             ));
         }
 
-        let mut new_task = Task::clone(task);
-        new_task.artifacts = artifacts.as_ref().clone();
-        new_tasks.insert(task.name.clone(), Arc::new(new_task));
+        let mut updated_task = Task::clone(task);
+        updated_task.artifacts = artifacts.as_ref().clone();
+        updated_tasks.insert(task.name.clone(), Arc::new(updated_task));
     }
 
-    for (task_name, task) in new_tasks {
+    for (task_name, task) in updated_tasks {
         workspace.tasks.insert(task_name.clone(), task.clone());
     }
 

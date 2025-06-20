@@ -3,6 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -22,8 +23,7 @@ use crate::lua::s11n::to_ser_lua_value;
 use crate::project_def::ExternalTool;
 use crate::util::hash::compute_file_hash;
 use crate::util::hash::compute_hash_string;
-use crate::vars::get_var;
-use crate::vars::set_var;
+use crate::vars::extract_vars;
 use crate::workspace::BuildEnv;
 use crate::workspace::{Task, Workspace};
 
@@ -32,6 +32,7 @@ fn execute_task_actions<'lua>(
     task: &TaskJob,
     task_inputs: &TaskInput,
     workspace: &Arc<Workspace>,
+    all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
 ) -> Result<mlua::Value<'lua>, TaskExecutionError> {
@@ -43,6 +44,7 @@ fn execute_task_actions<'lua>(
             &task.task,
             task_inputs,
             args,
+            all_vars.clone(),
             workspace,
             cache,
             sender,
@@ -80,8 +82,8 @@ where
 fn get_current_task_input(
     workspace_config: &WorkspaceConfig,
     task: &Arc<Task>,
-    tools: &HashMap<Arc<str>, Arc<ExternalTool>>,
-    envs: &HashMap<Arc<str>, Arc<BuildEnv>>,
+    tools: &BTreeMap<Arc<str>, Arc<ExternalTool>>,
+    envs: &BTreeMap<Arc<str>, Arc<BuildEnv>>,
     db_env: &lmdb::Environment,
     db: &lmdb::Database,
     cache: &Arc<TaskExecutorCache>,
@@ -95,16 +97,16 @@ fn get_current_task_input(
         })?;
 
     let mut current_task_input = TaskInput {
-        dir_mtimes: HashMap::new(),
-        file_hashes: HashMap::new(),
-        task_outputs: HashMap::new(),
-        vars: HashMap::new(),
+        dir_mtimes: Default::default(),
+        file_hashes: Default::default(),
+        task_outputs: Default::default(),
+        vars: serde_json::Map::new(),
         task_hash,
-        env_hashes: HashMap::new(),
-        tool_hashes: HashMap::new(),
+        env_hashes: Default::default(),
+        tool_hashes: Default::default(),
     };
 
-    for (dir_alias, dir_path) in task.dir_deps.iter() {
+    for (_dir_alias, dir_path) in task.dir_deps.iter() {
         let cached_mtime = cache.dir_mtimes.read().unwrap().get(dir_path).cloned();
         let current_mtime = match cached_mtime {
             Some(mtime) => mtime,
@@ -134,10 +136,10 @@ fn get_current_task_input(
 
         current_task_input
             .dir_mtimes
-            .insert(String::from(dir_alias.as_ref()), current_mtime);
+            .insert(String::from(dir_path.as_ref()), current_mtime);
     }
 
-    for (file_alias, file_dep) in task.file_deps.iter() {
+    for (_file_alias, file_dep) in task.file_deps.iter() {
         let cached_hash = cache
             .file_hashes
             .read()
@@ -170,10 +172,10 @@ fn get_current_task_input(
         };
         current_task_input
             .file_hashes
-            .insert(String::from(file_alias.as_ref()), current_hash);
+            .insert(String::from(file_dep.path.as_ref()), current_hash);
     }
 
-    for (task_alias, task_dep) in task.task_deps.iter() {
+    for (_task_alias, task_dep) in task.task_deps.iter() {
         let cached_task_output = cache.task_outputs.read().unwrap().get(task_dep).cloned();
         let current_task_output = match cached_task_output {
             Some(output) => output,
@@ -188,19 +190,28 @@ fn get_current_task_input(
                 task_record.output
             }
         };
-        current_task_input
-            .task_outputs
-            .insert(String::from(task_alias.as_ref()), current_task_output.task_output);
+        current_task_input.task_outputs.insert(
+            String::from(task_dep.as_ref()),
+            current_task_output.task_output,
+        );
     }
 
+    extract_vars(
+        task.var_deps.iter(),
+        &workspace_config.vars,
+        &mut current_task_input.vars,
+    )
+    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+
     for (env_alias, env_dep) in task.build_envs.iter() {
+        let env = envs
+            .get(env_dep)
+            .ok_or_else(|| TaskExecutionError::EnvLookupError(env_dep.clone()))?;
+
         let cached_env_hash = cache.env_hashes.read().unwrap().get(env_dep).cloned();
         let current_env_hash = match cached_env_hash {
             Some(hash) => hash,
             None => {
-                let env = envs
-                    .get(env_dep)
-                    .ok_or_else(|| TaskExecutionError::EnvLookupError(env_dep.clone()))?;
                 let env_json = serde_json::to_string(&*env.ser_env)
                     .map_err(|e| TaskExecutionError::SerializeError(e))?;
                 let env_hash = compute_hash_string(env_json.as_bytes()).map_err(|e| {
@@ -237,20 +248,17 @@ fn get_current_task_input(
                 task_record.output
             }
         };
-        current_task_input
-            .task_outputs
-            .insert(String::from(env_alias.as_ref()), current_env_output.task_output);
-    }
+        current_task_input.task_outputs.insert(
+            String::from(env_alias.as_ref()),
+            current_env_output.task_output,
+        );
 
-    // NOTE: Vars are stored by NAME, not by ALIAS
-    // TODO: Store all task inputs by name, not alias, and do the lookup from alias to name while building the action context
-
-    for (_var_alias, var_name) in task.var_deps.iter() {
-        let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
-            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-
-        set_var(var_name, var_value.clone(), &mut current_task_input.vars)
-            .map_err(|e| TaskExecutionError::VarLookupError(e))?;
+        extract_vars(
+            env.var_deps.iter(),
+            &workspace_config.vars,
+            &mut current_task_input.vars,
+        )
+        .map_err(|e| TaskExecutionError::VarLookupError(e))?;
     }
 
     for (_tool_alias, tool_name) in task.tools.iter() {
@@ -285,15 +293,13 @@ fn get_current_task_input(
         let tool = tools
             .get(tool_name)
             .ok_or_else(|| TaskExecutionError::ToolLookupError(tool_name.clone()))?;
-        for (_var_alias, var_name) in tool.var_deps.iter() {
-            if !current_task_input.vars.contains_key(var_name.as_ref()) {
-                let var_value = get_var(var_name.as_ref(), &workspace_config.vars)
-                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
 
-                set_var(var_name, var_value.clone(), &mut current_task_input.vars)
-                    .map_err(|e| TaskExecutionError::VarLookupError(e))?;
-            }
-        }
+        extract_vars(
+            tool.var_deps.iter(),
+            &workspace_config.vars,
+            &mut current_task_input.vars,
+        )
+        .map_err(|e| TaskExecutionError::VarLookupError(e))?;
     }
 
     Ok(current_task_input)
@@ -404,12 +410,12 @@ fn get_up_to_date_task_record(
     // Check output files
     let mut current_output_file_hashes: HashMap<Arc<str>, String> =
         HashMap::with_capacity(task.task.artifacts.files.len());
-    for artifact in task.task.artifacts.files.iter() {
+    for (_f_alias, f_path) in task.task.artifacts.files.iter() {
         let output_file_hash_res =
-            compute_file_hash(workspace_dir.join(Path::new(artifact.as_ref())).as_path());
+            compute_file_hash(workspace_dir.join(Path::new(f_path.as_ref())).as_path());
         match output_file_hash_res {
             Ok(hash) => {
-                current_output_file_hashes.insert(artifact.clone(), hash);
+                current_output_file_hashes.insert(f_path.clone(), hash);
             }
             Err(_) => {
                 return None;
@@ -476,7 +482,7 @@ fn get_up_to_date_task_record(
 }
 
 fn execute_task_actions_and_store_result(
-    workspace_dir: &Path,
+    config: &WorkspaceConfig,
     lua: &mlua::Lua,
     db_env: &Arc<lmdb::Environment>,
     db: &lmdb::Database,
@@ -501,6 +507,7 @@ fn execute_task_actions_and_store_result(
         task,
         &current_task_input,
         &task.workspace,
+        Arc::new(config.vars.clone()),
         cache,
         &task_result_sender,
     );
@@ -511,18 +518,17 @@ fn execute_task_actions_and_store_result(
     // Jump out of this function on failure, but only after we reset the "interactive enabled" registry value
     let mut result = result_res?;
 
-    let mut artifact_file_hashes: HashMap<String, String> =
-        HashMap::with_capacity(task.task.artifacts.files.len());
-    for artifact in task.task.artifacts.files.iter() {
-        let artifact_path = workspace_dir.join(Path::new(artifact.as_ref()));
+    let mut artifact_file_hashes: BTreeMap<String, String> = BTreeMap::new();
+    for (f_alias, f_path) in task.task.artifacts.files.iter() {
+        let artifact_path = config.workspace_dir.join(Path::new(f_path.as_ref()));
         let output_file_hash_res = compute_file_hash(&artifact_path);
         match output_file_hash_res {
             Ok(hash) => {
-                artifact_file_hashes.insert(String::from(artifact.as_ref()), hash);
+                artifact_file_hashes.insert(String::from(f_path.as_ref()), hash);
             }
             Err(e) => {
                 return Err(TaskExecutionError::IOError {
-                    message: format!("Failed to compute hash of declared artifact '{}'", artifact),
+                    message: format!("Failed to compute hash of declared artifact {} at '{}'", f_alias, f_path),
                     cause: e,
                 });
             }
@@ -637,7 +643,7 @@ pub fn execute_task_job(
     }
 
     let result = execute_task_actions_and_store_result(
-        &workspace_config.workspace_dir,
+        &workspace_config,
         lua,
         db_env,
         db,
@@ -692,7 +698,7 @@ mod tests {
             init: None,
             workspace_dir: PathBuf::from("."),
             root_projects: vec![String::from(".")],
-            vars: HashMap::new(),
+            vars: serde_json::Map::new(),
             force_run_tasks: false,
             num_threads: 1,
             max_db_size: 1024 * 1024,
@@ -749,8 +755,8 @@ mod tests {
                 tools: vec![(tool.name.clone(), tool.name.clone())]
                     .into_iter()
                     .collect(),
-                build_envs: HashMap::new(),
-                kwargs: HashMap::new(),
+                build_envs: BTreeMap::new(),
+                kwargs: BTreeMap::new(),
                 cmd: ActionCmd::Cmd(vec![Arc::<str>::from("Test!")]),
             }],
             ..Default::default()
@@ -760,11 +766,11 @@ mod tests {
             tasks: vec![(test_task_name.clone(), task.clone())]
                 .into_iter()
                 .collect(),
-            build_envs: HashMap::new(),
+            build_envs: BTreeMap::new(),
             tools: vec![(tool.name.clone(), tool.clone())]
                 .into_iter()
                 .collect(),
-            file_providers: HashMap::new(),
+            file_providers: BTreeMap::new(),
         });
 
         let task_job = TaskJob {

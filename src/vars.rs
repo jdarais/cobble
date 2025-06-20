@@ -3,9 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::{collections::HashMap, error::Error, fmt};
-
-use crate::project_def::types::TaskVar;
+use std::{error::Error, fmt};
 
 #[derive(Debug)]
 pub enum VarLookupError {
@@ -32,16 +30,16 @@ impl fmt::Display for VarLookupError {
 
 pub fn get_var<'a>(
     var_name: &str,
-    vars: &'a HashMap<String, TaskVar>,
-) -> Result<&'a TaskVar, VarLookupError> {
+    vars: &'a serde_json::Map<String, serde_json::Value>,
+) -> Result<&'a serde_json::Value, VarLookupError> {
     get_var_at_subpath_in_table(var_name, 0, vars)
 }
 
 fn get_var_at_subpath_in_table<'a>(
     var_name: &str,
     subpath_start: usize,
-    table: &'a HashMap<String, TaskVar>,
-) -> Result<&'a TaskVar, VarLookupError> {
+    table: &'a serde_json::Map<String, serde_json::Value>,
+) -> Result<&'a serde_json::Value, VarLookupError> {
     let dot_idx_opt = var_name[subpath_start..].find(".");
 
     match dot_idx_opt {
@@ -54,8 +52,8 @@ fn get_var_at_subpath_in_table<'a>(
                 .ok_or_else(|| VarLookupError::PathNotFound(String::from(var_name)))?;
 
             match subtable {
-                TaskVar::Table(t) => {
-                    get_var_at_subpath_in_table(var_name, subpath_start + dot_idx + 1, &t)
+                serde_json::Value::Object(obj) => {
+                    get_var_at_subpath_in_table(var_name, subpath_start + dot_idx + 1, &obj)
                 }
                 _ => Err(VarLookupError::PathComponentNotATable(
                     var_name[..(subpath_start + dot_idx)].to_owned(),
@@ -73,8 +71,8 @@ fn get_var_at_subpath_in_table<'a>(
 
 pub fn set_var(
     var_name: &str,
-    value: TaskVar,
-    vars: &mut HashMap<String, TaskVar>,
+    value: serde_json::Value,
+    vars: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), VarLookupError> {
     set_var_at_subpath_in_table(var_name, 0, value, vars)
 }
@@ -82,8 +80,8 @@ pub fn set_var(
 fn set_var_at_subpath_in_table(
     var_name: &str,
     subpath_start: usize,
-    value: TaskVar,
-    table: &mut HashMap<String, TaskVar>,
+    value: serde_json::Value,
+    table: &mut serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), VarLookupError> {
     let dot_idx_opt = var_name[subpath_start..].find(".");
 
@@ -96,12 +94,15 @@ fn set_var_at_subpath_in_table(
                 return Err(VarLookupError::InvalidName(String::from(var_name)));
             }
             if !table.contains_key(key_name) {
-                table.insert(String::from(key_name), TaskVar::Table(HashMap::new()));
+                table.insert(
+                    String::from(key_name),
+                    serde_json::Value::Object(serde_json::Map::new()),
+                );
             }
 
             match table.get_mut(key_name).unwrap() {
-                TaskVar::Table(t) => {
-                    set_var_at_subpath_in_table(var_name, subpath_start + dot_idx + 1, value, t)?;
+                serde_json::Value::Object(obj) => {
+                    set_var_at_subpath_in_table(var_name, subpath_start + dot_idx + 1, value, obj)?;
                 }
                 _ => {
                     return Err(VarLookupError::PathComponentNotATable(
@@ -128,13 +129,30 @@ fn set_var_at_subpath_in_table(
 }
 
 pub fn unflatten_vars(
-    vars: &HashMap<String, TaskVar>,
-) -> Result<HashMap<String, TaskVar>, VarLookupError> {
-    let mut unflattened_vars: HashMap<String, TaskVar> = HashMap::new();
+    vars: &serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Map<String, serde_json::Value>, VarLookupError> {
+    let mut unflattened_vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
     for (k, v) in vars.iter() {
         set_var(k.as_str(), v.clone(), &mut unflattened_vars)?;
     }
 
     Ok(unflattened_vars)
+}
+
+pub fn extract_vars<'a, I, T>(
+    var_paths: I,
+    from_vars: &serde_json::Map<String, serde_json::Value>,
+    to_vars: &mut serde_json::Map<String, serde_json::Value>
+) -> Result<(), VarLookupError>
+where
+    I: Iterator<Item = T>,
+    T: AsRef<str>,
+{
+    for var_path in var_paths {
+        let var_value = get_var(var_path.as_ref(), from_vars)?;
+        set_var(var_path.as_ref(), var_value.clone(), to_vars)?;
+    }
+
+    Ok(())
 }

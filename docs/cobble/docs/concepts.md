@@ -136,7 +136,7 @@ env {
     name = "poetry_env",
     setup_task = {
         actions = {
-            { tool = "poetry", function (c) c.tool.poetry { "env", "use", c.vars["python.version"] } end },
+            { tool = "poetry", function (c) c.tool.poetry { "env", "use", c.vars.python.version } end },
             { tool = "poetry", "install" }
         },
         deps = {

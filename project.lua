@@ -23,7 +23,7 @@ task {
 task {
     name = "calc_build_dep",
     actions = { function (c)
-        return { tasks = { (c.vars["cobble.build"] == "release" and "build_release") or "build_debug" } }
+        return { tasks = { (c.vars.cobble.build == "release" and "build_release") or "build_debug" } }
     end },
     deps = { vars = { "cobble.build" } }
 }
@@ -32,7 +32,7 @@ task {
     name = "build_release",
     actions = { { tool = "cargo", "build", "--release", "--color", "always" } },
     deps = { calc = { "find_cobble_source_files" } },
-    artifacts = { "target/release/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") }
+    artifacts = { files = { "target/release/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") } }
 }
 
 if PLATFORM.os_family == "windows" then
@@ -40,7 +40,7 @@ task {
     name = "build_release_linux",
     actions = { { tool = "wsl", "--shell-type", "login", "--", "cargo", "build", "--release" } },
     deps = { calc = { "find_cobble_source_files" } },
-    artifacts = { "target/release/cobl" }
+    artifacts = { files = { "target/release/cobl" } }
 }
 end
 
@@ -48,7 +48,7 @@ task {
     name = "build_debug",
     actions = { { tool = "cargo", "build", "--color", "always" } },
     deps = { calc = { "find_cobble_source_files" } },
-    artifacts = { "target/debug/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") }
+    artifacts = { files = { "target/debug/cobl" .. (PLATFORM.os_family == "windows" and ".exe" or "") } }
 }
 
 task {

@@ -3,14 +3,12 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use crate::project_def::types::TaskVar;
 use crate::vars::{set_var, VarLookupError};
 
 pub const WORKSPACE_CONFIG_FILE_NAME: &str = "cobble.toml";
@@ -31,7 +29,7 @@ pub struct WorkspaceInit {
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
     pub root_projects: Vec<String>,
-    pub vars: HashMap<String, TaskVar>,
+    pub vars: serde_json::Map<String, serde_json::Value>,
     pub force_run_tasks: bool,
     pub num_threads: u8,
     pub max_db_size: usize,
@@ -42,7 +40,7 @@ pub struct WorkspaceConfig {
 
 #[derive(Default)]
 pub struct WorkspaceConfigArgs {
-    pub vars: HashMap<String, TaskVar>,
+    pub vars: serde_json::Map<String, serde_json::Value>,
     pub force_run_tasks: Option<bool>,
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
@@ -181,7 +179,7 @@ pub fn parse_workspace_config(
     };
 
     // Vars
-    let mut vars: HashMap<String, TaskVar> = HashMap::new();
+    let mut vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let vars_val: toml::Value = config
         .remove("vars")
         .unwrap_or_else(|| toml::Value::Table(toml::Table::new()));
@@ -194,7 +192,8 @@ pub fn parse_workspace_config(
         }
     };
     for (k, v) in vars_table {
-        vars.insert(k, v.into());
+        let json_val = serde_json::to_value(v).map_err(|e| WorkspaceConfigError::ParseError(format!("{e}")))?;
+        vars.insert(k, json_val);
     }
 
     let init_toml_opt: Option<toml::Value> = config.remove("init");
@@ -397,12 +396,12 @@ pub fn get_workspace_config(
     Ok(config)
 }
 
-pub fn parse_cli_vars<I, S>(vars: I) -> Result<HashMap<String, TaskVar>, WorkspaceConfigError>
+pub fn parse_cli_vars<I, S>(vars: I) -> Result<serde_json::Map<String, serde_json::Value>, WorkspaceConfigError>
 where
     I: Iterator<Item = S>,
     S: AsRef<str>,
 {
-    let mut parsed_vars: HashMap<String, TaskVar> = HashMap::new();
+    let mut parsed_vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
     for var_s in vars {
         let var = var_s.as_ref();
@@ -418,7 +417,7 @@ where
         let var_name = &var[..eq_idx];
         let var_val = &var[eq_idx + 1..];
 
-        parsed_vars.insert(var_name.to_owned(), TaskVar::String(var_val.to_owned()));
+        parsed_vars.insert(var_name.to_owned(), serde_json::Value::String(var_val.to_owned()));
     }
 
     Ok(parsed_vars)
@@ -429,7 +428,7 @@ fn add_cli_vars_to_workspace_config<'a, I, S>(
     config: &mut WorkspaceConfig,
 ) -> Result<(), WorkspaceConfigError>
 where
-    I: Iterator<Item = (&'a S, &'a TaskVar)>,
+    I: Iterator<Item = (&'a S, &'a serde_json::Value)>,
     S: AsRef<str> + 'a,
 {
     for (var_name_s, var_val) in vars {

@@ -150,7 +150,7 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                     &args.workspace_config.workspace_dir,
                     &lua,
                     &tool_check,
-                    args.workspace_config.vars.clone(),
+                    Arc::new(args.workspace_config.vars.clone()),
                     &args.cache,
                     &args.task_result_sender,
                 );
@@ -167,6 +167,7 @@ pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
                 execute_env_action_job(
                     &lua,
                     &env_action_job,
+                    Arc::new(args.workspace_config.vars.clone()),
                     &stdin_ready,
                     &args.task_result_sender,
                     &args.cache,
