@@ -81,6 +81,10 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let tblext_loader = lua.load(&tblext_source[..]).into_function()?;
     preload_table.set("tblext", tblext_loader)?;
 
+    let ordered_map_source = include_bytes!("ordered_map.lua");
+    let ordered_map_loader = lua.load(&ordered_map_source[..]).into_function()?;
+    preload_table.set("ordered_map", ordered_map_loader)?;
+
     {
         let mut module_search_path = OsString::new();
         module_search_path.push(workspace_dir.as_os_str());

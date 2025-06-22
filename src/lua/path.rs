@@ -25,6 +25,7 @@ impl UserData for FsLib {
         methods.add_function("glob", glob_files);
         methods.add_function("is_dir", is_dir);
         methods.add_function("is_file", is_file);
+        methods.add_function("strip_prefix", strip_prefix);
     }
 }
 
@@ -53,6 +54,30 @@ fn is_dir<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
 
 fn is_file<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
     Ok(Path::new(path_str.as_str()).is_file())
+}
+
+fn strip_prefix<'lua>(
+    _lua: &'lua Lua,
+    args: (String, String)
+) -> mlua::Result<String> {
+    let (path_str, prefix_str) = args;
+
+    let path = Path::new(".").join(path_str.as_str());
+    let prefix = Path::new(".").join(prefix_str.as_str());
+
+    let stripped = path
+        .strip_prefix(prefix.as_path())
+        .map_err(|_| {
+            Error::runtime(format!(
+                "Cannot strip prefix. Path {} does not start with {}",
+                path_str, prefix_str
+            ))
+        })?;
+
+    stripped
+        .to_str()
+        .map(|s| s.to_owned())
+        .ok_or_else(|| Error::runtime("Error converting path to string"))
 }
 
 fn normalize_path_for_glob(path: &Path) -> PathBuf {
@@ -144,13 +169,15 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
                     }
                 },
                 "include_files" => match v {
-                    Value::Boolean(b) => { include_files = b; }
+                    Value::Boolean(b) => {
+                        include_files = b;
+                    }
                     _ => {
                         return Err(Error::runtime(
                             "Expected boolean value for 'include_files' option",
                         ));
                     }
-                }
+                },
                 _ => {
                     return Err(Error::runtime(format!("Invalid option: {k}")));
                 }
@@ -208,11 +235,13 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
                         pattern_path.display()
                     ))
                 })?;
-                let glob_pattern = Pattern::new(pattern).map_err(|e| Error::runtime(format!("Invalid glob pattern: {e}")))?;
+                let glob_pattern = Pattern::new(pattern)
+                    .map_err(|e| Error::runtime(format!("Invalid glob pattern: {e}")))?;
                 exclude_glob_patterns.push(glob_pattern);
             }
             None => {
-                let glob_pattern = Pattern::new(excl.as_str()).map_err(|e| Error::runtime(format!("Invalid glob pattern: {e}")))?;
+                let glob_pattern = Pattern::new(excl.as_str())
+                    .map_err(|e| Error::runtime(format!("Invalid glob pattern: {e}")))?;
                 exclude_glob_patterns.push(glob_pattern);
             }
         };
@@ -256,7 +285,7 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
 
     let result_table = lua.create_table()?;
     for (i, result) in result_set.into_iter().enumerate() {
-        result_table.set(i+1, result)?;
+        result_table.set(i + 1, result)?;
     }
 
     Ok(result_table)

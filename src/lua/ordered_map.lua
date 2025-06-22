@@ -52,11 +52,19 @@ local ordered_map_metatable = {
     end
 }
 
-local function create_ordered_map()
-    return setmetatable({
+local function ordered_map(entries)
+    local map = setmetatable({
         _map = {},
         _keys = {}
     }, ordered_map_metatable)
+
+    if entries then
+        for i, entry in ipairs(entries) do
+            map[entry[1]] = entry[2]
+        end
+    end
+
+    return map
 end
 
-return create_ordered_map
+return ordered_map

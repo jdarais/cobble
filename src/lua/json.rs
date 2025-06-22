@@ -36,14 +36,13 @@ fn json_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lu
 }
 
 fn json_loads<'lua>(lua: &'lua Lua, val: String) -> mlua::Result<mlua::Value<'lua>> {
-    let create_ordered_map_lua = include_bytes!("ordered_map.lua");
-    let create_ordered_map: mlua::Function = lua.load(&create_ordered_map_lua[..]).call(())?;
+    let ordered_map_ctor: mlua::Function = lua.load(r#"require("ordered_map")"#).eval()?;
 
     let parsed: serde_json::Value = val
         .parse()    
         .map_err(|e| mlua::Error::runtime(format!("Error parsing json: {}", e)))?;
 
-    json_to_lua(lua, parsed, &create_ordered_map)
+    json_to_lua(lua, parsed, &ordered_map_ctor)
 }
 
 fn json_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Value<'lua>)) -> mlua::Result<()> {
@@ -67,7 +66,7 @@ fn json_dumps<'lua>(lua: &'lua Lua, val: mlua::Value) -> mlua::Result<String> {
 fn json_to_lua<'lua>(
     lua: &'lua Lua,
     json_val: serde_json::Value,
-    create_ordered_map: &mlua::Function<'lua>
+    ordered_map_ctor: &mlua::Function<'lua>
 ) -> mlua::Result<mlua::Value<'lua>> {
     match json_val {
         serde_json::Value::Null => Ok(mlua::Value::Nil),
@@ -86,14 +85,14 @@ fn json_to_lua<'lua>(
         serde_json::Value::Array(arr) => {
             let table = lua.create_table_with_capacity(arr.len(), 0)?;
             for v in arr {
-                table.push(json_to_lua(lua, v, create_ordered_map)?)?;
+                table.push(json_to_lua(lua, v, ordered_map_ctor)?)?;
             }
             Ok(mlua::Value::Table(table))
         }
         serde_json::Value::Object(obj) => {
-            let table: mlua::Table = create_ordered_map.call(())?;
+            let table: mlua::Table = ordered_map_ctor.call(())?;
             for (k, v) in obj {
-                table.set(k, json_to_lua(lua, v, create_ordered_map)?)?;
+                table.set(k, json_to_lua(lua, v, ordered_map_ctor)?)?;
             }
             Ok(mlua::Value::Table(table))
         }

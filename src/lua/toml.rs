@@ -36,14 +36,13 @@ fn toml_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lu
 }
 
 fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Value<'lua>> {
-    let create_ordered_map_lua = include_bytes!("ordered_map.lua");
-    let create_ordered_map: mlua::Function = lua.load(&create_ordered_map_lua[..]).call(())?;
+    let ordered_map_ctor: mlua::Function = lua.load(r#"require("ordered_map")"#).eval()?;
 
     let toml_tbl = toml_str
         .parse::<toml::Table>()
         .map_err(|e| mlua::Error::runtime(format!("Error parsing toml: {}", e)))?;
 
-    toml_to_lua(lua, toml::Value::Table(toml_tbl), &create_ordered_map)
+    toml_to_lua(lua, toml::Value::Table(toml_tbl), &ordered_map_ctor)
 }
 
 fn toml_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Table<'lua>)) -> mlua::Result<()> {
@@ -78,19 +77,19 @@ impl UserData for DateTimeUserData {
     }
 }
 
-fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value, create_ordered_map: &mlua::Function<'lua>) -> mlua::Result<mlua::Value<'lua>> {
+fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value, ordered_map_ctor: &mlua::Function<'lua>) -> mlua::Result<mlua::Value<'lua>> {
     match toml_val {
         toml::Value::Array(arr) => {
             let tbl = lua.create_table()?;
             for val in arr {
-                tbl.push(toml_to_lua(lua, val, create_ordered_map)?)?;
+                tbl.push(toml_to_lua(lua, val, ordered_map_ctor)?)?;
             }
             Ok(mlua::Value::Table(tbl))
         }
         toml::Value::Table(toml_tbl) => {
-            let tbl: mlua::Table = create_ordered_map.call(())?;
+            let tbl: mlua::Table = ordered_map_ctor.call(())?;
             for (k, v) in toml_tbl {
-                tbl.set(k, toml_to_lua(lua, v, create_ordered_map)?)?;
+                tbl.set(k, toml_to_lua(lua, v, ordered_map_ctor)?)?;
             }
             Ok(mlua::Value::Table(tbl))
         }
