@@ -1,6 +1,8 @@
 local tblext = require("tblext")
 local path = require("path")
 
+project_dir("pkg1")
+
 local ws_dir = WORKSPACE.dir
 
 local python_exe, venv_python_path
@@ -35,20 +37,21 @@ task {
 }
 
 task {
-    name = "constraints_file",
+    name = "constraints_file_name",
     actions = {
-        {
-            tool = "python",
-            function (c)
-                local sys_platform_res = c.tool.python { "-c", "import sys; print(sys.platform)" }
-                return {
-                    files = {
-                        constraints_file = "constraints."..sys_platform_res.stdout:match("[^%s]*")..".txt"
-                    }
-                }
-            end
-        }
+        { tool = "python", function (c)
+            local sys_platform_res = c.tool.python { "-c", "import sys; print(sys.platform)" }
+            return path.join(ws_dir, "constraints."..sys_platform_res.stdout:match("[^%s]*")..".txt")
+        end }
     }
+}
+
+task {
+    name = "constraints_file_dep",
+    deps = { tasks = { constraints_file_name = "constraints_file_name" } },
+    actions = { function (c)
+        return { files = { constraints_file = c.tasks.constraints_file_name.output } }
+    end }
 }
 
 env {
@@ -95,10 +98,10 @@ task {
     name = "pin_constraints",
     deps = {
         files = { "requirements.in" },
-        tasks = { constraints_file = "constraints_file" }
+        tasks = { constraints_file = "constraints_file_name" }
     },
     artifacts = {
-        calc = { "constraints_file" }
+        calc = { "constraints_file_dep" }
     },
     actions = {
         {
@@ -108,7 +111,7 @@ task {
                     out = false, err = false,
                     "-m", "piptools", "compile",
                     "--strip-extras",
-                    "-o", path.strip_prefix(c.tasks.constraints_file.output.files.constraints_file, c.project.dir),
+                    "-o", path.strip_prefix(c.tasks.constraints_file_name.output, c.project.dir),
                     "requirements.in"
                 }
             end

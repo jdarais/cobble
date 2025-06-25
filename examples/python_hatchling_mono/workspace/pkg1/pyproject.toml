@@ -1,0 +1,11 @@
+[project]
+name = "pkg1"
+version = "0.1.0"
+
+dependencies = [
+
+]
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
