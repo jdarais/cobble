@@ -67,12 +67,12 @@ env {
                     path.join(".venv-pip-tools", venv_python_path),
                     "-m", "pip", "install",
                     "-c", path.strip_prefix(c.files.pip_tools_constraints_file.path, c.project.dir),
-                    "pip-tools"
+                    "pip-tools", "build"
                 }
             end
         }
     },
-    action = { path.join(".venv-pip-tools", venv_python_path) }
+    action = { path.join(ws_dir, ".venv-pip-tools", venv_python_path) }
 }
 
 task {
@@ -111,7 +111,7 @@ task {
                     out = false, err = false,
                     "-m", "piptools", "compile",
                     "--strip-extras",
-                    "-o", path.strip_prefix(c.tasks.constraints_file_name.output, c.project.dir),
+                    "-o", path.strip_prefix(c.tasks.constraints_file.output, path.join(ws_dir, c.project.dir)),
                     "requirements.in"
                 }
             end

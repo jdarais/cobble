@@ -135,6 +135,13 @@ pub fn calculate_artifacts<IO: ProcessIO>(
 
     for (task_name, task) in updated_tasks {
         workspace.tasks.insert(task_name.clone(), task.clone());
+
+        // Need to update file providers map as well
+        // TODO: Make it an error if a file is already provided by another task (need to do this in
+        // compute_file_providers function as well.)
+        for (_file_alias, file_path) in task.artifacts.files.iter() {
+            workspace.file_providers.insert(file_path.clone(), task_name.clone());
+        }
     }
 
     Ok(())

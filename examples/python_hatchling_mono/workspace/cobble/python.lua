@@ -1,5 +1,7 @@
 local path = require("path")
 local tblext = require("tblext")
+local toml = require("toml")
+local maybe = require("maybe")
 
 local ws_dir = WORKSPACE.dir
 
@@ -21,6 +23,8 @@ function module.python_project(args)
     local constraints_file = {
         files = { constraints_file = args.constraints_file }
     }
+
+    local build_venv_env = args.build_venv_env
 
     if type(args.constraints_file_calc) == "string" then
         task {
@@ -73,10 +77,11 @@ function module.python_project(args)
     env {
         name = "python_venv",
         setup_task = {
-            deps = {
-                files = tblext.extend({ requirements = "requirements.venv.txt" }, constraints_file.files or {}),
-                calc = tblext.extend({}, constraints_file.calc or {})
-            },
+            deps = tblext.extend(
+                { files = { requirements = "requirements.venv.txt" } },
+                constraints_file,
+                { deep = true }
+            ),
             actions = {
                 { tool = "python", "-m", "venv", ".venv" },
                 function (c)
@@ -95,6 +100,53 @@ function module.python_project(args)
             tool = "python",
             function (c)
                 c.tool.cmd(tblext.extend({ path.join(".venv", module.venv_python_path) }, c.args))
+            end
+        }
+    }
+
+    task {
+        name = "calc_package_sdist_name",
+        deps = { files = { pyproject_toml = "pyproject.toml" } },
+        actions = {
+            function (c)
+                pyproject = toml.load(c.files.pyproject_toml.path)
+                local name = pyproject.project.name
+                local version = pyproject.project.version
+                return name.."-"..version..".tar.gz"
+            end
+        }
+    }
+
+    task {
+        name = "calc_package_sdist",
+        deps = { tasks = { package_name = "calc_package_sdist_name" } },
+        actions = {
+            function (c) return { files = { sdist = path.join("dist", c.tasks.package_name.output) } } end
+        }
+    }
+
+    task {
+        name = "package_sdist",
+        deps = {
+            files = { pyproject_toml = "pyproject.toml" },
+            tasks = tblext.extend({ package_name = "calc_package_sdist_name" }, local_packages)
+        },
+        artifacts = {
+            calc = { "calc_package_sdist" }
+        },
+        actions = {
+            { env = { build = args.build_venv_env }, "-m", "build", "--sdist" },
+            function (c)
+                local local_requirements = {}
+                for k, v in pairs(c.tasks) do
+                    if type(c.tasks.local_requirements) == "table" then
+                        for _, req in pairs(c.tasks.local_requirements) do
+                            table.insert(local_requirements, req)
+                        end
+                    end
+                end
+                table.insert(local_requirements, path.join(ws_dir, c.project.dir, c.tasks.package_name.output))
+                return { local_requirements = local_requirements }
             end
         }
     }

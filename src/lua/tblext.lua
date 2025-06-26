@@ -3,7 +3,11 @@
 --
 -- This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
-local function extend(target, source, start_index)
+local function extend(target, source, start_index_or_opts)
+    if source == nil then
+        return target
+    end
+
     if type(target) ~= "table" then
         error("Expected a table for first argument to extend(), but got "..tostring(target))
     end
@@ -17,13 +21,30 @@ local function extend(target, source, start_index)
         error("Expected a number or nil for third argument to extend(), but got "..tostring(start_index))
     end
 
-    local start_offset = (start_index or (#target+1)) - 1
+    local opts
+    if type(start_index_or_opts) == "table" then
+        opts = start_index_or_opts
+    else 
+        opts = { start_index = start_index_or_opts }
+    end
+
+    local start_offset = (opts.start_index or (#target+1)) - 1
 
     for k, v in pairs(source) do
         if type(k) == "number" then
-            target[k+start_offset] = v
+            local existing = target[k+start_offset]
+            if opts.deep and type(existing) == "table" and type(v) == "table" then
+                extend(existing, v, opts)
+            else
+                target[k+start_offset] = v
+            end
         else
-            target[k] = v
+            local existing = target[k]
+            if opts.deep and type(existing) == "table" and type(v) == "table" then
+                extend(existing, v, opts)
+            else
+                target[k] = v
+            end
         end
     end
 

@@ -67,6 +67,7 @@ where
     for project in projects {
         for task in project.tasks.iter() {
             for (_file_alias, file_path) in task.artifacts.files.iter() {
+                // TODO: Make it an error if two tasks claim to provide the same file
                 file_providers.insert(file_path.clone(), task.name.clone());
             }
         }

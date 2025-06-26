@@ -73,6 +73,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
+    println!("# Computing calculated artifacts #");
     calculate_artifacts(
         &config.workspace_dir,
         &mut workspace,
@@ -80,6 +81,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         &StandardIO,
     )?;
 
+    println!("# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
         &config.workspace_dir,
         selected_tasks.iter(),
