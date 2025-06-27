@@ -157,6 +157,83 @@ function module.python_project(args)
         }
     }
 
+    task {
+        name = "calc_package_wheel_name",
+        visible = false,
+        deps = { files = { pyproject_toml = "pyproject.toml" } },
+        actions = {
+            function (c)
+                pyproject = toml.load(c.files.pyproject_toml.path)
+                local name = pyproject.project.name
+                local version = pyproject.project.version
+                -- TODO: Make the file name components configurable
+                return name.."-"..version.."-py3-none-any.whl"
+            end
+        }
+    }
+
+    task {
+        name = "calc_package_wheel",
+        visible = false,
+        deps = { tasks = { package_name = "calc_package_wheel_name" } },
+        actions = {
+            function (c) return { files = { sdist = path.join("dist", c.tasks.package_name.output) } } end
+        }
+    }
+
+    task {
+        name = "package_wheel",
+        description = "Builds the wheel package. Returns requirements.txt entries for this package and all local requirements reported by dependencies.",
+        deps = {
+            files = { pyproject_toml = "pyproject.toml" },
+            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages)
+        },
+        artifacts = {
+            calc = { "calc_package_wheel" }
+        },
+        actions = {
+            { env = { build = args.build_venv_env }, "-m", "build", "--wheel" },
+            function (c)
+                local local_requirements = {}
+                for k, v in pairs(c.tasks) do
+                    if type(c.tasks.local_requirements) == "table" then
+                        for _, req in pairs(c.tasks.local_requirements) do
+                            table.insert(local_requirements, req)
+                        end
+                    end
+                end
+                table.insert(local_requirements, path.join(ws_dir, c.project.dir, c.tasks.package_name.output))
+                return { local_requirements = local_requirements }
+            end
+        }
+    }
+
+    task {
+        name = "package_editable",
+        description = "Acts as a 'package' that will be installed editable mode. Returns requirements.txt entries for this package and all local requirements reported by dependencies.",
+        deps = {
+            files = { pyproject_toml = "pyproject.toml" },
+            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages)
+        },
+        artifacts = {
+            calc = { "calc_package_wheel" }
+        },
+        actions = {
+            function (c)
+                local local_requirements = {}
+                for k, v in pairs(c.tasks) do
+                    if type(c.tasks.local_requirements) == "table" then
+                        for _, req in pairs(c.tasks.local_requirements) do
+                            table.insert(local_requirements, req)
+                        end
+                    end
+                end
+                table.insert(local_requirements, "-e "..path.join(ws_dir, c.project.dir))
+                return { local_requirements = local_requirements }
+            end
+        }
+    }
+
 end
 
 
