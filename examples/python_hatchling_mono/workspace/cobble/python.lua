@@ -29,6 +29,7 @@ function module.python_project(args)
     if type(args.constraints_file_calc) == "string" then
         task {
             name = "constraints_file_calc",
+            visible = false,
             deps = { tasks = { args.constraints_file_calc } },
             actions = {
                 function (c)
@@ -54,6 +55,7 @@ function module.python_project(args)
 
     task {
         name = "venv_requirements_file",
+        visible = false,
         deps = { tasks = tblext.extend({}, local_packages) },
         artifacts = { files = { requirements = "requirements.venv.txt" } },
         actions = {
@@ -77,6 +79,7 @@ function module.python_project(args)
     env {
         name = "python_venv",
         setup_task = {
+            description = "Sets up the virtual environment for the project",
             deps = tblext.extend(
                 { files = { requirements = "requirements.venv.txt" } },
                 constraints_file,
@@ -106,6 +109,7 @@ function module.python_project(args)
 
     task {
         name = "calc_package_sdist_name",
+        visible = false,
         deps = { files = { pyproject_toml = "pyproject.toml" } },
         actions = {
             function (c)
@@ -119,6 +123,7 @@ function module.python_project(args)
 
     task {
         name = "calc_package_sdist",
+        visible = false,
         deps = { tasks = { package_name = "calc_package_sdist_name" } },
         actions = {
             function (c) return { files = { sdist = path.join("dist", c.tasks.package_name.output) } } end
@@ -127,6 +132,7 @@ function module.python_project(args)
 
     task {
         name = "package_sdist",
+        description = "Builds the sdist package. Returns requirements.txt entries for this package and all local requirements reported by dependencies.",
         deps = {
             files = { pyproject_toml = "pyproject.toml" },
             tasks = tblext.extend({ package_name = "calc_package_sdist_name" }, local_packages)

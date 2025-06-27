@@ -15,6 +15,7 @@ pub fn compute_selected_tasks(
     workspace: &Workspace,
     cwd: &Path,
     ws_dir: &Path,
+    include_hidden: bool
 ) -> anyhow::Result<Vec<Arc<str>>> {
     let project_dir = find_nearest_project_dir(cwd, ws_dir)?;
     let project_name = project_path_to_project_name(project_dir.as_path())?;
@@ -25,6 +26,7 @@ pub fn compute_selected_tasks(
             &workspace,
             project_name.as_str(),
             task_queries.iter().copied(),
+            include_hidden
         )?,
     };
 

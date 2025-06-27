@@ -22,7 +22,9 @@ use crate::project_def::Action;
 #[derive(Clone, Debug)]
 pub struct TaskDef {
     pub name: Arc<str>,
+    pub description: Arc<str>,
     pub is_default: Option<bool>,
+    pub is_visible: Option<bool>,
     pub always_run: Option<bool>,
     pub is_interactive: Option<bool>,
     pub show_stdout: Option<TaskOutputCondition>,
@@ -83,7 +85,13 @@ pub fn validate_inline_task<'lua>(
             "name" => with_prop(&mut *prop_path, Cow::Borrowed("name"), |path| {
                 validate_is_string(&v, path).and(Ok(()))
             }),
+            "description" => with_prop(&mut *prop_path, Cow::Borrowed("description"), |path| {
+                validate_is_string(&v, path).and(Ok(()))
+            }),
             "default" => with_prop(&mut *prop_path, Cow::Borrowed("default"), |path| {
+                validate_is_bool(&v, path).and(Ok(()))
+            }),
+            "visible" => with_prop(&mut *prop_path, Cow::Borrowed("visible"), |path| {
                 validate_is_bool(&v, path).and(Ok(()))
             }),
             "always_run" => with_prop(&mut *prop_path, Cow::Borrowed("always_run"), |path| {
@@ -128,7 +136,9 @@ pub fn validate_inline_task<'lua>(
                 unknown_key,
                 vec![
                     "name",
+                    "description",
                     "default",
+                    "visible",
                     "always_run",
                     "interactive",
                     "stdout",
@@ -188,7 +198,9 @@ pub fn dump_inline_task<'lua>(
 ) -> mlua::Result<TaskDef> {
     let ser_task = SerLuaValueBlock::from_lua(mlua::Value::Table(task_table.clone()), lua)?;
     let ser_task = ser_task.as_deterministic();
+    let description: Option<String> = task_table.get("description")?;
     let is_default: Option<bool> = task_table.get("default")?;
+    let is_visible: Option<bool> = task_table.get("visible")?;
     let always_run: Option<bool> = task_table.get("always_run")?;
     let is_interactive: Option<bool> = task_table.get("interactive")?;
 
@@ -236,7 +248,9 @@ pub fn dump_inline_task<'lua>(
 
     Ok(TaskDef {
         name: task_name,
+        description: Arc::from(description.unwrap_or_else(|| String::from(""))),
         is_default,
+        is_visible,
         always_run,
         is_interactive,
         show_stdout: stdout.or(output.clone()),

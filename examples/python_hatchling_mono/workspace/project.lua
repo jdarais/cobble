@@ -21,6 +21,7 @@ tool {
 
 task {
     name = "pip_tools_constraints_file",
+    visible = false,
     actions = {
         {
             tool = "python",
@@ -38,6 +39,7 @@ task {
 
 task {
     name = "constraints_file_name",
+    visible = false,
     actions = {
         { tool = "python", function (c)
             local sys_platform_res = c.tool.python { "-c", "import sys; print(sys.platform)" }
@@ -48,6 +50,7 @@ task {
 
 task {
     name = "constraints_file_dep",
+    visible = false,
     deps = { tasks = { constraints_file_name = "constraints_file_name" } },
     actions = { function (c)
         return { files = { constraints_file = c.tasks.constraints_file_name.output } }
@@ -77,6 +80,7 @@ env {
 
 task {
     name = "update_pip_tools_constraints",
+    description = "Update the pinned constraints file used to install the pip tools venv",
     deps = { tasks = { constraints_file = "pip_tools_constraints_file" } },
     actions = {
         { 
@@ -96,6 +100,7 @@ task {
 
 task {
     name = "pin_constraints",
+    description = "Generate a pinned constraints file based on requirements.in",
     deps = {
         files = { "requirements.in" },
         tasks = { constraints_file = "constraints_file_name" }

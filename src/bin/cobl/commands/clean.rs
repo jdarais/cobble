@@ -24,6 +24,7 @@ pub struct CleanCommandInput {
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
     pub show_stderr: Option<TaskOutputCondition>,
+    pub all: bool,
 }
 
 pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
@@ -33,6 +34,7 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         num_threads,
         show_stdout,
         show_stderr,
+        all,
     } = input;
 
     let ws_config_args = WorkspaceConfigArgs {
@@ -59,6 +61,7 @@ pub fn clean_command<'a>(input: CleanCommandInput) -> anyhow::Result<()> {
         &workspace,
         cwd.as_path(),
         &config.workspace_dir,
+        all,
     )?;
 
     // Resolve calculated dependencies.  Is this needed for clean tasks, given that the only tasks they can rely on are build env tasks?

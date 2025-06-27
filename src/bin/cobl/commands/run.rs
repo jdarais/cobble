@@ -29,6 +29,7 @@ pub struct RunCommandInput {
     pub num_threads: Option<u8>,
     pub show_stdout: Option<TaskOutputCondition>,
     pub show_stderr: Option<TaskOutputCondition>,
+    pub all: bool,
 }
 
 pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
@@ -40,6 +41,7 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         num_threads,
         show_stdout,
         show_stderr,
+        all,
     } = input;
 
     let parsed_vars = parse_cli_vars(vars.iter())?;
@@ -52,6 +54,7 @@ pub fn run_command(input: RunCommandInput) -> anyhow::Result<()> {
         num_threads,
         show_stdout,
         show_stderr,
+        all,
         &StandardIO,
     )
 }
@@ -76,6 +79,7 @@ where
         Some(config.num_threads),
         Some(init_config.show_stdout.clone()),
         Some(init_config.show_stderr.clone()),
+        false,
         pio,
     );
     let _ = writeln!(&mut out, "# Done Running Init Task #");
@@ -122,6 +126,7 @@ pub fn run<IO: ProcessIO>(
     num_threads: Option<u8>,
     show_stdout: Option<TaskOutputCondition>,
     show_stderr: Option<TaskOutputCondition>,
+    all: bool,
     pio: &IO,
 ) -> anyhow::Result<()> {
     let mut out = pio.out();
@@ -151,6 +156,7 @@ pub fn run<IO: ProcessIO>(
         &workspace,
         cwd.as_path(),
         &config.workspace_dir,
+        all
     )?;
 
     if selected_tasks.len() == 0 {
