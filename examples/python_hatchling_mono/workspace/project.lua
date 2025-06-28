@@ -1,18 +1,10 @@
 local tblext = require("tblext")
 local path = require("path")
+local python = require("cobble.python")
 
 project_dir("pkg1")
 
 local ws_dir = WORKSPACE.dir
-
-local python_exe, venv_python_path
-if PLATFORM.os == "windows" then
-    python_exe = "python.exe"
-    venv_python_path = path.join("Scripts", "python.exe")
-else
-    python_exe = "python3"
-    venv_python_path = path.join("bin", "python")
-end
 
 tool {
     name = "python",
@@ -67,7 +59,7 @@ env {
             { tool = "python", "-m", "venv", ".venv-pip-tools" },
             function (c)
                 c.tool.cmd {
-                    path.join(".venv-pip-tools", venv_python_path),
+                    path.join(".venv-pip-tools", python.venv_python_path),
                     "-m", "pip", "install",
                     "-c", path.strip_prefix(c.files.pip_tools_constraints_file.path, c.project.dir),
                     "pip-tools", "build"
@@ -75,7 +67,11 @@ env {
             end
         }
     },
-    action = { path.join(ws_dir, ".venv-pip-tools", venv_python_path) }
+    action = function (c)
+        local args = {table.unpack(c.args)}
+        local arg1 = table.remove(args, 1)
+        return c.tool.cmd(tblext.extend({path.join(ws_dir, ".venv-pip-tools", python.venv_bin_path, arg1)}, args))
+    end
 }
 
 task {
@@ -88,7 +84,7 @@ task {
             function (c)
                 c.env.pip_tools_venv {
                     out = false, err = false,
-                    "-m", "piptools", "compile",
+                    "python", "-m", "piptools", "compile",
                     "--strip-extras",
                     "-o", path.strip_prefix(c.tasks.constraints_file.output.files.pip_tools_constraints_file, c.project.dir),
                     "requirements.pip-tools.in"
@@ -114,7 +110,7 @@ task {
             function (c)
                 c.env.pip_tools_venv {
                     out = false, err = false,
-                    "-m", "piptools", "compile",
+                    "python", "-m", "piptools", "compile",
                     "--strip-extras",
                     "-o", path.strip_prefix(c.tasks.constraints_file.output, path.join(ws_dir, c.project.dir)),
                     "requirements.in"

@@ -78,7 +78,7 @@ pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
         let truncated = desc.len() > MAX_DESCRIPTION_LENGTH;
         let desc_truncated = if truncated { &desc[..MAX_DESCRIPTION_LENGTH-3] } else { desc };
         let maybe_ellipsis = if truncated { "..." } else { "" };
-        println!("{:<task_name_column_width$}{}{}", name, desc_truncated, maybe_ellipsis);
+        println!("{:<task_name_column_width$}{}{}", name, desc_truncated.replace("\n", " "), maybe_ellipsis);
     }
     Ok(())
 }

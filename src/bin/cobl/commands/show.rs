@@ -99,7 +99,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
 
         if task.description.len() > 0 {
             println!("");
-            println!("{TAB}{}", task.description);
+            println!("{TAB}{}", task.description.replace("\n", format!("\n{TAB}").as_str()));
         }
         
         println!("");
