@@ -8,6 +8,7 @@ pub mod s11n;
 pub mod userdata;
 
 mod cmd;
+mod fs;
 mod json;
 mod path;
 mod script_dir;

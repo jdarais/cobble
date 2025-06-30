@@ -13,9 +13,9 @@ use glob::{glob, Pattern};
 
 use mlua::{AnyUserData, Error, Lua, MultiValue, Table, UserData, Value};
 
-pub struct FsLib;
+pub struct PathLib;
 
-impl UserData for FsLib {
+impl UserData for PathLib {
     fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
         fields.add_field_function_get("SEP", get_path_separator);
     }

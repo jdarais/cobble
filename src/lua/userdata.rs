@@ -8,13 +8,15 @@ use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
+use crate::lua::fs::FsLib;
 use crate::lua::json::JsonLib;
 use crate::lua::toml::TomlLib;
-use crate::lua::{cmd::CmdLib, path::FsLib, script_dir::ScriptDirLib};
+use crate::lua::{cmd::CmdLib, path::PathLib, script_dir::ScriptDirLib};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CobbleUserData {
     FsLib,
+    PathLib,
     CmdLib,
     ScriptDirLib,
     TomlLib,
@@ -25,6 +27,7 @@ impl CobbleUserData {
     pub fn to_userdata<'lua>(&self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::AnyUserData<'lua>> {
         match self {
             CobbleUserData::FsLib => lua.create_userdata(FsLib),
+            CobbleUserData::PathLib => lua.create_userdata(PathLib),
             CobbleUserData::CmdLib => lua.create_userdata(CmdLib),
             CobbleUserData::ScriptDirLib => lua.create_userdata(ScriptDirLib),
             CobbleUserData::TomlLib => lua.create_userdata(TomlLib),
@@ -38,6 +41,8 @@ impl CobbleUserData {
     ) -> mlua::Result<CobbleUserData> {
         if mlua::AnyUserData::is::<FsLib>(&userdata) {
             return Ok(CobbleUserData::FsLib);
+        } else if mlua::AnyUserData::is::<PathLib>(&userdata) {
+            return Ok(CobbleUserData::PathLib);
         } else if mlua::AnyUserData::is::<CmdLib>(&userdata) {
             return Ok(CobbleUserData::CmdLib);
         } else if mlua::AnyUserData::is::<ScriptDirLib>(&userdata) {
@@ -57,6 +62,7 @@ impl fmt::Display for CobbleUserData {
         use CobbleUserData::*;
         match self {
             FsLib => write!(f, "FsLib"),
+            PathLib => write!(f, "PathLib"),
             CmdLib => write!(f, "CmdLib"),
             ScriptDirLib => write!(f, "ScriptDirLib"),
             TomlLib => write!(f, "TomlLib"),

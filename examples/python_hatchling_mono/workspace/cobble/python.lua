@@ -2,6 +2,7 @@ local path = require("path")
 local tblext = require("tblext")
 local toml = require("toml")
 local maybe = require("maybe")
+local fs = require("fs")
 
 local ws_dir = WORKSPACE.dir
 
@@ -207,15 +208,11 @@ function module.python_project(args)
                     local wheel_name = build_res.stdout:match("Successfully built ([^%s]+)")
                     assert(wheel_name)
 
-                    local cp_from = io.open(path.join(c.project.dir, "dist", wheel_name), "rb")
-                    local cp_to = io.open(path.join(c.project.dir, "dist", c.tasks.package_name.output), "wb")
-                    local data = ""
-                    while data do
-                        cp_to:write(data)
-                        data = cp_from:read(1024)
-                    end
-                    cp_from:close()
-                    cp_to:close()
+                    local wheel_path = path.join(c.project.dir, "dist", wheel_name)
+                    local untagged_wheel_path = path.join(c.project.dir, "dist", c.tasks.package_name.output)
+
+                    fs.copy( wheel_path, untagged_wheel_path )
+                    fs.remove(wheel_path)
 
                     local local_requirements = {}
                     for k, v in pairs(c.tasks) do
