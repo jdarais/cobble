@@ -7,5 +7,8 @@ python.python_project {
         "mypy",
         "pylint",
         "pytest"
+    },
+    local_packages = {
+        "/pkg1/package_editable"
     }
 }

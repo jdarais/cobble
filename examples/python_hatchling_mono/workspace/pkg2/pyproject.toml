@@ -1,10 +1,10 @@
 [project]
-name = "pkg1"
+name = "pkg2"
 version = "0.1.0"
 requires-python = ">=3.8"
 
 dependencies = [
-    "cowsay >=6.0,<7.0"
+    "pkg2 ==0.1.0"
 ]
 
 [build-system]

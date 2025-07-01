@@ -7,9 +7,13 @@
 astroid==3.3.10
     # via pylint
 colorama==0.4.6
-    # via pylint
+    # via
+    #   pylint
+    #   pytest
 dill==0.4.0
     # via pylint
+iniconfig==2.1.0
+    # via pytest
 isort==6.0.1
     # via pylint
 mccabe==0.7.0
@@ -18,11 +22,19 @@ mypy==1.16.1
     # via -r requirements.in
 mypy-extensions==1.1.0
     # via mypy
+packaging==25.0
+    # via pytest
 pathspec==0.12.1
     # via mypy
 platformdirs==4.3.8
     # via pylint
+pluggy==1.6.0
+    # via pytest
+pygments==2.19.2
+    # via pytest
 pylint==3.3.7
+    # via -r requirements.in
+pytest==8.4.1
     # via -r requirements.in
 tomlkit==0.13.3
     # via pylint

@@ -3,6 +3,7 @@ local path = require("path")
 local python = require("cobble.python")
 
 project_dir("pkg1")
+project_dir("pkg2")
 
 local ws_dir = WORKSPACE.dir
 

@@ -7,8 +7,6 @@ use std::io::ErrorKind;
 
 use mlua::UserData;
 
-
-
 pub struct FsLib;
 
 impl UserData for FsLib {
@@ -17,12 +15,13 @@ impl UserData for FsLib {
         methods.add_function("rmdir", rmdir);
         methods.add_function("copy", copy_file);
         methods.add_function("remove", remove_file);
+        methods.add_function("temp_dir", temp_dir);
     }
 }
 
 fn mkdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlua::Result<()> {
     let (dir_path, opts_opt) = args;
-    
+
     let mut parents = false;
     let mut allow_existing = false;
 
@@ -30,9 +29,15 @@ fn mkdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlu
         for opt in opts.pairs() {
             let (k, v): (String, mlua::Value) = opt?;
             match k.as_str() {
-                "parents" => { parents = lua.unpack(v)?; }
-                "allow_existing" => { allow_existing = lua.unpack(v)?; }
-                _ => { return Err(mlua::Error::runtime(format!("Unknown option: {k}"))); }
+                "parents" => {
+                    parents = lua.unpack(v)?;
+                }
+                "allow_existing" => {
+                    allow_existing = lua.unpack(v)?;
+                }
+                _ => {
+                    return Err(mlua::Error::runtime(format!("Unknown option: {k}")));
+                }
             }
         }
     }
@@ -44,15 +49,16 @@ fn mkdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlu
 
     if let Err(e) = create_dir_res {
         if e.kind() == ErrorKind::AlreadyExists && allow_existing {
-            return Ok(())
+            return Ok(());
         } else {
-            return Err(mlua::Error::runtime(format!("Error creating directory {dir_path}: {e}")));
+            return Err(mlua::Error::runtime(format!(
+                "Error creating directory {dir_path}: {e}"
+            )));
         }
     }
 
     Ok(())
 }
-
 
 fn rmdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlua::Result<()> {
     let (dir_path, opts_opt) = args;
@@ -64,9 +70,15 @@ fn rmdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlu
         for opt in opts.pairs() {
             let (k, v): (String, mlua::Value) = opt?;
             match k.as_str() {
-                "ignore_not_found" => { ignore_not_found = lua.unpack(v)?; }
-                "recursive" => { recursive = lua.unpack(v)?; }
-                _ => { return Err(mlua::Error::runtime(format!("Unknown option: {k}"))); }
+                "ignore_not_found" => {
+                    ignore_not_found = lua.unpack(v)?;
+                }
+                "recursive" => {
+                    recursive = lua.unpack(v)?;
+                }
+                _ => {
+                    return Err(mlua::Error::runtime(format!("Unknown option: {k}")));
+                }
             }
         }
     }
@@ -78,9 +90,11 @@ fn rmdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlu
 
     if let Err(e) = remove_dir_res {
         if e.kind() == ErrorKind::NotFound && ignore_not_found {
-            return Ok(())
+            return Ok(());
         } else {
-            return Err(mlua::Error::runtime(format!("Error removing directory {dir_path}: {e}")))
+            return Err(mlua::Error::runtime(format!(
+                "Error removing directory {dir_path}: {e}"
+            )));
         }
     }
 
@@ -89,9 +103,43 @@ fn rmdir<'lua>(lua: &'lua mlua::Lua, args: (String, Option<mlua::Table>)) -> mlu
 
 fn copy_file<'lua>(_lua: &'lua mlua::Lua, args: (String, String)) -> mlua::Result<()> {
     let (from_path, to_path) = args;
-    std::fs::copy(&from_path, &to_path).map(|_| ()).map_err(|e| mlua::Error::runtime(format!("Failed to copy file {from_path} to {to_path}: {e}")))
+    std::fs::copy(&from_path, &to_path)
+        .map(|_| ())
+        .map_err(|e| {
+            mlua::Error::runtime(format!("Failed to copy file {from_path} to {to_path}: {e}"))
+        })
 }
 
 fn remove_file<'lua>(_lua: &'lua mlua::Lua, path: String) -> mlua::Result<()> {
-    std::fs::remove_file(&path).map_err(|e| mlua::Error::runtime(format!("Failed to remove file {path}: {e}")))
+    std::fs::remove_file(&path)
+        .map_err(|e| mlua::Error::runtime(format!("Failed to remove file {path}: {e}")))
+}
+
+fn temp_dir<'lua>(lua: &'lua mlua::Lua, opts_opt: Option<mlua::Table>) -> mlua::Result<String> {
+    let mut prefix = String::from("cobble");
+
+    if let Some(opts) = opts_opt {
+        for opt in opts.pairs() {
+            let (k, v): (String, mlua::Value) = opt?;
+            match k.as_str() {
+                "prefix" => {
+                    prefix = lua.unpack(v)?;
+                }
+                _ => {
+                    return Err(mlua::Error::runtime(format!("Unknown option: {k}")));
+                }
+            }
+        }
+    }
+
+    let dir = tempfile::Builder::new()
+        .prefix(&prefix)
+        .disable_cleanup(true)
+        .tempdir()
+        .map_err(|e| mlua::Error::runtime(format!("Failed to create temporary directory: {e}")))?;
+
+    dir.path()
+        .to_str()
+        .map(|s| s.to_owned())
+        .ok_or_else(|| mlua::Error::runtime("Internal error: Error converting path name to string"))
 }

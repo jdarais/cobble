@@ -456,7 +456,7 @@ _function_ - Execute some logic on scope exit
 local scope = require("scope")
 
 function ()
-  local scoped = scope.on_exit(function() print("function complete") end)
+  local scoped <close> = scope.on_exit(function() print("function complete") end)
   -- do some stuff
 end -- prints "function complete" upon exiting the function
 ```

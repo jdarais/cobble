@@ -3,6 +3,7 @@ local tblext = require("tblext")
 local toml = require("toml")
 local maybe = require("maybe")
 local fs = require("fs")
+local ordered_map = require("ordered_map")
 
 local ws_dir = WORKSPACE.dir
 
@@ -22,6 +23,7 @@ function module.python_project(args)
     -- local_packages should point to tasks that have a "local_requirements" property in their output, containing
     -- a list of requirements to add to requirements.txt files used for building venvs in this project.
     local local_packages = args.local_packages or {}
+    local dev_dependencies = args.dev_dependencies or {}
 
     local constraints_file = {
         files = { constraints_file = args.constraints_file }
@@ -44,18 +46,6 @@ function module.python_project(args)
         constraints_file.calc = { "constraints_file_calc" }
     end
 
-    -- task {
-    --     name = "pyproject_toml",
-    --     artifacts = { files = { "pyproject.toml" } },
-    --     deps = {
-    --         files = { "pyproject.source.toml" },
-    --         vars = { "project.version" }
-    --     },
-    --     actions = {
-
-    --     }
-    -- }
-
     task {
         name = "venv_requirements_file",
         visible = false,
@@ -63,18 +53,28 @@ function module.python_project(args)
         artifacts = { files = { requirements = "requirements.venv.txt" } },
         actions = {
             function (c)
-                local requirements = {}
+                local requirements = ordered_map()
+                -- Add all dev dependencies
+                for _, dep in pairs(dev_dependencies) do
+                    requirements[dep] = true
+                end
+                
+                -- Add all declared local packages
                 for k, task in pairs(c.tasks) do
                     if task.output.local_requirements then
-                        table.insert(requirements, task.output.local_requirements)
+                        for _, req in pairs(task.output.local_requirements) do
+                            requirements[req] = true
+                        end
                     end
                 end
                 -- We'll always add our own project in editable mode
-                table.insert(requirements, "-e .")
+                requirements["-e ."] = true
 
-                io.open(path.join(c.project.dir, "requirements.venv.txt"), "w")
-                :write(table.concat(requirements, "\n"))
-                :close()
+                local f = io.open(path.join(c.project.dir, "requirements.venv.txt"), "w")
+                for req, _ in pairs(requirements) do
+                    f:write(req.."\n")
+                end
+                f:close()
             end
         }
     }
@@ -107,7 +107,7 @@ function module.python_project(args)
             function (c)
                 local args = {table.unpack(c.args)}
                 local arg1 = table.remove(args, 1)
-                c.tool.cmd(tblext.extend({ path.join(".venv", module.venv_bin_path, arg1) }, c.args))
+                c.tool.cmd(tblext.extend({ path.join(".venv", module.venv_bin_path, arg1) }, args))
             end
         }
     }
@@ -156,7 +156,7 @@ function module.python_project(args)
                         end
                     end
                 end
-                table.insert(local_requirements, path.join(ws_dir, c.project.dir, c.tasks.package_name.output))
+                table.insert(local_requirements, string.format("%q", path.join(ws_dir, c.project.dir, "dist", c.tasks.package_name.output)))
                 return { local_requirements = local_requirements }
             end
         }
@@ -204,15 +204,16 @@ function module.python_project(args)
             {
                 env = { build_venv = build_venv },
                 function (c)
-                    local build_res = c.env.build_venv { "python", "-m", "build", "--wheel" }
+                    local tempdir <close> = fs.tempdir()
+                    local build_res = c.env.build_venv { "python", "-m", "build", "--wheel", "-o", tempdir.path }
                     local wheel_name = build_res.stdout:match("Successfully built ([^%s]+)")
                     assert(wheel_name)
 
-                    local wheel_path = path.join(c.project.dir, "dist", wheel_name)
+                    local wheel_path = path.join(tempdir.path, wheel_name)
                     local untagged_wheel_path = path.join(c.project.dir, "dist", c.tasks.package_name.output)
 
-                    fs.copy( wheel_path, untagged_wheel_path )
-                    fs.remove(wheel_path)
+                    fs.mkdir(path.join(c.project.dir, "dist"), { allow_existing = true })
+                    fs.rename( wheel_path, untagged_wheel_path )
 
                     local local_requirements = {}
                     for k, v in pairs(c.tasks) do
@@ -222,7 +223,7 @@ function module.python_project(args)
                             end
                         end
                     end
-                    table.insert(local_requirements, path.join(ws_dir, c.project.dir, wheel_name))
+                    table.insert(local_requirements, string.format("%q", untagged_wheel_path))
                     return { local_requirements = local_requirements, tagged_wheel_name = wheel_name }
                 end
             }
@@ -249,7 +250,7 @@ function module.python_project(args)
                         end
                     end
                 end
-                table.insert(local_requirements, "-e "..path.join(ws_dir, c.project.dir))
+                table.insert(local_requirements, "-e "..string.format("%q", path.join(ws_dir, c.project.dir)))
                 return { local_requirements = local_requirements }
             end
         }
