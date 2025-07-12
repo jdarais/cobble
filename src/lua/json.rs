@@ -154,11 +154,13 @@ fn lua_to_json<'lua>(
 
 #[cfg(test)]
 mod tests {
+    use crate::lua::lua_env::create_lua_env;
+
     use super::*;
 
     #[test]
     fn test_deserialize_map() {
-        let lua = unsafe { Lua::unsafe_new() };
+        let lua = create_lua_env(Path::new(".")).unwrap();
         let json_lib = lua.create_userdata(JsonLib).unwrap();
 
         let result: (Vec<String>, Vec<i64>) = lua.load(r#"
