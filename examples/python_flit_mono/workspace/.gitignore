@@ -1,0 +1,4 @@
+.venv*/
+requirements.venv.txt
+dist/
+__pycache__/

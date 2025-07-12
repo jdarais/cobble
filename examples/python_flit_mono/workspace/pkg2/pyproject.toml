@@ -1,0 +1,13 @@
+[project]
+name = "pkg2"
+description = "the seconde package"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+dependencies = [
+    "pkg2 ==0.1.0"
+]
+
+[build-system]
+requires = ["flit_core >=3.11,<4"]
+build-backend = "flit_core.buildapi"

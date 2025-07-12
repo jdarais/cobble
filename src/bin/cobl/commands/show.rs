@@ -20,6 +20,7 @@ pub struct ShowTaskInput {
     pub tasks: Vec<String>,
     pub vars: Vec<String>,
     pub num_threads: Option<u8>,
+    pub all: bool
 }
 
 pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
@@ -28,6 +29,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         tasks,
         vars,
         num_threads,
+        all,
     } = input;
 
     let parsed_vars = parse_cli_vars(vars.iter())?;
@@ -58,6 +60,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         &workspace,
         cwd.as_path(),
         &config.workspace_dir,
+        all
     )?;
 
     if selected_tasks.len() == 0 {
@@ -73,6 +76,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         config.workspace_dir.join(".cobble.db").as_path(),
     )?;
 
+    println!("# Computing calculated artifacts #");
     calculate_artifacts(
         &config.workspace_dir,
         &mut workspace,
@@ -80,6 +84,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         &StandardIO,
     )?;
 
+    println!("# Computing calculated dependencies #");
     resolve_calculated_dependencies_in_subtrees(
         &config.workspace_dir,
         selected_tasks.iter(),
@@ -92,6 +97,12 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
         let task = workspace.tasks.get(task_name).unwrap();
         println!("Task: {task_name}");
 
+        if task.description.len() > 0 {
+            println!("");
+            println!("{TAB}{}", task.description.replace("\n", format!("\n{TAB}").as_str()));
+        }
+
+        println!("");
         println!("{TAB}Artifacts:");
         if task.artifacts.files.len() == 0 {
             println!("{TAB}{TAB}<none>");

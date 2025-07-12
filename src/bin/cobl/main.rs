@@ -57,6 +57,10 @@ enum CoblCommand {
     List {
         /// If provided, display only the matched tasks
         tasks: Vec<String>,
+
+        /// Include all matching tasks, (including hidden ones)
+        #[arg(short, default_value("false"))]
+        all: bool,
     },
     /// Run tasks
     Run {
@@ -66,11 +70,19 @@ enum CoblCommand {
         /// Run tasks even if they are up-to-date
         #[arg(short, long)]
         force: bool,
+
+        /// Include all matching tasks, (including hidden ones)
+        #[arg(short, default_value("false"))]
+        all: bool,
     },
     /// Clean tasks
     Clean {
         /// If not provided, cleans all default tasks, (dependencies are excluded)
         tasks: Vec<String>,
+
+        /// Include all matching tasks, (including hidden ones)
+        #[arg(short, default_value("false"))]
+        all: bool,
     },
     /// Interact with tools defined in the workspace
     Tool {
@@ -86,6 +98,10 @@ enum CoblCommand {
     Show {
         /// Task(s) to show info for
         tasks: Vec<String>,
+
+        /// Include all matching tasks, (including hidden ones)
+        #[arg(short, default_value("false"))]
+        all: bool,
     },
     /// Print out a script fragment that enables shell completion for cobl commands. Currently, only bash is supported.
     Completion {},
@@ -176,11 +192,8 @@ fn do_cobl(args: Cli) -> ExitCode {
 
     let result = match args.command {
         Some(cmd) => match cmd {
-            CoblCommand::List { tasks } => list_command(ListCommandInput {
-                cwd: cwd,
-                tasks: tasks,
-            }),
-            CoblCommand::Run { tasks, force } => run_command(RunCommandInput {
+            CoblCommand::List { tasks, all } => list_command(ListCommandInput { cwd, tasks, all }),
+            CoblCommand::Run { tasks, force, all } => run_command(RunCommandInput {
                 cwd,
                 tasks,
                 vars: args.var,
@@ -188,13 +201,15 @@ fn do_cobl(args: Cli) -> ExitCode {
                 num_threads: args.num_threads,
                 show_stdout: show_stdout_enum.or(show_output_enum.clone()),
                 show_stderr: show_stderr_enum.or(show_output_enum),
+                all,
             }),
-            CoblCommand::Clean { tasks } => clean_command(CleanCommandInput {
+            CoblCommand::Clean { tasks, all } => clean_command(CleanCommandInput {
                 cwd,
                 tasks,
                 num_threads: args.num_threads,
                 show_stdout: show_stdout_enum.or(show_output_enum.clone()),
                 show_stderr: show_stderr_enum.or(show_output_enum),
+                all,
             }),
             CoblCommand::Tool { tool_cmd } => match tool_cmd {
                 ToolCommand::Check { names } => check_tool_command(CheckToolInput {
@@ -218,11 +233,12 @@ fn do_cobl(args: Cli) -> ExitCode {
                     show_stderr: show_stderr_enum.or(show_output_enum),
                 }),
             },
-            CoblCommand::Show { tasks } => show_task_command(ShowTaskInput {
+            CoblCommand::Show { tasks, all } => show_task_command(ShowTaskInput {
                 cwd,
                 tasks,
                 vars: args.var,
                 num_threads: args.num_threads,
+                all
             }),
             CoblCommand::Completion {} => print_completion_script(),
             CoblCommand::Other(other_args) => {

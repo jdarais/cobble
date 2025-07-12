@@ -1,0 +1,13 @@
+[project]
+name = "pkg1"
+description = "the first package"
+version = "0.1.0"
+requires-python = ">=3.8"
+
+dependencies = [
+    "cowsay >=6.0,<7.0"
+]
+
+[build-system]
+requires = ["flit_core >=3.11,<4"]
+build-backend = "flit_core.buildapi"

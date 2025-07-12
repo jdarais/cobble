@@ -1,0 +1,7 @@
+# This requirements file is hand-edited.  It's used to generate constraints-pinned.txt for building virtual environments
+# locally, and is used to generate
+
+mypy >=1.16.1,<2.0
+pylint >=3.3.7,<4.0
+pytest >=8.4.1,<9.0
+

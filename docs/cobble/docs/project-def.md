@@ -16,8 +16,10 @@ _function_ - Define a task
 
 - `task_def`: _table_ - task definition properties
     - `name`: _string_ - the task name
+    - `description`: _string | nil_ - a description of the task, shown in `cobl list` and `cobl show` commands
     - `actions`: _table_ - A list of `action`s that define the execution logic for the task.
     - `default`: _bool | nil_ - whether the task is a default task for the project.  When `cobl run` is given a project name, the default tasks for that project are run.  If no tasks are defined as default for a project, passing the project name to `cobl run` runs all tasks in the project. (default=false)
+    - `visible`: _bool | nil_ - whether the task is visible.  Tasks that are not visible are hidden from `cobl list` unless the `-a` flag is given.  Tasks that are not visible are also excluded from wildcard matches when a wildcard pattern is supplied to commands that accept them, such as `run`, `list`, and `show`.
     - `always_run`: _bool | nil_ - If true, the task will always be run if selected, regardless of whether its dependencies and artifacts are up-to-date. (default=false)
     - `interactive`: _bool | nil_ - If true, child processes launched by this task can attach to stdin.  Note that interactive tasks cannot run in parallel. (default=false)
     - `stdout`: _"always" | "never" | "on_fail" | nil_ - When to display stdout output from the task (default="on_fail")

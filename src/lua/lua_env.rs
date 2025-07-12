@@ -9,8 +9,9 @@ use std::path::Path;
 use mlua::{Lua, Table};
 
 use crate::lua::cmd::CmdLib;
+use crate::lua::fs::FsLib;
 use crate::lua::json::JsonLib;
-use crate::lua::path::FsLib;
+use crate::lua::path::PathLib;
 use crate::lua::script_dir::ScriptDirLib;
 use crate::lua::toml::TomlLib;
 
@@ -38,7 +39,12 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let cmd_loader = lua.load(&cmd_source[..]).into_function()?.bind(cmd_lib)?;
     preload_table.set("cmd", cmd_loader)?;
 
-    let path_lib = lua.create_userdata(FsLib)?;
+    let fs_lib = lua.create_userdata(FsLib)?;
+    let fs_source = include_bytes!("fs.lua");
+    let fs_loader = lua.load(&fs_source[..]).into_function()?.bind(fs_lib)?;
+    preload_table.set("fs", fs_loader)?;
+
+    let path_lib = lua.create_userdata(PathLib)?;
     let path_source = include_bytes!("path.lua");
     let path_loader = lua.load(&path_source[..]).into_function()?.bind(path_lib)?;
     preload_table.set("path", path_loader)?;
@@ -80,6 +86,10 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let tblext_source = include_bytes!("tblext.lua");
     let tblext_loader = lua.load(&tblext_source[..]).into_function()?;
     preload_table.set("tblext", tblext_loader)?;
+
+    let ordered_map_source = include_bytes!("ordered_map.lua");
+    let ordered_map_loader = lua.load(&ordered_map_source[..]).into_function()?;
+    preload_table.set("ordered_map", ordered_map_loader)?;
 
     {
         let mut module_search_path = OsString::new();

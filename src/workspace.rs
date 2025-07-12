@@ -33,6 +33,8 @@ pub struct FileDependency {
 pub struct Task {
     pub task_type: TaskType,
     pub name: Arc<str>,
+    pub description: Arc<str>,
+    pub is_visible: bool,
     pub project_name: Arc<str>,
     pub project_path: Arc<Path>,
     pub dir: Arc<Path>,
@@ -56,8 +58,10 @@ pub struct Task {
 impl Default for Task {
     fn default() -> Self {
         Self {
-            name: String::new().into(),
             task_type: TaskType::Task,
+            name: String::new().into(),
+            description: String::new().into(),
+            is_visible: true,
             project_name: String::new().into(),
             project_path: PathBuf::from(".").into(),
             dir: PathBuf::from(".").into(),
@@ -191,8 +195,10 @@ fn add_task_to_workspace(
     workspace: &mut Workspace,
 ) {
     let mut task = Task {
-        name: task_def.name.clone(),
         task_type: TaskType::Task,
+        name: task_def.name.clone(),
+        description: task_def.description.clone(),
+        is_visible: task_def.is_visible.unwrap_or(true),
         dir: dir.clone(),
         project_name: project_name.clone(),
         project_path: dir.clone(),
@@ -222,6 +228,7 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
     if project.name.as_ref() != "/__COBBLE_INTERNAL__" {
         let mut project_task = Task {
             name: project.name.clone(),
+            description: format!("Project {}", project.name).into(),
             task_type: TaskType::Project,
             dir: project.path.clone(),
             project_name: project.name.clone(),
@@ -234,8 +241,8 @@ fn add_project_to_workspace(project: &Project, workspace: &mut Workspace) {
             .filter(|t| t.is_default.unwrap_or(false))
             .collect();
         if default_tasks.len() == 0 {
-            // Not specifying any default tasks for a project results in all tasks being default
-            default_tasks = project.tasks.iter().collect();
+            // Not specifying any default tasks for a project results in all visible tasks being default
+            default_tasks = project.tasks.iter().filter(|t| t.is_visible != Some(false)).collect();
         }
 
         for (i, task) in default_tasks.into_iter().enumerate() {

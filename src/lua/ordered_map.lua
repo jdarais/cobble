@@ -1,3 +1,8 @@
+-- Cobble Build Automation
+-- Copyright (C) 2024 Jeremiah Darais
+--
+-- This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)]
+--
 -- An order-preserving map implementation for Lua
 
 local function ordered_map_pairs_next(state, k)
@@ -52,11 +57,19 @@ local ordered_map_metatable = {
     end
 }
 
-local function create_ordered_map()
-    return setmetatable({
+local function ordered_map(entries)
+    local map = setmetatable({
         _map = {},
         _keys = {}
     }, ordered_map_metatable)
+
+    if entries then
+        for i, entry in ipairs(entries) do
+            map[entry[1]] = entry[2]
+        end
+    end
+
+    return map
 end
 
-return create_ordered_map
+return ordered_map

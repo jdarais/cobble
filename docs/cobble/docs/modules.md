@@ -114,6 +114,107 @@ _function_ - Test whether a path exists and is a file
 
 - _boolean_ - True if the path exists and is a file.  False otherwise.
 
+### fs
+
+The `fs` module provides basic filesystem operations, such as create/move/delete operations on files, and creating temp directories
+
+#### fs.mkdir
+
+_function_ - Create a directory
+
+`fs.mkdir(path, opts)`
+
+##### Arguments
+
+- `path`: _string_ - The path of the directory to create
+- `opts` _(optional)_: _table_ - Options that customize the behavior of the mkdir operation
+  - `parents`: _bool | nil_ - If set to true, mkdir creates parent directories of the directory to create if they don't already exist. (Default = false)
+  - `allow_existing`: _bool | nil_ - If set to true, mkdir silently skips trying to create a directory if it already exists.  Otherwise, mkdir will raise an error if it tries to create a directory that already exists. (Default = false)
+
+##### Returns
+
+- _nil_
+
+#### fs.rmdir
+
+_function_ - Removes a directory
+
+`fs.rmdir(path, opts)`
+
+##### Arguments
+
+- `path`: _string_ - The path of the directory to remove
+- `opts` _(optional)_: _table_ - Options that customize the behavior of the rmdir operation
+  - `recursive`: _bool | nil_ - If set to true, the contents of a non-empty directory will be removed recursively.  Otherwise, attempting to remove a non-empty directory will result in an error. (Default = false)
+  - `ignore_not_found`: _bool | nil_ - If true, rmdir will ignore a directory that doesn't exist.  Otherwise, attempting to remove a directory that doesn't exist will result in an error. (Default = false)
+
+##### Returns
+
+- _nil_
+
+#### fs.copy
+
+_function_ - Copies a file from one location to another
+
+`fs.copy(from_path, to_path)`
+
+##### Arguments
+
+- `from_path`: _string_ - The path of the file to copy
+- `to_path`: _string_ - The path to copy the file to
+
+##### Returns
+
+- _nil_
+
+#### fs.remove
+
+_function_ - Remove a file
+
+`fs.remove(path)`
+
+##### Arguments
+
+- `path`: _string_ - The path of the file to remove
+
+##### Returns
+
+- _nil_
+
+#### fs.rename
+
+_function_ - Rename (move) a file from one path to another.  Alias for `require("os").rename(oldpath, newpath)`.
+
+`fs.rename(oldpath, newpath)`
+
+##### Arguments
+
+- `oldpath`: _string_ - The path of the file to rename (move)
+- `newpath`: _string_ - The path to rename (move) the file to
+
+##### Returns
+
+- _nil_
+
+#### fs.tempdir
+
+_function_ - Creates a temporary directory
+
+`fs.tempdir(opts)`
+
+##### Arguments
+
+- `opts`: _table_ - Options that customize the behavior of the tempdir operation
+  - `prefix`: _string | nil_ - A prefix to include in the temp directory name
+
+##### Returns
+
+- _temp_dir_handle_ - A handle for managing the lifetime of the temp directory.  The return value can be assigned as a to-be-closed value, which will remove the temporary directory when the handle goes out of scope.
+
+Example:
+
+`local temp <close> = fs.tempdir()` 
+
 ### iter
 
 The `iter` module provides a convenient, functional interface for manipulating lists lazily and efficiently.
@@ -219,7 +320,7 @@ _function_ - Execute a function for each value or set of values produced by the 
 
 ##### Returns
 
-_nil_
+- _nil_
 
 #### iter:to_table
 
@@ -229,6 +330,23 @@ _function_ - Iterate over the iterator and collect the values into a table.  The
 
 _table_ - The table into which the iterator values were collected
 
+### ordered_map
+
+An ordered map that preserves ordering of keys on updates.  The `ordered_map` type is used for map structures in both the `json` and `toml` modules.  (Note that keys are _ordered_, not _sorted_.  While key order is preserved, `ordered_map` does not attempt to sort the keys.  Key order is determined by the order in which keys are added.)
+
+#### ordered_map
+
+_function_ - Create an ordered map
+
+`ordered_map()`
+
+##### Arguments
+
+- none
+
+##### Returns
+
+- _ordered_map_ - An `ordered_map` object
 
 ### json
 
@@ -456,7 +574,7 @@ _function_ - Execute some logic on scope exit
 local scope = require("scope")
 
 function ()
-  local scoped = scope.on_exit(function() print("function complete") end)
+  local scoped <close> = scope.on_exit(function() print("function complete") end)
   -- do some stuff
 end -- prints "function complete" upon exiting the function
 ```
@@ -503,13 +621,15 @@ _function_ - Merge entries from one table into another
 
 If a key exists in both `source` and `target`, the value from `source` overwrites the value in `target`. Integer keys behave differently from other keys.  Integer keys are offset by `start_index-1` and then merged.  The default value for `start_index` is `#target+1`, meaning sequence values in `source` will be appended to the existing sequence values in `target`.  If you'd like sequence values in `source` to be merged into `target` just like any other key type, pass in `1` for `start_index`.
 
-`tblext.extend(target, source, [start_index])`
+`tblext.extend(target, source, [start_index_or_opts])`
 
 ##### Arguments
 
 - `target`: _table_ - The table into which entries will be merged
 - `source`: _table_ - The source table for entries to be merged from
-- `start_index` _(optional)_: _int_ - The index at which to start appending values with integer keys.
+- `start_index_or_opts` _(optional)_: _int | table_ - Options to customize the behavior of the `extend` operation.  If an integer value is provided, it will be interpreted as the `start_index` option.  (This behavior is deprecated and will be removed in a future release. To ensure compatibility with future versions, always provide options in a table.)
+  - `start_index`: _int | nil_ - The index at which to start inserting values with integer keys. (By default, values with integer keys will be appended to the end of existing integer-key values.)
+  - `deep`: _bool | nil_ - When set to true, if a table property is encountered in the source and target tables, `tablext.extend` is applied recursively to apply the table update.  When set to false, the table property in `target` is replaced by the value of the table property in `source`.  (Default = false)
 
 ##### Returns
 

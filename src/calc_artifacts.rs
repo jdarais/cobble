@@ -20,9 +20,13 @@ use crate::{
 
 #[derive(Debug)]
 pub enum CalcArtifactsError {
-    DependencyError(ExecutionGraphError),
+    DependencyError {
+        task_name: Arc<str>,
+        error: ExecutionGraphError,
+    },
     ExecutionError(TaskExecutionError),
     OutputError {
+        for_task_name: Arc<str>,
         task_name: Arc<str>,
         task_output: SerLuaValueBlock,
         error: String,
@@ -37,9 +41,9 @@ impl fmt::Display for CalcArtifactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use CalcArtifactsError::*;
         match self {
-            DependencyError(e) => write!(f, "Error resolving calculated dependencies in calc artifacts tasks: {e}"),
+            DependencyError{ task_name, error } => write!(f, "Error resolving dependencies in calc artifacts tasks for {task_name}: {error}"),
             ExecutionError(e) => write!(f, "Error while executing artifacts task or one of its dependencies: {e}"),
-            OutputError{ task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name}: output={task_output}, error={error}"),
+            OutputError{ for_task_name, task_name, task_output, error } => write!(f, "Error in output of calc artifacts task {task_name} for {for_task_name}: output={task_output}, error={error}"),
             NameResolutionError{ task_name, error } => write!(f, "Error resolving calc artifact path returned by task {task_name}: error={error}")
         }
     }
@@ -68,21 +72,24 @@ pub fn calculate_artifacts<IO: ProcessIO>(
 ) -> Result<(), CalcArtifactsError> {
     let mut calc_artifacts_tasks: Vec<Arc<str>> = Vec::new();
 
-    for (_, task) in workspace.tasks.iter() {
+    for (task_name, task) in workspace.tasks.clone().iter() {
         for calc_artifact in task.artifacts.calc.iter() {
             calc_artifacts_tasks.push(calc_artifact.clone());
         }
-    }
 
-    // First need to make sure all calculated dependencies in the dependency trees of the calc artifacts tasks are resolved
-    resolve_calculated_dependencies_in_subtrees(
-        ws_dir,
-        calc_artifacts_tasks.iter(),
-        workspace,
-        executor,
-        pio,
-    )
-    .map_err(|e| CalcArtifactsError::DependencyError(e))?;
+        // First need to make sure all calculated dependencies in the dependency trees of the calc artifacts tasks are resolved
+        resolve_calculated_dependencies_in_subtrees(
+            ws_dir,
+            task.artifacts.calc.iter(),
+            &mut *workspace,
+            executor,
+            pio,
+        )
+        .map_err(|e| CalcArtifactsError::DependencyError {
+            task_name: task_name.clone(),
+            error: e,
+        })?;
+    }
 
     // Execute the tasks
     executor
@@ -98,7 +105,8 @@ pub fn calculate_artifacts<IO: ProcessIO>(
             let task_outputs = executor_cache.task_outputs.read().unwrap();
             let task_output_record = Artifacts::try_from(&task_outputs[calc_artifact].task_output)
                 .map_err(|e| CalcArtifactsError::OutputError {
-                    task_name: task.name.clone(),
+                    for_task_name: task.name.clone(),
+                    task_name: calc_artifact.clone(),
                     task_output: task_outputs[calc_artifact].task_output.clone(),
                     error: e,
                 })?;
@@ -127,6 +135,13 @@ pub fn calculate_artifacts<IO: ProcessIO>(
 
     for (task_name, task) in updated_tasks {
         workspace.tasks.insert(task_name.clone(), task.clone());
+
+        // Need to update file providers map as well
+        // TODO: Make it an error if a file is already provided by another task (need to do this in
+        // compute_file_providers function as well.)
+        for (_file_alias, file_path) in task.artifacts.files.iter() {
+            workspace.file_providers.insert(file_path.clone(), task_name.clone());
+        }
     }
 
     Ok(())

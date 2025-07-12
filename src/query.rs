@@ -16,6 +16,7 @@ pub fn find_tasks_for_dir<'a>(
     workspace: &'a Workspace,
     workspace_dir: &Path,
     project_dir: &Path,
+    include_hidden: bool
 ) -> Vec<Arc<str>> {
     let full_project_dir = PathBuf::from_iter(workspace_dir.join(project_dir).components());
     workspace
@@ -24,6 +25,7 @@ pub fn find_tasks_for_dir<'a>(
         .filter(|(_k, v)| {
             PathBuf::from_iter(workspace_dir.join(v.dir.as_ref()).components())
                 .starts_with(&full_project_dir)
+                && (v.is_visible || include_hidden)
         })
         .map(|(k, _v)| k.clone())
         .collect()
@@ -33,6 +35,7 @@ pub fn find_tasks_for_query<'i, I>(
     workspace: &Workspace,
     project_name: &str,
     task_queries: I,
+    include_hidden: bool,
 ) -> Result<Vec<Arc<str>>, NameResolutionError>
 where
     I: Iterator<Item = &'i str>,
@@ -59,6 +62,7 @@ where
 
             if workspace.tasks.contains_key(full_task_name.as_ref()) {
                 direct_name_matches.insert(full_task_name.clone());
+                // We'll include direct matches even if they are hidden
                 result.push(full_task_name.clone());
             } else {
                 return Err(NameResolutionError::InvalidName(String::from(query)));
@@ -67,8 +71,12 @@ where
     }
 
     // Find all pattern matches
-    for task_name in workspace.tasks.keys() {
+    for (task_name, task) in workspace.tasks.iter() {
         if direct_name_matches.contains(task_name) {
+            continue;
+        }
+
+        if !task.is_visible && !include_hidden {
             continue;
         }
 
@@ -151,7 +159,7 @@ mod tests {
         let ws = create_minimal_workspace();
 
         let matches =
-            find_tasks_for_query(&ws, "/project1", vec!["/project2/task1"].into_iter()).unwrap();
+            find_tasks_for_query(&ws, "/project1", vec!["/project2/task1"].into_iter(), true).unwrap();
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].as_ref(), "/project2/task1");
@@ -161,7 +169,7 @@ mod tests {
     fn test_match_relative_task_name() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(&ws, "/project1", vec!["task1"].into_iter()).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["task1"].into_iter(), true).unwrap();
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].as_ref(), "/project1/task1");
@@ -171,7 +179,7 @@ mod tests {
     fn test_direct_query_no_match_returns_error() {
         let ws = create_minimal_workspace();
 
-        find_tasks_for_query(&ws, "/project1", vec!["not_a_task"].into_iter())
+        find_tasks_for_query(&ws, "/project1", vec!["not_a_task"].into_iter(), true)
             .expect_err("Expected 'not_a_task' query to return an error");
     }
 
@@ -180,7 +188,7 @@ mod tests {
         let ws = create_minimal_workspace();
 
         let matches =
-            find_tasks_for_query(&ws, "/project1", vec!["*/not_a_task"].into_iter()).unwrap();
+            find_tasks_for_query(&ws, "/project1", vec!["*/not_a_task"].into_iter(), true).unwrap();
 
         assert_eq!(matches.len(), 0);
     }
@@ -189,7 +197,7 @@ mod tests {
     fn test_wildcard_with_multiple_matches() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(&ws, "/project1", vec!["*/task1"].into_iter()).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["*/task1"].into_iter(), true).unwrap();
 
         assert_eq!(matches.len(), 2);
         assert!(matches.contains(&String::from("/project1/task1").into()));
@@ -200,7 +208,7 @@ mod tests {
     fn test_relative_wildcard() {
         let ws = create_minimal_workspace();
 
-        let matches = find_tasks_for_query(&ws, "/project1", vec!["task?"].into_iter()).unwrap();
+        let matches = find_tasks_for_query(&ws, "/project1", vec!["task?"].into_iter(), true).unwrap();
 
         assert_eq!(matches.len(), 2);
         assert!(matches.contains(&String::from("/project1/task1").into()));

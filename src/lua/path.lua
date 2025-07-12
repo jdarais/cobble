@@ -10,7 +10,8 @@ local module_prototype = {
     glob = function(...) return pathlib.glob(...) end,
     is_dir = function(...) return pathlib.is_dir(...) end,
     is_file = function(...) return pathlib.is_file(...) end,
-    join = function(...) return pathlib.join(...) end
+    join = function(...) return pathlib.join(...) end,
+    strip_prefix = function(...) return pathlib.strip_prefix(...) end
 }
 
 local module_metatable = {
