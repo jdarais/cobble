@@ -80,7 +80,7 @@ task {
     description = "Update the pinned constraints file used to install the pip tools venv",
     deps = { tasks = { constraints_file = "pip_tools_constraints_file" } },
     actions = {
-        { 
+        {
             env = "pip_tools_venv",
             function (c)
                 c.env.pip_tools_venv {

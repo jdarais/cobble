@@ -101,7 +101,7 @@ pub fn show_task_command(input: ShowTaskInput) -> anyhow::Result<()> {
             println!("");
             println!("{TAB}{}", task.description.replace("\n", format!("\n{TAB}").as_str()));
         }
-        
+
         println!("");
         println!("{TAB}Artifacts:");
         if task.artifacts.files.len() == 0 {

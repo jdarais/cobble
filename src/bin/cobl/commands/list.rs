@@ -70,7 +70,7 @@ pub fn list_command(input: ListCommandInput) -> anyhow::Result<()> {
 
         rows.push((maybe_rel_name, task.description.as_ref()))
     }
-    
+
     let max_task_name_width = rows.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
     let task_name_column_width = (max_task_name_width + 8) + (max_task_name_width % 4);
 

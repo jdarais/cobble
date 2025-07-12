@@ -19,6 +19,10 @@ end
 
 module.venv_python_path = path.join(module.venv_bin_path, module.python_exe)
 
+local function find_source_deps_for_target(pyproject_toml)
+    -- TODO: Implement this
+end
+
 function module.python_project(args)
     -- local_packages should point to tasks that have a "local_requirements" property in their output, containing
     -- a list of requirements to add to requirements.txt files used for building venvs in this project.
@@ -58,7 +62,7 @@ function module.python_project(args)
                 for _, dep in pairs(dev_dependencies) do
                     requirements[dep] = true
                 end
-                
+
                 -- Add all declared local packages
                 for k, task in pairs(c.tasks) do
                     if task.output.local_requirements then
@@ -113,6 +117,42 @@ function module.python_project(args)
     }
 
     task {
+        name = "calc_package_source_files",
+        visible = false,
+        always_run = true,
+        deps = {
+            files = { pyproject_toml = "pyproject.toml" },
+        },
+        actions = {
+            function (c)
+                pyproject = toml.load(c.files.pyproject_toml.path)
+
+                local import_name = maybe(pyproject).tool.flit.module
+                    :or_else(function () return pyproject.project.name end)
+                    :and_then(function (name) return name:gsub("%.", "/") end)
+                    .value
+                assert(import_name, "Unable to determine module import name from pyproject.toml")
+
+                local data_dir = maybe(pyproject).tool.flit["external-data"].directory.value
+                local includes = maybe(pyproject).tool.flit.sdist.include:or_else(function () return {} end).value
+                local excludes = maybe(pyproject).tool.flit.sdist.exclude:or_else(function () return {} end).value
+
+                table.insert(includes, "src/"..import_name.."/**/*")
+
+                if data_dir then
+                    table.insert(includes, data_dir.."/**/*")
+                end
+
+                table.insert(excludes, "**/*.pyc")
+
+                local package_files = path.glob(c.project.dir, import_name.."/**/*", {include=includes, exclude=excludes, include_dirs=false})
+
+                return { files = package_files }
+            end
+        }
+    }
+
+    task {
         name = "calc_package_sdist_name",
         visible = false,
         deps = { files = { pyproject_toml = "pyproject.toml" } },
@@ -140,7 +180,8 @@ function module.python_project(args)
         description = "Builds the sdist package. Returns requirements.txt entries for this package and all local requirements reported by dependencies.",
         deps = {
             files = { pyproject_toml = "pyproject.toml" },
-            tasks = tblext.extend({ package_name = "calc_package_sdist_name" }, local_packages)
+            tasks = tblext.extend({ package_name = "calc_package_sdist_name" }, local_packages),
+            calc = { "calc_package_source_files" }
         },
         artifacts = {
             calc = { "calc_package_sdist" }
@@ -195,7 +236,8 @@ function module.python_project(args)
                         .."'tagged_wheel_name' property",
         deps = {
             files = { pyproject_toml = "pyproject.toml" },
-            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages)
+            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages),
+            calc = { "calc_package_source_files" }
         },
         artifacts = {
             calc = { "calc_package_wheel" }
@@ -235,7 +277,8 @@ function module.python_project(args)
         description = "Acts as a 'package' that will be installed editable mode. Returns requirements.txt entries for this package and all local requirements reported by dependencies.",
         deps = {
             files = { pyproject_toml = "pyproject.toml" },
-            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages)
+            tasks = tblext.extend({ package_name = "calc_package_wheel_name" }, local_packages),
+            calc = { "calc_package_source_files" }
         },
         artifacts = {
             calc = { "calc_package_wheel" }
@@ -251,7 +294,11 @@ function module.python_project(args)
                     end
                 end
                 table.insert(local_requirements, "-e "..string.format("%q", path.join(ws_dir, c.project.dir)))
-                return { local_requirements = local_requirements }
+                return {
+                    local_requirements = local_requirements,
+                    -- Include source file paths and hashes in task output so if they change, tasks that depend on this one will detect the change
+                    source_files = c.files
+                }
             end
         }
     }
