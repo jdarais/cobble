@@ -5,13 +5,17 @@ More detailed documentation of the `cobl` CLI coming soon.
 For now, here is the output of `cobl --help`:
 
 ```
+Usage: cobl [OPTIONS] [COMMAND]
+
 Commands:
-  list   List available tasks
-  run    Run tasks
-  clean  Clean tasks
-  tool   Interact with tools defined in the workspace
-  env    Interact with build environments defined in the workspace
-  help   Print this message or the help of the given subcommand(s)
+  list        List available tasks
+  run         Run tasks
+  clean       Clean tasks
+  tool        Interact with tools defined in the workspace
+  env         Interact with build environments defined in the workspace
+  show        Show details about a task
+  completion  Print out a script fragment that enables shell completion for cobl commands. Currently, only bash is supported
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
   -n, --num-threads <N>
