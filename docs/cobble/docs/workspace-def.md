@@ -6,6 +6,7 @@ The presence of a `cobble.toml` file marks the root of a Cobble workspace.  The 
 
 - `root_projects`: _array[string]_ - A list of root project paths to include in the workspace (Default = `["."]`)
 - `num_threads`: _int_ - Number of threads to use for executing tasks (Default = `5`)
+- `modules_dir`: _string_ - Directory to search for lua modules in.  `modules_dir` must exist within the workspace. (Default = `"."`, i.e. the workspace root is used as the module directory.)
 - `stdout`: _"always" | "never" | "on_fail"_ - When to display stdout output from tasks (Default = `"on_fail"`)
 - `stderr`: _"always" | "never" | "on_fail"_ - When to display stderr output from tasks (Default = `"on_fail"`)
 - `output`: _"always" | "never" | "on_fail"_ - Sets both `stdout` and `stderr`.  If `stdout` or `stderr` properties are present, they will take precedence over `output`.
@@ -18,6 +19,7 @@ An example of what a `cobble.toml` file might look like:
 ```toml
 root_projects = [ "./project_a", "./project_b" ]
 num_threads = 10
+modules_dir = "cobble"
 
 [vars]
 foo = "bar"

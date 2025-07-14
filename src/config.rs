@@ -28,6 +28,7 @@ pub struct WorkspaceInit {
 #[derive(Debug)]
 pub struct WorkspaceConfig {
     pub workspace_dir: PathBuf,
+    pub modules_dir: PathBuf,
     pub root_projects: Vec<String>,
     pub vars: serde_json::Map<String, serde_json::Value>,
     pub force_run_tasks: bool,
@@ -110,6 +111,14 @@ pub fn parse_workspace_config(
     let mut config: toml::Table = config_str
         .parse()
         .map_err(|e| WorkspaceConfigError::ParseError(format!("Error parsing config: {}", e)))?;
+
+    // Modules Directory
+    let modules_dir_opt: Option<toml::Value> = config.remove("modules_dir");
+    let modules_dir_str: String = match modules_dir_opt {
+        Some(dir) => dir.try_into().map_err(|e| WorkspaceConfigError::ValueError(format!("at 'modules_dir': {e}")))?,
+        None => String::from(".")
+    };
+    let modules_dir = PathBuf::from(modules_dir_str);
 
     // Root Projects
     let root_projects_opt: Option<toml::Value> = config.remove("root_projects");
@@ -296,6 +305,7 @@ pub fn parse_workspace_config(
 
     Ok(WorkspaceConfig {
         workspace_dir: PathBuf::from(config_path.parent().unwrap_or_else(|| Path::new("."))),
+        modules_dir,
         root_projects,
         vars,
         force_run_tasks: false,

@@ -47,6 +47,7 @@ pub fn check_tool_command(input: CheckToolInput) -> anyhow::Result<()> {
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
+        config.modules_dir.as_path(),
         config.root_projects.iter().map(|s| s.as_str()),
     )?;
     let workspace = create_workspace(projects.values());

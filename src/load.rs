@@ -215,12 +215,13 @@ pub fn extract_project_defs(
 
 pub fn load_projects<'a, P>(
     workspace_dir: &Path,
+    modules_dir: &Path,
     root_projects: P,
 ) -> mlua::Result<BTreeMap<String, Project>>
 where
     P: Iterator<Item = &'a str>,
 {
-    let project_def_lua = create_lua_env(workspace_dir)?;
+    let project_def_lua = create_lua_env(workspace_dir, modules_dir)?;
 
     init_lua_for_project_config(&project_def_lua, workspace_dir)?;
 
@@ -240,7 +241,7 @@ mod tests {
     #[test]
     fn test_load_subproject_def() {
         let tmpdir = mktemp::Temp::new_dir().unwrap();
-        let lua = create_lua_env(tmpdir.as_path()).unwrap();
+        let lua = create_lua_env(tmpdir.as_path(), Path::new(".")).unwrap();
 
         init_lua_for_project_config(&lua, tmpdir.as_path()).unwrap();
 

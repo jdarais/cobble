@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_validate_and_convert_arg_list_action() {
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(Path::new("."), Path::new(".")).unwrap();
         let action_val: mlua::Value = lua
             .load(r#"{ tool = "cmd", "echo", "hi", "there" }"#)
             .eval()
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_validate_and_convert_function_action() {
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(Path::new("."), Path::new(".")).unwrap();
         let action_val: mlua::Value = lua
             .load(
                 r#"
@@ -408,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_mixed_function_and_string_sequence_fails_validation() {
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(Path::new("."), Path::new(".")).unwrap();
         let action_val: mlua::Value = lua
             .load(
                 r#"

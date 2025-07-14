@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_map() {
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(Path::new("."), Path::new(".")).unwrap();
         let json_lib = lua.create_userdata(JsonLib).unwrap();
 
         let result: (Vec<String>, Vec<i64>) = lua.load(r#"

@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_build_env_def_from_lua_table() {
-        let lua = create_lua_env(Path::new(".")).unwrap();
+        let lua = create_lua_env(Path::new("."), Path::new(".")).unwrap();
 
         let build_env_table: mlua::Table = lua
             .load(
