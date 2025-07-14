@@ -132,6 +132,7 @@ fn run_from_dir(path: &Path) -> anyhow::Result<()> {
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
+        config.modules_dir.as_path(),
         config.root_projects.iter().map(|s| s.as_str()),
     )
     .unwrap();

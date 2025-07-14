@@ -1,4 +1,4 @@
-
+modules_dir = "cobble"
 
 [vars]
 project.version = "0.1.0"

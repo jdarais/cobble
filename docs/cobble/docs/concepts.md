@@ -171,9 +171,9 @@ Note that the built-in `cmd` tool interprets file paths as relative to the proje
 
 ## Modules
 
-Cobble sets the workspace root as the module path root for including modules.  This means that if you have a lua module that exists at `cobble_modules/python.lua`, you can include that in any lua script with `require("cobble_modules.python")`.  Leveraging modules is a great way to share logic for defining different types of projects.
+Cobble uses the `modules_dir` configuration value, (defaulting to the workspace root,) to set the module path root for including modules.  This means that if you have a lua module that exists at `cobble_modules/python.lua`, you can include that in any lua script with `require("cobble_modules.python")`, or if `modules_dir` is set to `cobble_modules`, it can be included simply with `require("python")`.  Leveraging modules is a great way to share project definition logic and other utilities across projects.
 
-Note that using native modules may work, but is not officially supported.  Cobble is designed to make workspaces as portable and self-contained as possible, and use of native lua modules runs counter to this philosophy.
+Note that using native modules may work, but is not officially supported.  This may change in the future.
 
 ### Cobble modules
 

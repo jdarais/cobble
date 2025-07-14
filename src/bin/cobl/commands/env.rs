@@ -46,6 +46,7 @@ pub fn run_env_command(input: RunEnvInput) -> anyhow::Result<()> {
 
     let projects = load_projects(
         config.workspace_dir.as_path(),
+        config.modules_dir.as_path(),
         config.root_projects.iter().map(|s| s.as_str()),
     )?;
     let mut workspace = create_workspace(projects.values());

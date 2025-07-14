@@ -3,6 +3,7 @@
 //
 // This program is licensed under the GPLv3.0 license (https://github.com/jdarais/cobble/blob/main/COPYING)
 
+use std::borrow::Cow;
 use std::ffi::OsString;
 use std::path::Path;
 
@@ -17,7 +18,7 @@ use crate::lua::toml::TomlLib;
 
 pub const COBBLE_JOB_INTERACTIVE_ENABLED: &str = "COBBLE_JOB_INTERACTIVE_ENABLED";
 
-pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
+pub fn create_lua_env(workspace_dir: &Path, modules_dir: &Path) -> mlua::Result<Lua> {
     let lua = unsafe { Lua::unsafe_new() };
     let preload_table: mlua::Table = lua
         .globals()
@@ -91,12 +92,23 @@ pub fn create_lua_env(workspace_dir: &Path) -> mlua::Result<Lua> {
     let ordered_map_loader = lua.load(&ordered_map_source[..]).into_function()?;
     preload_table.set("ordered_map", ordered_map_loader)?;
 
+    let workspace_dir_full_path = dunce::canonicalize(workspace_dir)
+        .map_err(|e| mlua::Error::runtime(format!("Error determining workspace directory from {}: {}", workspace_dir.display(), e)))?;
+
+    let modules_dir_full_path: Cow<Path> = dunce::canonicalize(workspace_dir.join(modules_dir))
+        .map(|p| Cow::Owned(p))
+        .unwrap_or(Cow::Borrowed(workspace_dir));
+
+    if !modules_dir_full_path.starts_with(&workspace_dir_full_path) {
+        return Err(mlua::Error::runtime(format!("Modules directory must be inside the workspace. (Got {})", modules_dir_full_path.display())));
+    }
+
     {
         let mut module_search_path = OsString::new();
-        module_search_path.push(workspace_dir.as_os_str());
+        module_search_path.push(modules_dir_full_path.as_os_str());
         module_search_path.push(std::path::MAIN_SEPARATOR_STR);
         module_search_path.push("?.lua;");
-        module_search_path.push(workspace_dir.as_os_str());
+        module_search_path.push(modules_dir_full_path.as_os_str());
         module_search_path.push(std::path::MAIN_SEPARATOR_STR);
         module_search_path.push("?");
         module_search_path.push(std::path::MAIN_SEPARATOR_STR);
@@ -118,7 +130,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn test_shell_command() {
-        let lua_env = create_lua_env(Path::new(".")).unwrap();
+        let lua_env = create_lua_env(Path::new("."), Path::new(".")).unwrap();
         let chunk = lua_env.load(r#"require("cmd")({"echo", "hi!"})"#);
 
         let result: Table = chunk.eval().unwrap();

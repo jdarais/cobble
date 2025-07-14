@@ -56,7 +56,7 @@ fn poll_next_task(
 }
 
 pub fn run_task_executor_worker(args: TaskExecutorWorkerArgs) {
-    let lua = create_lua_env(args.workspace_config.workspace_dir.as_path())
+    let lua = create_lua_env(args.workspace_config.workspace_dir.as_path(), args.workspace_config.modules_dir.as_path())
         .expect("Lua environment creation should always succeed");
     init_lua_for_task_executor(&lua)
         .expect("Initializing lua environment for a task executor should always succeed");

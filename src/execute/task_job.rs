@@ -697,6 +697,7 @@ mod tests {
         let workspace_config = Arc::new(WorkspaceConfig {
             init: None,
             workspace_dir: PathBuf::from("."),
+            modules_dir: PathBuf::from("."),
             root_projects: vec![String::from(".")],
             vars: serde_json::Map::new(),
             force_run_tasks: false,
@@ -706,7 +707,7 @@ mod tests {
             show_stderr: TaskOutputCondition::Always,
         });
         let workspace_dir: Arc<Path> = PathBuf::from(".").into();
-        let lua = create_lua_env(workspace_dir.as_ref()).unwrap();
+        let lua = create_lua_env(workspace_dir.as_ref(), Path::new(".")).unwrap();
         init_lua_for_task_executor(&lua).unwrap();
 
         let db_env = Arc::new(

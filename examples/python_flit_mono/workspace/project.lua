@@ -1,6 +1,6 @@
 local tblext = require("tblext")
 local path = require("path")
-local python = require("cobble.python")
+local python = require("python")
 
 project_dir("pkg1")
 project_dir("pkg2")
