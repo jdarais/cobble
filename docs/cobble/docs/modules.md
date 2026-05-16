@@ -330,13 +330,15 @@ _function_ - Iterate over the iterator and collect the values into a table.  The
 
 _table_ - The table into which the iterator values were collected
 
-### ordered_map
+### collections
 
-An ordered map that preserves ordering of keys on updates.  The `ordered_map` type is used for map structures in both the `json` and `toml` modules.  (Note that keys are _ordered_, not _sorted_.  While key order is preserved, `ordered_map` does not attempt to sort the keys.  Key order is determined by the order in which keys are added.)
+The `collections` module contains collection types that provide specialized functionality not available with plain tables.
 
 #### ordered_map
 
 _function_ - Create an ordered map
+
+An ordered map that preserves ordering of keys on updates.  The `ordered_map` type is used for map structures in both the `json` and `toml` modules.  (Note that keys are _ordered_, not _sorted_.  While key order is preserved, `ordered_map` does not attempt to sort the keys.  Key order is determined by the order in which keys are added.)
 
 `ordered_map()`
 
@@ -347,6 +349,30 @@ _function_ - Create an ordered map
 ##### Returns
 
 - _ordered_map_ - An `ordered_map` object
+
+#### map
+
+_function_ - Create a map
+
+A map is similar to a table, but enforces that keys are strings
+
+##### Arguments
+
+- `initial_map` _(optional)_: _table_ - Initial map contents
+
+##### Returns
+
+- _map_ - A `map` object
+
+#### array
+
+_function_ - Create an array
+
+An array is a table that only allows contiguous, numeric indices.  When serialized, arrays are always serialized as lists, not maps or tables.  This helps to ambiguate the intent at serialization time, since Lua tables serve as both maps and lists, but most serialization formats differentiate between the two.
+
+##### Arguments
+
+- `initial_array` _(optional)_: _table_ - Initial array contents
 
 ### json
 

@@ -12,12 +12,12 @@ pub fn prop_path_string(prop_path: &Vec<Cow<'static, str>>) -> String {
     prop_path.join(".")
 }
 
-pub fn prop_key_string<'lua>(
-    lua: &'lua mlua::Lua,
-    key: &mlua::Value<'lua>,
+pub fn prop_key_string(
+    lua: &mlua::Lua,
+    key: &mlua::Value,
 ) -> mlua::Result<Cow<'static, str>> {
     match key {
-        mlua::Value::String(s) => Ok(Cow::Owned(String::from(s.to_str()?))),
+        mlua::Value::String(s) => Ok(Cow::Owned(String::from(s.to_str()?.as_ref()))),
         _ => {
             let ser_key = SerLuaValueBlock::from_lua(key.clone(), lua)?;
             Ok(Cow::Owned(format!("[{ser_key}]")))
@@ -97,10 +97,10 @@ pub fn validate_table_is_sequence(
     Ok(())
 }
 
-pub fn validate_is_string<'a, 'lua>(
-    value: &'a mlua::Value<'lua>,
+pub fn validate_is_string<'a>(
+    value: &'a mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<&'a mlua::String<'lua>> {
+) -> mlua::Result<&'a mlua::String> {
     match value {
         mlua::Value::String(s) => Ok(s),
         _ => Err(mlua::Error::runtime(format!(
@@ -127,10 +127,10 @@ pub fn validate_is_bool(
     }
 }
 
-pub fn validate_is_table<'a, 'lua>(
-    value: &'a mlua::Value<'lua>,
+pub fn validate_is_table<'a>(
+    value: &'a mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
-) -> mlua::Result<&'a mlua::Table<'lua>> {
+) -> mlua::Result<&'a mlua::Table> {
     match value {
         mlua::Value::Table(t) => Ok(t),
         _ => Err(mlua::Error::runtime(format!(

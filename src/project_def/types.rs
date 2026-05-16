@@ -58,10 +58,10 @@ impl TryFrom<&SerLuaValueBlock> for StringOrInt {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for StringOrInt {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for StringOrInt {
+    fn from_lua(value: mlua::Value, _lua: &mlua::Lua) -> mlua::Result<Self> {
         match value {
-            mlua::Value::String(s) => Ok(StringOrInt::String(Arc::from(s.to_str()?))),
+            mlua::Value::String(s) => Ok(StringOrInt::String(Arc::from(s.to_str()?.as_ref()))),
             mlua::Value::Integer(i) => Ok(StringOrInt::Int(i)),
             _ => Err(mlua::Error::runtime(format!(
                 "Expected a string or integer, but got a {}: {:?}",
@@ -72,8 +72,8 @@ impl<'lua> mlua::FromLua<'lua> for StringOrInt {
     }
 }
 
-impl<'lua> mlua::IntoLua<'lua> for StringOrInt {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+impl mlua::IntoLua for StringOrInt {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         match self {
             StringOrInt::Int(i) => Ok(mlua::Value::Integer(i)),
             StringOrInt::String(s) => Ok(mlua::Value::String(lua.create_string(s.as_ref())?))
@@ -102,10 +102,10 @@ pub fn extend_string_or_int_table<I, T>(map: &mut BTreeMap<StringOrInt, T>, valu
     }
 }
 
-pub fn json_to_lua<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn json_to_lua(
+    lua: &mlua::Lua,
     value: serde_json::Value,
-) -> mlua::Result<mlua::Value<'lua>> {
+) -> mlua::Result<mlua::Value> {
     match value {
         serde_json::Value::Object(obj) => {
             let table = lua.create_table()?;
@@ -127,7 +127,7 @@ pub fn json_to_lua<'lua>(
             .map(|i| mlua::Value::Integer(i))
             .or_else(|| n.as_f64().map(|f| mlua::Value::Number(f)))
             .ok_or_else(|| mlua::Error::ToLuaConversionError {
-                from: "json number",
+                from: String::from("json number"),
                 to: "lua integer or number",
                 message: Some(format!("invalid value: {}", n)),
             }),

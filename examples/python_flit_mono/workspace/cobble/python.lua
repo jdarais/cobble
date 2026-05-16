@@ -3,7 +3,7 @@ local tblext = require("tblext")
 local toml = require("toml")
 local maybe = require("maybe")
 local fs = require("fs")
-local ordered_map = require("ordered_map")
+local ordered_map = require("collections").ordered_map
 
 local ws_dir = WORKSPACE.dir
 

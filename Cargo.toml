@@ -18,7 +18,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 dunce = "1.0.4"
 glob = "0.3.1"
 lmdb = "0.8.0"
-mlua = { version = "0.9.7", features = ["lua54", "vendored"] }
+mlua = { version = "0.11.5", features = ["lua54", "vendored", "serde", "send"] }
 serde = { version = "1.0.197", features = ["derive", "rc"] }
 serde_json = { version = "1.0.116", features = ["preserve_order"] }
 sha2 = "0.10.8"

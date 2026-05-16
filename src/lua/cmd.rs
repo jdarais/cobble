@@ -17,7 +17,7 @@ use crate::lua::lua_env::COBBLE_JOB_INTERACTIVE_ENABLED;
 pub struct CmdLib;
 
 impl UserData for CmdLib {
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_function("cmd", exec_shell_command);
     }
 }
@@ -29,7 +29,7 @@ enum ChildMessage {
     StderrDone,
 }
 
-fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<Table<'lua>> {
+fn exec_shell_command(lua: &Lua, args: Table) -> mlua::Result<Table> {
     let args_len_int = args.len()?;
     let args_len: usize = args_len_int
         .try_into()
@@ -61,7 +61,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                 let s_str = s.to_str().map_err(|e| {
                     Error::runtime(format!("Error reading lua string value: {}", e))
                 })?;
-                match s_str {
+                match s_str.as_ref() {
                     "cwd" => {
                         cwd = Some(PathBuf::from(lua.unpack::<String>(v)?));
                     }
@@ -84,7 +84,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     _ => {
                         return Err(Error::runtime(format!(
                             "Unknown key in cmd input: {}",
-                            s.to_str().unwrap_or("<error reading value>")
+                            s.to_str().map(|v| String::from(v.as_ref())).unwrap_or(String::from("<error reading value>"))
                         )));
                     }
                 };
@@ -234,7 +234,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stdout(out) => {
                         stdout_buf.push_str(out.as_str());
                         if let Some(out_fn) = &out_func {
-                            out_fn.call::<_, ()>(out)?;
+                            out_fn.call::<()>(out)?;
                         }
                     }
                     ChildMessage::StdoutDone => {
@@ -243,7 +243,7 @@ fn exec_shell_command<'lua>(lua: &'lua Lua, args: Table<'lua>) -> mlua::Result<T
                     ChildMessage::Stderr(err) => {
                         stderr_buf.push_str(err.as_str());
                         if let Some(err_fn) = &err_func {
-                            err_fn.call::<_, ()>(err)?;
+                            err_fn.call::<()>(err)?;
                         }
                     }
                     ChildMessage::StderrDone => {

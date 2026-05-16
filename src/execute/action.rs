@@ -20,7 +20,7 @@ pub struct ActionContextFile {
     pub path: String,
 }
 
-pub struct ActionContextArgs<'lua> {
+pub struct ActionContextArgs {
     pub task_name: Arc<str>,
     pub action: Action,
     pub extra_tools: BTreeMap<Arc<str>, Arc<str>>,
@@ -30,7 +30,7 @@ pub struct ActionContextArgs<'lua> {
     pub all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     pub task_outputs: BTreeMap<StringOrInt, TaskOutput>,
     pub project_dir: String,
-    pub args: mlua::Value<'lua>,
+    pub args: mlua::Value,
     pub workspace: Arc<Workspace>,
     pub cache: Arc<TaskExecutorCache>,
     pub sender: Sender<TaskJobMessage>,
@@ -49,7 +49,7 @@ fn get_original_error(error: &mlua::Error) -> &mlua::Error {
 
 fn get_error_message(val: &mlua::Value) -> String {
     match val {
-        mlua::Value::String(s) => s.to_str().unwrap_or("<error reading message>").to_owned(),
+        mlua::Value::String(s) => s.to_str().map(|v| String::from(v.as_ref())).unwrap_or(String::from("<error reading message>")),
         mlua::Value::Error(e) => get_original_error(&e).to_string(),
         _ => format!("{:?}", val),
     }
@@ -60,12 +60,12 @@ pub fn init_lua_for_task_executor(lua: &mlua::Lua) -> mlua::Result<()> {
     lua.load(&task_executor_env_source[..]).exec()
 }
 
-pub fn invoke_action_protected<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn invoke_action_protected(
+    lua: &mlua::Lua,
     action: &Action,
-    action_context: mlua::Table<'lua>,
+    action_context: mlua::Table,
     return_arg_list_action_result: bool,
-) -> Result<mlua::Value<'lua>, TaskExecutionError> {
+) -> Result<mlua::Value, TaskExecutionError> {
     let (success, result) =
         execute_action_pcall(lua, action, action_context, return_arg_list_action_result)
             .map_err(|e| TaskExecutionError::LuaError(e))?;
@@ -78,17 +78,17 @@ pub fn invoke_action_protected<'lua>(
     }
 }
 
-fn invoke_tool_by_name<'lua>(
-    lua: &'lua mlua::Lua,
+fn invoke_tool_by_name(
+    lua: &mlua::Lua,
     tool_name: &Arc<str>,
     task_name: &Arc<str>,
     all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
-    args: mlua::Value<'lua>,
+    args: mlua::Value,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-) -> mlua::Result<mlua::Value<'lua>> {
+) -> mlua::Result<mlua::Value> {
     let tool = workspace.tools.get(tool_name).ok_or_else(|| {
         mlua::Error::runtime(format!(
             "Tried to invoke tool '{}', but no tool with that name exists.",
@@ -118,17 +118,17 @@ fn invoke_tool_by_name<'lua>(
     }
 }
 
-fn invoke_env_by_name<'lua>(
-    lua: &'lua mlua::Lua,
+fn invoke_env_by_name(
+    lua: &mlua::Lua,
     env_name: &Arc<str>,
     task_name: &Arc<str>,
     vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
-    args: mlua::Value<'lua>,
+    args: mlua::Value,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-) -> mlua::Result<mlua::Value<'lua>> {
+) -> mlua::Result<mlua::Value> {
     let env = workspace.build_envs.get(env_name).ok_or_else(|| {
         mlua::Error::runtime(format!(
             "Tried to invoke env '{}', but no env with that name exists.",
@@ -159,18 +159,18 @@ fn invoke_env_by_name<'lua>(
     }
 }
 
-pub fn create_tool_action_context<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn create_tool_action_context(
+    lua: &mlua::Lua,
     action: &Action,
     task_name: &Arc<str>,
     var_deps: Vec<Arc<str>>,
     all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
-    args: mlua::Value<'lua>,
+    args: mlua::Value,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-) -> mlua::Result<mlua::Table<'lua>> {
+) -> mlua::Result<mlua::Table> {
     create_action_context(
         lua,
         ActionContextArgs {
@@ -191,19 +191,19 @@ pub fn create_tool_action_context<'lua>(
     )
 }
 
-pub fn create_env_action_context<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn create_env_action_context(
+    lua: &mlua::Lua,
     action: &Action,
     env: &Arc<BuildEnv>,
     task_name: &Arc<str>,
     var_deps: Vec<Arc<str>>,
     all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     project_dir: String,
-    args: mlua::Value<'lua>,
+    args: mlua::Value,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-) -> mlua::Result<mlua::Table<'lua>> {
+) -> mlua::Result<mlua::Table> {
     let env_setup_task_output_opt = match env.setup_task.as_ref() {
         Some(setup_task) => cache
             .task_outputs
@@ -246,17 +246,17 @@ pub fn create_env_action_context<'lua>(
     )
 }
 
-pub fn create_task_action_context<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn create_task_action_context(
+    lua: &mlua::Lua,
     action: &Action,
     task: &Arc<Task>,
     task_input: &TaskInput,
-    args: mlua::Value<'lua>,
+    args: mlua::Value,
     all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     workspace: &Arc<Workspace>,
     cache: &Arc<TaskExecutorCache>,
     task_event_sender: &Sender<TaskJobMessage>,
-) -> mlua::Result<mlua::Table<'lua>> {
+) -> mlua::Result<mlua::Table> {
     let mut files: BTreeMap<StringOrInt, ActionContextFile> = BTreeMap::new();
     for (file_alias, file_dep) in &task.file_deps {
         let hash = task_input
@@ -321,10 +321,10 @@ pub fn create_task_action_context<'lua>(
     )
 }
 
-pub fn create_action_context<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn create_action_context(
+    lua: &mlua::Lua,
     context_args: ActionContextArgs,
-) -> mlua::Result<mlua::Table<'lua>> {
+) -> mlua::Result<mlua::Table> {
     let ActionContextArgs {
         task_name,
         action,
@@ -498,12 +498,12 @@ pub fn create_action_context<'lua>(
     Ok(action_context)
 }
 
-pub fn execute_action_pcall<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn execute_action_pcall(
+    lua: &mlua::Lua,
     action: &Action,
-    action_context: mlua::Table<'lua>,
+    action_context: mlua::Table,
     return_arg_list_action_result: bool,
-) -> mlua::Result<(bool, mlua::Value<'lua>)> {
+) -> mlua::Result<(bool, mlua::Value)> {
     let invoke_action_source = include_bytes!("invoke_action.lua");
     let invoke_action_fn = lua.load(&invoke_action_source[..]);
 
@@ -550,7 +550,7 @@ mod tests {
         };
 
         assert_eq!(
-            get_error_message(&mlua::Value::Error(error)),
+            get_error_message(&mlua::Value::Error(Box::new(error))),
             original_error.to_string()
         )
     }

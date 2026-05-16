@@ -27,15 +27,15 @@ use crate::vars::extract_vars;
 use crate::workspace::BuildEnv;
 use crate::workspace::{Task, Workspace};
 
-fn execute_task_actions<'lua>(
-    lua: &'lua mlua::Lua,
+fn execute_task_actions(
+    lua: &mlua::Lua,
     task: &TaskJob,
     task_inputs: &TaskInput,
     workspace: &Arc<Workspace>,
     all_vars: Arc<serde_json::Map<String, serde_json::Value>>,
     cache: &Arc<TaskExecutorCache>,
     sender: &Sender<TaskJobMessage>,
-) -> Result<mlua::Value<'lua>, TaskExecutionError> {
+) -> Result<mlua::Value, TaskExecutionError> {
     let mut args: mlua::Value = mlua::Value::Nil;
     for action in task.task.actions.iter() {
         let action_context_res = create_task_action_context(

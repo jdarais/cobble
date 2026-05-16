@@ -37,19 +37,19 @@ pub struct TaskDef {
     pub ser_task: SerLuaValueBlock,
 }
 
-fn validate_output_condition<'lua>(
+fn validate_output_condition(
     value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     let val_str = validate_is_string(value, prop_path)?;
 
-    match val_str.to_str()? {
+    match val_str.to_str()?.as_ref() {
         "always" | "never" | "on_fail" => Ok(()),
         invalid_val => Err(mlua::Error::runtime(format!("Invalid value given for output condition: {}.  Expected one of [always, never, on_fail].", invalid_val)))
     }
 }
 
-fn validate_env_table<'lua>(
+fn validate_env_table(
     table: &mlua::Table,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
@@ -69,9 +69,9 @@ fn validate_env_table<'lua>(
     Ok(())
 }
 
-pub fn validate_inline_task<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+pub fn validate_inline_task(
+    lua: &mlua::Lua,
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     let tbl_val = validate_is_table(value, &mut *prop_path)?;
@@ -81,7 +81,7 @@ pub fn validate_inline_task<'lua>(
     for pair in tbl_val.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
         let k_str = validate_is_string(&k, &mut *prop_path)?;
-        match k_str.to_str()? {
+        match k_str.to_str()?.as_ref() {
             "name" => with_prop(&mut *prop_path, Cow::Borrowed("name"), |path| {
                 validate_is_string(&v, path).and(Ok(()))
             }),
@@ -158,7 +158,7 @@ pub fn validate_inline_task<'lua>(
     Ok(())
 }
 
-pub fn validate_task<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value<'lua>) -> mlua::Result<()> {
+pub fn validate_task(lua: &mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     let mut prop_path: Vec<Cow<str>> = Vec::new();
 
     let tbl_val = validate_is_table(value, &mut prop_path)?;
@@ -191,10 +191,10 @@ impl fmt::Display for TaskDef {
     }
 }
 
-pub fn dump_inline_task<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn dump_inline_task(
+    lua: &mlua::Lua,
     task_name: Arc<str>,
-    task_table: mlua::Table<'lua>,
+    task_table: mlua::Table,
 ) -> mlua::Result<TaskDef> {
     let ser_task = SerLuaValueBlock::from_lua(mlua::Value::Table(task_table.clone()), lua)?;
     let ser_task = ser_task.as_deterministic();
@@ -211,7 +211,7 @@ pub fn dump_inline_task<'lua>(
     let build_env_val: mlua::Value = task_table.get("env")?;
     let build_env = match build_env_val {
         mlua::Value::String(s) => {
-            let build_env_name = Arc::<str>::from(s.to_str()?);
+            let build_env_name = Arc::<str>::from(s.to_str()?.as_ref());
             Some((build_env_name.clone(), build_env_name))
         }
         mlua::Value::Table(t) => {
@@ -264,8 +264,8 @@ pub fn dump_inline_task<'lua>(
     })
 }
 
-impl<'lua> mlua::FromLua<'lua> for TaskDef {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for TaskDef {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(task_table) => {
                 let name_str: String = task_table.get("name")?;

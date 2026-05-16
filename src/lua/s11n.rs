@@ -556,9 +556,9 @@ impl<'a> From<&'a SerLuaValueBlock> for SerLuaValueRef<'a> {
     }
 }
 
-fn dump_function_source<'lua>(
-    lua: &'lua mlua::Lua,
-    func: mlua::Function<'lua>,
+fn dump_function_source(
+    lua: &mlua::Lua,
+    func: mlua::Function,
 ) -> mlua::Result<Vec<u8>> {
     if func.info().what != "Lua" {
         return Err(mlua::Error::runtime(format!(
@@ -571,10 +571,10 @@ fn dump_function_source<'lua>(
     Ok(func_source_dump.as_bytes().to_owned())
 }
 
-pub fn dump_function_upvalues<'lua>(
-    lua: &'lua mlua::Lua,
-    func: mlua::Function<'lua>,
-) -> mlua::Result<Vec<mlua::Table<'lua>>> {
+pub fn dump_function_upvalues(
+    lua: &mlua::Lua,
+    func: mlua::Function,
+) -> mlua::Result<Vec<mlua::Table>> {
     let get_upvalues: mlua::Function = lua
         .load(
             r#"
@@ -598,10 +598,10 @@ pub fn dump_function_upvalues<'lua>(
     get_upvalues.call(func.clone())
 }
 
-fn append_ser_lua_value<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
-    ref_value_index_map: &mut HashMap<*const c_void, (usize, mlua::Value<'lua>)>,
+fn append_ser_lua_value(
+    lua: &mlua::Lua,
+    value: &mlua::Value,
+    ref_value_index_map: &mut HashMap<*const c_void, (usize, mlua::Value)>,
     ref_values: &mut Vec<SerLuaValue>,
 ) -> mlua::Result<usize> {
     let value_ptr = value.to_pointer();
@@ -622,7 +622,7 @@ fn append_ser_lua_value<'lua>(
         mlua::Value::Boolean(v) => SerLuaValue::Boolean(*v),
         mlua::Value::Integer(v) => SerLuaValue::Integer(*v),
         mlua::Value::Number(v) => SerLuaValue::Number(*v),
-        mlua::Value::String(v) => SerLuaValue::String(String::from(v.to_str()?)),
+        mlua::Value::String(v) => SerLuaValue::String(String::from(v.to_str()?.as_ref())),
         mlua::Value::Table(t) => {
             let mut entries: Vec<(usize, usize)> = Vec::new();
             for pair in t.clone().pairs() {
@@ -634,7 +634,7 @@ fn append_ser_lua_value<'lua>(
 
             entries.sort_by_cached_key(|(k, _v)| SerLuaValueRef::from(ref_values, *k));
 
-            let metatable: Option<usize> = match t.get_metatable() {
+            let metatable: Option<usize> = match t.metatable() {
                 Some(mt) => Some(append_ser_lua_value(
                     lua,
                     &mlua::Value::Table(mt),
@@ -685,6 +685,9 @@ fn append_ser_lua_value<'lua>(
                 t
             )));
         }
+        mlua::Value::Other(o) => {
+            return Err(mlua::Error::runtime(format!("Cannot serialize unknown object: {:?}", o)));
+        }
     };
 
     ref_values[ref_index] = ser_val;
@@ -692,11 +695,11 @@ fn append_ser_lua_value<'lua>(
     Ok(ref_index)
 }
 
-pub fn to_ser_lua_value<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+pub fn to_ser_lua_value(
+    lua: &mlua::Lua,
+    value: &mlua::Value,
 ) -> mlua::Result<SerLuaValueBlock> {
-    let mut ref_value_index_map: HashMap<*const c_void, (usize, mlua::Value<'lua>)> =
+    let mut ref_value_index_map: HashMap<*const c_void, (usize, mlua::Value)> =
         HashMap::new();
     let mut ref_values: Vec<SerLuaValue> = Vec::new();
 
@@ -705,16 +708,16 @@ pub fn to_ser_lua_value<'lua>(
     Ok(SerLuaValueBlock { values: ref_values })
 }
 
-impl<'lua> mlua::FromLua<'lua> for SerLuaValueBlock {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for SerLuaValueBlock {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         to_ser_lua_value(lua, &value)
     }
 }
 
-pub fn hydrate_function_upvalues<'lua>(
-    lua: &'lua mlua::Lua,
-    func: mlua::Function<'lua>,
-    upvalues: &Vec<(&str, mlua::Value<'lua>)>,
+pub fn hydrate_function_upvalues(
+    lua: &mlua::Lua,
+    func: mlua::Function,
+    upvalues: &Vec<(&str, mlua::Value)>,
 ) -> mlua::Result<()> {
     let upvalues_table = lua.create_table()?;
     for (up_name, up_val) in upvalues {
@@ -742,17 +745,17 @@ pub fn hydrate_function_upvalues<'lua>(
     "#,
         )
         .eval()?;
-    hydrate.call::<_, ()>((func, upvalues_table))?;
+    hydrate.call::<()>((func, upvalues_table))?;
 
     Ok(())
 }
 
-fn hydrate_ser_lua_value<'lua>(
-    lua: &'lua mlua::Lua,
+fn hydrate_ser_lua_value(
+    lua: &mlua::Lua,
     value_block: &SerLuaValueBlock,
     index: usize,
-    index_to_value_map: &mut HashMap<usize, mlua::Value<'lua>>,
-) -> mlua::Result<mlua::Value<'lua>> {
+    index_to_value_map: &mut HashMap<usize, mlua::Value>,
+) -> mlua::Result<mlua::Value> {
     if let Some(val) = index_to_value_map.get(&index) {
         return Ok(val.clone());
     }
@@ -780,7 +783,7 @@ fn hydrate_ser_lua_value<'lua>(
                 let mt_val = hydrate_ser_lua_value(lua, value_block, *mt, index_to_value_map)?;
                 match mt_val {
                     mlua::Value::Table(mt_tbl) => {
-                        table.set_metatable(Some(mt_tbl));
+                        table.set_metatable(Some(mt_tbl))?;
                     }
                     _ => {
                         return Err(mlua::Error::runtime(format!(
@@ -818,24 +821,24 @@ fn hydrate_ser_lua_value<'lua>(
     Ok(val)
 }
 
-pub fn from_ser_lua_value<'lua>(
-    lua: &'lua mlua::Lua,
+pub fn from_ser_lua_value(
+    lua: &mlua::Lua,
     block: &SerLuaValueBlock,
     index: usize,
-) -> mlua::Result<mlua::Value<'lua>> {
+) -> mlua::Result<mlua::Value> {
     let mut index_to_value_map: HashMap<usize, mlua::Value> =
         HashMap::with_capacity(block.values.len());
     hydrate_ser_lua_value(lua, block, index, &mut index_to_value_map)
 }
 
-impl<'lua> IntoLua<'lua> for SerLuaValueBlock {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+impl IntoLua for SerLuaValueBlock {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         from_ser_lua_value(lua, &self, 0)
     }
 }
 
-impl<'lua> IntoLua<'lua> for &SerLuaValueBlock {
-    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+impl IntoLua for &SerLuaValueBlock {
+    fn into_lua(self, lua: &mlua::Lua) -> mlua::Result<mlua::Value> {
         from_ser_lua_value(lua, self, 0)
     }
 }

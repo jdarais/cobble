@@ -16,7 +16,7 @@ use crate::project_def::validate::validate_table_is_sequence;
 pub struct TomlLib;
 
 impl UserData for TomlLib {
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_function("loads", toml_loads);
         methods.add_function("load", toml_load);
         methods.add_function("dumps", toml_dumps);
@@ -24,7 +24,7 @@ impl UserData for TomlLib {
     }
 }
 
-fn toml_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lua>> {
+fn toml_load(lua: &Lua, path: String) -> mlua::Result<mlua::Value> {
     let mut f = File::open(Path::new(path.as_str()))
         .map_err(|e| mlua::Error::runtime(format!("Error reading file {}: {}", path, e)))?;
 
@@ -35,8 +35,8 @@ fn toml_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lu
     toml_loads(lua, buf)
 }
 
-fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Value<'lua>> {
-    let ordered_map_ctor: mlua::Function = lua.load(r#"require("ordered_map")"#).eval()?;
+fn toml_loads(lua: &Lua, toml_str: String) -> mlua::Result<mlua::Value> {
+    let ordered_map_ctor: mlua::Function = lua.load(r#"require("collections").ordered_map"#).eval()?;
 
     let toml_tbl = toml_str
         .parse::<toml::Table>()
@@ -45,20 +45,20 @@ fn toml_loads<'lua>(lua: &'lua Lua, toml_str: String) -> mlua::Result<mlua::Valu
     toml_to_lua(lua, toml::Value::Table(toml_tbl), &ordered_map_ctor)
 }
 
-fn toml_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Table<'lua>)) -> mlua::Result<()> {
+fn toml_dump(lua: &Lua, args: (String, mlua::Table)) -> mlua::Result<()> {
     let (path, table) = args;
     let toml_str = toml_dumps(lua, table)?;
 
     let mut f = File::create(Path::new(path.as_str()))
         .map_err(|e| mlua::Error::runtime(format!("Error opening file {}: {}", path, e)))?;
 
-    f.write_all(toml_str.as_bytes())
+    f.write_all(toml_str.as_bytes().as_ref())
         .map_err(|e| mlua::Error::runtime(format!("Error writing to file {}: {}", path, e)))?;
 
     Ok(())
 }
 
-fn toml_dumps<'lua>(lua: &'lua Lua, table: mlua::Table<'lua>) -> mlua::Result<mlua::String<'lua>> {
+fn toml_dumps(lua: &Lua, table: mlua::Table) -> mlua::Result<mlua::String> {
     let toml = lua_to_toml(lua, mlua::Value::Table(table))?;
     let toml_str = toml.to_string();
     let toml_lua_str = lua.create_string(toml_str)?;
@@ -68,7 +68,7 @@ fn toml_dumps<'lua>(lua: &'lua Lua, table: mlua::Table<'lua>) -> mlua::Result<ml
 struct DateTimeUserData(toml::value::Datetime);
 
 impl UserData for DateTimeUserData {
-    fn add_methods<'lua, M: mlua::UserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_method("__tostring", |lua, this, _args: mlua::MultiValue| {
             let formatted = format!("{}", this.0);
             let lua_string = lua.create_string(formatted)?;
@@ -77,7 +77,7 @@ impl UserData for DateTimeUserData {
     }
 }
 
-fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value, ordered_map_ctor: &mlua::Function<'lua>) -> mlua::Result<mlua::Value<'lua>> {
+fn toml_to_lua(lua: &Lua, toml_val: toml::Value, ordered_map_ctor: &mlua::Function) -> mlua::Result<mlua::Value> {
     match toml_val {
         toml::Value::Array(arr) => {
             let tbl = lua.create_table()?;
@@ -107,9 +107,9 @@ fn toml_to_lua<'lua>(lua: &'lua Lua, toml_val: toml::Value, ordered_map_ctor: &m
     }
 }
 
-fn lua_to_toml<'lua>(
-    lua: &'lua mlua::Lua,
-    lua_val: mlua::Value<'lua>,
+fn lua_to_toml(
+    lua: &mlua::Lua,
+    lua_val: mlua::Value,
 ) -> mlua::Result<toml::Value> {
     match lua_val {
         mlua::Value::Boolean(b) => Ok(toml::Value::Boolean(b)),
@@ -158,6 +158,9 @@ fn lua_to_toml<'lua>(
         )),
         mlua::Value::Error(_) => Err(mlua::Error::runtime(
             "Cannot convert an error object to a toml value",
+        )),
+        mlua::Value::Other(_) => Err(mlua::Error::runtime(
+            "Cannot convert unknown type to a toml value"
         )),
     }
 }

@@ -33,7 +33,7 @@ pub struct BuildEnvDef {
     pub ser_env: SerLuaValueBlock,
 }
 
-pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
+pub fn validate_build_env(lua: &mlua::Lua, value: &mlua::Value) -> mlua::Result<()> {
     let mut prop_path: Vec<Cow<str>> = Vec::new();
     match value {
         mlua::Value::Table(tbl_val) => {
@@ -43,7 +43,7 @@ pub fn validate_build_env<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> ml
             for pair in tbl_val.clone().pairs() {
                 let (k, v): (mlua::Value, mlua::Value) = pair?;
                 let k_str = validate_is_string(&k, &mut prop_path)?;
-                match k_str.to_str()? {
+                match k_str.to_str()?.as_ref() {
                     "name" => with_prop(&mut prop_path, Cow::Borrowed("name"), |path| {
                         validate_is_string(&v, path).and(Ok(()))
                     }),
@@ -106,8 +106,8 @@ impl fmt::Display for BuildEnvDef {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for BuildEnvDef {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for BuildEnvDef {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         let ser_env = SerLuaValueBlock::from_lua(value.clone(), lua)?;
         let ser_env = ser_env.as_deterministic();
         match value {

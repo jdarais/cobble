@@ -10,7 +10,7 @@ use mlua::UserData;
 pub struct FsLib;
 
 impl UserData for FsLib {
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_function("mkdir", mkdir);
         methods.add_function("rmdir", rmdir);
         methods.add_function("copy", copy_file);

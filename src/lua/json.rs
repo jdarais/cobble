@@ -16,7 +16,7 @@ use crate::project_def::validate::validate_table_is_sequence;
 pub struct JsonLib;
 
 impl UserData for JsonLib {
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_function("load", json_load);
         methods.add_function("loads", json_loads);
         methods.add_function("dump", json_dump);
@@ -24,7 +24,7 @@ impl UserData for JsonLib {
     }
 }
 
-fn json_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lua>> {
+fn json_load(lua: &Lua, path: String) -> mlua::Result<mlua::Value> {
     let mut f = File::open(Path::new(path.as_str()))
         .map_err(|e| mlua::Error::runtime(format!("Error reading file {}: {}", path, e)))?;
 
@@ -35,8 +35,8 @@ fn json_load<'lua>(lua: &'lua Lua, path: String) -> mlua::Result<mlua::Value<'lu
     json_loads(lua, buf)
 }
 
-fn json_loads<'lua>(lua: &'lua Lua, val: String) -> mlua::Result<mlua::Value<'lua>> {
-    let ordered_map_ctor: mlua::Function = lua.load(r#"require("ordered_map")"#).eval()?;
+fn json_loads(lua: &Lua, val: String) -> mlua::Result<mlua::Value> {
+    let ordered_map_ctor: mlua::Function = lua.load(r#"require("collections").ordered_map"#).eval()?;
 
     let parsed: serde_json::Value = val
         .parse()    
@@ -45,7 +45,7 @@ fn json_loads<'lua>(lua: &'lua Lua, val: String) -> mlua::Result<mlua::Value<'lu
     json_to_lua(lua, parsed, &ordered_map_ctor)
 }
 
-fn json_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Value<'lua>)) -> mlua::Result<()> {
+fn json_dump(lua: &Lua, args: (String, mlua::Value)) -> mlua::Result<()> {
     let (path, lua_val) = args;
     let json_str = json_dumps(lua, lua_val)?;
 
@@ -58,16 +58,16 @@ fn json_dump<'lua>(lua: &'lua Lua, args: (String, mlua::Value<'lua>)) -> mlua::R
     Ok(())
 }
 
-fn json_dumps<'lua>(lua: &'lua Lua, val: mlua::Value) -> mlua::Result<String> {
+fn json_dumps(lua: &Lua, val: mlua::Value) -> mlua::Result<String> {
     let json_val = lua_to_json(lua, val)?;
     Ok(json_val.to_string())
 }
 
-fn json_to_lua<'lua>(
-    lua: &'lua Lua,
+fn json_to_lua(
+    lua: &Lua,
     json_val: serde_json::Value,
-    ordered_map_ctor: &mlua::Function<'lua>
-) -> mlua::Result<mlua::Value<'lua>> {
+    ordered_map_ctor: &mlua::Function
+) -> mlua::Result<mlua::Value> {
     match json_val {
         serde_json::Value::Null => Ok(mlua::Value::Nil),
         serde_json::Value::Bool(b) => Ok(mlua::Value::Boolean(b)),
@@ -99,9 +99,9 @@ fn json_to_lua<'lua>(
     }
 }
 
-fn lua_to_json<'lua>(
-    lua: &'lua Lua,
-    lua_val: mlua::Value<'lua>,
+fn lua_to_json(
+    lua: &Lua,
+    lua_val: mlua::Value,
 ) -> mlua::Result<serde_json::Value> {
     match lua_val {
         mlua::Value::Nil => Ok(serde_json::Value::Null),
@@ -148,6 +148,9 @@ fn lua_to_json<'lua>(
         )),
         mlua::Value::Error(_) => Err(mlua::Error::runtime(
             "Cannot convert an error object to a json value",
+        )),
+        mlua::Value::Other(_) => Err(mlua::Error::runtime(
+            "Cannot convert unknown object to a json value"
         )),
     }
 }

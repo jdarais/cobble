@@ -80,8 +80,8 @@ impl fmt::Display for Project {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for Project {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for Project {
+    fn from_lua(value: mlua::Value, _lua: &mlua::Lua) -> mlua::Result<Self> {
         let project_table = match value {
             mlua::Value::Table(tbl) => tbl,
             _ => {

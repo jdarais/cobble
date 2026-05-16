@@ -16,11 +16,11 @@ use mlua::{AnyUserData, Error, Lua, MultiValue, Table, UserData, Value};
 pub struct PathLib;
 
 impl UserData for PathLib {
-    fn add_fields<'lua, F: mlua::prelude::LuaUserDataFields<'lua, Self>>(fields: &mut F) {
+    fn add_fields<F: mlua::prelude::LuaUserDataFields<Self>>(fields: &mut F) {
         fields.add_field_function_get("SEP", get_path_separator);
     }
 
-    fn add_methods<'lua, M: mlua::prelude::LuaUserDataMethods<'lua, Self>>(methods: &mut M) {
+    fn add_methods<M: mlua::prelude::LuaUserDataMethods<Self>>(methods: &mut M) {
         methods.add_function("join", path_join);
         methods.add_function("glob", glob_files);
         methods.add_function("is_dir", is_dir);
@@ -29,11 +29,11 @@ impl UserData for PathLib {
     }
 }
 
-fn get_path_separator<'lua>(_lua: &'lua Lua, _: AnyUserData<'lua>) -> mlua::Result<String> {
+fn get_path_separator(_lua: &Lua, _: AnyUserData) -> mlua::Result<String> {
     Ok(String::from(MAIN_SEPARATOR))
 }
 
-fn path_join<'lua>(_lua: &'lua Lua, components: mlua::Variadic<String>) -> mlua::Result<String> {
+fn path_join(_lua: &Lua, components: mlua::Variadic<String>) -> mlua::Result<String> {
     let mut path = PathBuf::new();
     for component in components {
         path.push(component.as_str());
@@ -48,16 +48,16 @@ fn path_join<'lua>(_lua: &'lua Lua, components: mlua::Variadic<String>) -> mlua:
     }
 }
 
-fn is_dir<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
+fn is_dir(_lua: &Lua, path_str: String) -> mlua::Result<bool> {
     Ok(Path::new(path_str.as_str()).is_dir())
 }
 
-fn is_file<'lua>(_lua: &'lua Lua, path_str: String) -> mlua::Result<bool> {
+fn is_file(_lua: &Lua, path_str: String) -> mlua::Result<bool> {
     Ok(Path::new(path_str.as_str()).is_file())
 }
 
-fn strip_prefix<'lua>(
-    _lua: &'lua Lua,
+fn strip_prefix(
+    _lua: &Lua,
     args: (String, String)
 ) -> mlua::Result<String> {
     let (path_str, prefix_str) = args;
@@ -94,7 +94,7 @@ fn normalize_path_for_glob(path: &Path) -> PathBuf {
     norm_components.into_iter().collect()
 }
 
-fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Table<'lua>> {
+fn glob_files(lua: &Lua, args: MultiValue) -> mlua::Result<Table> {
     let arg_values: (String, Value, Value) = lua.unpack_multi(args)?;
 
     let (base_opt, path, options_opt) = match arg_values {
@@ -104,10 +104,10 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
             "Unexpected argument after path (string) and options (table)",
         )),
         (base, Value::String(path), Value::Nil) => {
-            Ok((Some(base), String::from(path.to_str()?), None))
+            Ok((Some(base), String::from(path.to_str()?.as_ref()), None))
         }
         (base, Value::String(path), Value::Table(opts)) => {
-            Ok((Some(base), String::from(path.to_str()?), Some(opts)))
+            Ok((Some(base), String::from(path.to_str()?.as_ref()), Some(opts)))
         }
         (_, Value::String(_), _) => Err(Error::runtime(
             "Expected options (table) or nil as third argument",
@@ -128,7 +128,7 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
             match k.as_str() {
                 "include" => match v {
                     Value::String(s) => {
-                        include_patterns.push(String::from(s.to_str()?));
+                        include_patterns.push(String::from(s.to_str()?.as_ref()));
                     }
                     Value::Table(t) => {
                         for incl_pair in t.clone().pairs() {
@@ -144,7 +144,7 @@ fn glob_files<'lua>(lua: &'lua Lua, args: MultiValue<'lua>) -> mlua::Result<Tabl
                 },
                 "exclude" => match v {
                     Value::String(s) => {
-                        exclude_patterns.push(String::from(s.to_str()?));
+                        exclude_patterns.push(String::from(s.to_str()?.as_ref()));
                     }
                     Value::Table(t) => {
                         for excl_pair in t.clone().pairs() {

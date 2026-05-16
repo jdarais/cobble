@@ -38,9 +38,9 @@ pub struct Action {
     pub cmd: ActionCmd,
 }
 
-fn validate_name_alias_table<'lua>(
-    _lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+fn validate_name_alias_table(
+    _lua: &mlua::Lua,
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     match value {
@@ -57,9 +57,9 @@ fn validate_name_alias_table<'lua>(
     }
 }
 
-pub fn validate_action_list<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+pub fn validate_action_list(
+    lua: &mlua::Lua,
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     let tbl_val = validate_is_table(value, &mut *prop_path)?;
@@ -73,9 +73,9 @@ pub fn validate_action_list<'lua>(
     Ok(())
 }
 
-pub fn validate_action<'lua>(
-    lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+pub fn validate_action(
+    lua: &mlua::Lua,
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     match value {
@@ -91,7 +91,7 @@ pub fn validate_action<'lua>(
                         sequence_values[i as usize - 1] = v;
                         Ok(())
                     }
-                    mlua::Value::String(ks) => match ks.to_str()? {
+                    mlua::Value::String(ks) => match ks.to_str()?.as_ref() {
                         "tool" => with_prop(&mut *prop_path, Cow::Borrowed("tool"), |path| {
                             validate_name_alias_table(lua, &v, path)
                         }),
@@ -167,10 +167,10 @@ impl fmt::Display for Action {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for Action {
+impl mlua::FromLua for Action {
     fn from_lua(
-        value: mlua::prelude::LuaValue<'lua>,
-        lua: &'lua mlua::prelude::Lua,
+        value: mlua::prelude::LuaValue,
+        lua: &mlua::prelude::Lua,
     ) -> mlua::prelude::LuaResult<Self> {
         match value {
             mlua::Value::Table(tbl) => {
@@ -181,10 +181,10 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                 for pair in tbl.clone().pairs() {
                     let (k, v): (mlua::Value, mlua::Value) = pair?;
                     if let mlua::Value::String(s) = k {
-                        match s.to_str()? {
+                        match s.to_str()?.as_ref() {
                             "env" => match v {
                                 mlua::Value::String(s) => {
-                                    let build_env_name = Arc::<str>::from(s.to_str()?);
+                                    let build_env_name = Arc::<str>::from(s.to_str()?.as_ref());
                                     build_envs.insert(build_env_name.clone(), build_env_name);
                                 }
                                 mlua::Value::Table(build_env_tbl) => {
@@ -192,7 +192,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                         let (k_val, v_str): (mlua::Value, String) = pair?;
                                         let v = Arc::<str>::from(v_str);
                                         let k = match k_val {
-                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
+                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?.as_ref()),
                                             _ => v.clone(),
                                         };
                                         build_envs.insert(k, v);
@@ -208,7 +208,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                             },
                             "tool" => match v {
                                 mlua::Value::String(s) => {
-                                    let tool_name = Arc::<str>::from(s.to_str()?);
+                                    let tool_name = Arc::<str>::from(s.to_str()?.as_ref());
                                     tools.insert(tool_name.clone(), tool_name);
                                 }
                                 mlua::Value::Table(tool_tbl) => {
@@ -216,7 +216,7 @@ impl<'lua> mlua::FromLua<'lua> for Action {
                                         let (k_val, v_str): (mlua::Value, String) = pair?;
                                         let v = Arc::<str>::from(v_str);
                                         let k = match k_val {
-                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?),
+                                            mlua::Value::String(s) => Arc::<str>::from(s.to_str()?.as_ref()),
                                             _ => v.clone(),
                                         };
                                         tools.insert(k, v);
@@ -309,8 +309,8 @@ impl<'lua> mlua::FromLua<'lua> for Action {
     }
 }
 
-impl<'lua> mlua::IntoLua<'lua> for Action {
-    fn into_lua(self, lua: &'lua mlua::prelude::Lua) -> mlua::Result<mlua::Value<'lua>> {
+impl mlua::IntoLua for Action {
+    fn into_lua(self, lua: &mlua::prelude::Lua) -> mlua::Result<mlua::Value> {
         let Action {
             build_envs,
             tools,

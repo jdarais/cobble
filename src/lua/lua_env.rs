@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::ffi::OsString;
 use std::path::Path;
 
-use mlua::{Lua, Table};
+use mlua::{Lua, LuaSerdeExt, Table};
 
 use crate::lua::cmd::CmdLib;
 use crate::lua::fs::FsLib;
@@ -22,7 +22,7 @@ pub fn create_lua_env(workspace_dir: &Path, modules_dir: &Path) -> mlua::Result<
     let lua = unsafe { Lua::unsafe_new() };
     let preload_table: mlua::Table = lua
         .globals()
-        .get::<_, mlua::Table>("package")?
+        .get::<mlua::Table>("package")?
         .get("preload")?;
 
     let workspace_table = lua.create_table()?;
@@ -88,9 +88,9 @@ pub fn create_lua_env(workspace_dir: &Path, modules_dir: &Path) -> mlua::Result<
     let tblext_loader = lua.load(&tblext_source[..]).into_function()?;
     preload_table.set("tblext", tblext_loader)?;
 
-    let ordered_map_source = include_bytes!("ordered_map.lua");
-    let ordered_map_loader = lua.load(&ordered_map_source[..]).into_function()?;
-    preload_table.set("ordered_map", ordered_map_loader)?;
+    let collections_source = include_bytes!("collections.lua");
+    let collections_loader = lua.load(&collections_source[..]).into_function()?.bind(lua.array_metatable())?;
+    preload_table.set("collections", collections_loader)?;
 
     let workspace_dir_full_path = dunce::canonicalize(workspace_dir)
         .map_err(|e| mlua::Error::runtime(format!("Error determining workspace directory from {}: {}", workspace_dir.display(), e)))?;
@@ -134,7 +134,7 @@ mod tests {
         let chunk = lua_env.load(r#"require("cmd")({"echo", "hi!"})"#);
 
         let result: Table = chunk.eval().unwrap();
-        assert_eq!(result.get::<_, i32>("status").unwrap(), 0);
-        assert_eq!(result.get::<_, String>("stdout").unwrap(), "hi!\n");
+        assert_eq!(result.get::<i32>("status").unwrap(), 0);
+        assert_eq!(result.get::<String>("stdout").unwrap(), "hi!\n");
     }
 }

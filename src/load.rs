@@ -45,11 +45,11 @@ fn process_project(
             .expect("expected to be able to set current working directory to previous value");
     }));
 
-    start_project.call::<_, ()>((project_name, project_dir))?;
+    start_project.call::<()>((project_name, project_dir))?;
 
     lua.load(chunk).exec()?;
 
-    end_project.call::<_, ()>(())?;
+    end_project.call::<()>(())?;
 
     Ok(())
 }

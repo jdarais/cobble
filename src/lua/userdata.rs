@@ -24,7 +24,7 @@ pub enum CobbleUserData {
 }
 
 impl CobbleUserData {
-    pub fn to_userdata<'lua>(&self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::AnyUserData<'lua>> {
+    pub fn to_userdata(&self, lua: &mlua::Lua) -> mlua::Result<mlua::AnyUserData> {
         match self {
             CobbleUserData::FsLib => lua.create_userdata(FsLib),
             CobbleUserData::PathLib => lua.create_userdata(PathLib),
@@ -35,9 +35,9 @@ impl CobbleUserData {
         }
     }
 
-    pub fn from_userdata<'lua>(
-        _lua: &'lua mlua::Lua,
-        userdata: mlua::AnyUserData<'lua>,
+    pub fn from_userdata(
+        _lua: &mlua::Lua,
+        userdata: mlua::AnyUserData,
     ) -> mlua::Result<CobbleUserData> {
         if mlua::AnyUserData::is::<FsLib>(&userdata) {
             return Ok(CobbleUserData::FsLib);

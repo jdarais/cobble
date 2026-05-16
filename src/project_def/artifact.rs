@@ -23,9 +23,9 @@ pub struct Artifacts {
     pub calc: Vec<Arc<str>>,
 }
 
-pub fn validate_artifact<'lua>(
-    _lua: &'lua mlua::Lua,
-    value: &mlua::Value<'lua>,
+pub fn validate_artifact(
+    _lua: &mlua::Lua,
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     validate_is_string(value, prop_path).and(Ok(()))
@@ -53,8 +53,8 @@ impl fmt::Display for Artifacts {
     }
 }
 
-pub fn validate_artifacts<'lua>(
-    value: &mlua::Value<'lua>,
+pub fn validate_artifacts(
+    value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
     let table_value = validate_is_table(value, &mut *prop_path)?;
@@ -65,7 +65,7 @@ pub fn validate_artifacts<'lua>(
 
         if let mlua::Value::String(k_string) = k {
             let k_str = k_string.to_str()?;
-            match k_str {
+            match k_str.as_ref() {
                 "files" => {
                     with_prop(
                         &mut *prop_path,
@@ -94,7 +94,7 @@ pub fn validate_artifacts<'lua>(
                         Ok(())
                     },
                 )?,
-                _ => key_validation_error(k_str, vec!["files", "calc"], &mut *prop_path)?,
+                _ => key_validation_error(k_str.as_ref(), vec!["files", "calc"], &mut *prop_path)?,
             }
         }
     }
@@ -107,8 +107,8 @@ pub fn validate_artifacts<'lua>(
     Ok(())
 }
 
-impl<'lua> mlua::FromLua<'lua> for Artifacts {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for Artifacts {
+    fn from_lua(value: mlua::Value, _lua: &mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::Table(table_value) => {
                 let mut files: BTreeMap<StringOrInt, Arc<str>> = BTreeMap::new();

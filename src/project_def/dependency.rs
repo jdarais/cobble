@@ -29,16 +29,16 @@ impl fmt::Display for Dependencies {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for Dependencies {
-    fn from_lua(value: mlua::Value<'lua>, lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl mlua::FromLua for Dependencies {
+    fn from_lua(value: mlua::Value, lua: &mlua::Lua) -> mlua::Result<Self> {
         let value_block: SerLuaValueBlock = lua.unpack(value)?;
         let deps = Dependencies::try_from(&value_block).map_err(|e| mlua::Error::runtime(e))?;
         Ok(deps)
     }
 }
 
-pub fn validate_dep_list<'lua>(
-    _lua: &'lua mlua::Lua,
+pub fn validate_dep_list(
+    _lua: &mlua::Lua,
     value: &mlua::Value,
     prop_path: &mut Vec<Cow<'static, str>>,
 ) -> mlua::Result<()> {
@@ -47,7 +47,7 @@ pub fn validate_dep_list<'lua>(
             for pair in dep_tbl.clone().pairs() {
                 let (dep_type, dep_list): (mlua::Value, mlua::Value) = pair?;
                 let dep_type_str = validate_is_string(&dep_type, &mut *prop_path)?;
-                match dep_type_str.to_str()? {
+                match dep_type_str.to_str()?.as_ref() {
                     "dirs" => with_prop(&mut *prop_path, Cow::Borrowed("dirs"), |path| {
                         let dirs_tbl = validate_is_table(&dep_list, &mut *path)?;
                         validate_table_has_only_string_or_sequence_keys(&dirs_tbl, path)

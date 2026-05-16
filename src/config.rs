@@ -80,11 +80,11 @@ pub enum TaskOutputCondition {
     Never = 0,
 }
 
-impl<'lua> mlua::FromLua<'lua> for TaskOutputCondition {
-    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+impl<'lua> mlua::FromLua for TaskOutputCondition {
+    fn from_lua(value: mlua::Value, _lua: &mlua::Lua) -> mlua::Result<Self> {
         match value {
             mlua::Value::String(s) => {
-                parse_output_condition(s.to_str()?).map_err(|e| mlua::Error::runtime(e))
+                parse_output_condition(&s.to_str()?).map_err(|e| mlua::Error::runtime(e))
             }
             invalid_value => Err(mlua::Error::runtime(format!(
                 "Expected a string value for output condition, but got a  {}.",

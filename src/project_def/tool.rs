@@ -32,7 +32,7 @@ pub fn validate_vars_only_deps<'lua>(
     for pair in deps_tbl.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
         let k_str = validate_is_string(&k, prop_path.as_mut())?;
-        match k_str.to_str()? {
+        match k_str.to_str()?.as_ref() {
             "vars" => with_prop(&mut *prop_path, Cow::Borrowed("vars"), |path| {
                 let v_tbl = validate_is_table(&v, &mut *path)?;
                 validate_table_has_only_string_or_sequence_keys(&v_tbl, path)
@@ -55,7 +55,7 @@ pub fn validate_tool<'lua>(lua: &'lua mlua::Lua, value: &mlua::Value) -> mlua::R
     for pair in tool_tbl.clone().pairs() {
         let (k, v): (mlua::Value, mlua::Value) = pair?;
         let k_str = validate_is_string(&k, &mut prop_path)?;
-        match k_str.to_str()? {
+        match k_str.to_str()?.as_ref() {
             "name" => with_prop(&mut prop_path, Cow::Borrowed("name"), |path| {
                 validate_is_string(&v, path).and(Ok(()))
             }),
@@ -96,10 +96,10 @@ impl fmt::Display for ExternalTool {
     }
 }
 
-impl<'lua> mlua::FromLua<'lua> for ExternalTool {
+impl mlua::FromLua for ExternalTool {
     fn from_lua(
-        value: mlua::prelude::LuaValue<'lua>,
-        lua: &'lua mlua::prelude::Lua,
+        value: mlua::prelude::LuaValue,
+        lua: &mlua::Lua,
     ) -> mlua::prelude::LuaResult<Self> {
         let ser_tool = SerLuaValueBlock::from_lua(value.clone(), lua)?;
         let ser_tool = ser_tool.as_deterministic();
